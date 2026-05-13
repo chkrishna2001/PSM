@@ -1,6 +1,6 @@
-# psm-cli
+# @psm-memory/cli
 
-Command line interface for PSM memory operations.
+Command line interface for PSM Memory operations.
 
 ```bash
 psm init --db user_memory.db

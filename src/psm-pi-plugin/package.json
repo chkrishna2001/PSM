@@ -1,8 +1,8 @@
 {
-  "name": "psm-pi-plugin",
+  "name": "@psm-memory/pi-plugin",
   "version": "0.1.0",
   "type": "module",
-  "description": "PSM plugin tool wrappers for agent runtimes.",
+  "description": "PSM Memory plugin tool wrappers for agent runtimes.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -22,7 +22,7 @@
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "psm-sdk": "0.1.0"
+    "@psm-memory/sdk": "0.1.0"
   },
   "publishConfig": {
     "access": "public"

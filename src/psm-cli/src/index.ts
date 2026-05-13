@@ -1,4 +1,4 @@
-import { HeuristicRuntime, MemoryStore, NodeLlamaRuntime, PsmService, memoryTables, type MemoryTable, type ModelRuntime } from "psm-sdk";
+import { HeuristicRuntime, MemoryStore, NodeLlamaRuntime, PsmService, memoryTables, type MemoryTable, type ModelRuntime } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, required, stringOption } from "./args.js";
 
 export async function run(argv: string[]): Promise<number> {
@@ -95,7 +95,7 @@ function write(value: string): void {
 }
 
 function helpText(): string {
-  return `psm commands:
+  return `PSM Memory commands:
   init --db <path>
   context --prompt <text> --user <id> --db <path> [--top-k n] [--model psm.gguf] [--pretty]
   remember --llm-response <text> --user <id> --db <path> [--model psm.gguf] [--pretty]

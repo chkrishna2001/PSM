@@ -1,4 +1,4 @@
-import { type ModelRuntime } from "psm-sdk";
+import { type ModelRuntime } from "@psm-memory/sdk";
 export interface PsmPluginOptions {
     dbPath: string;
     userId?: string;

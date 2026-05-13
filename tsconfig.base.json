@@ -12,9 +12,9 @@
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "psm-sdk": ["src/psm-core/src/index.ts"],
-      "psm-cli": ["src/psm-cli/src/index.ts"],
-      "psm-pi-plugin": ["src/psm-pi-plugin/src/index.ts"]
+      "@psm-memory/sdk": ["src/psm-core/src/index.ts"],
+      "@psm-memory/cli": ["src/psm-cli/src/index.ts"],
+      "@psm-memory/pi-plugin": ["src/psm-pi-plugin/src/index.ts"]
     }
   }
 }

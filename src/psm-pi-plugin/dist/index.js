@@ -1,4 +1,4 @@
-import { HeuristicRuntime, MemoryStore, PsmService } from "psm-sdk";
+import { HeuristicRuntime, MemoryStore, PsmService } from "@psm-memory/sdk";
 export function createPsmTools(options) {
     const store = new MemoryStore(options.dbPath);
     store.initializeSchema();

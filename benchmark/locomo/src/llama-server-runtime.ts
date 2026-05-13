@@ -1,4 +1,4 @@
-import type { GenerateOptions, ModelRuntime } from "psm-sdk";
+import type { GenerateOptions, ModelRuntime } from "@psm-memory/sdk";
 
 interface CompletionResponse {
   content?: string;

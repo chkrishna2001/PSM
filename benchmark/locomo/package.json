@@ -1,5 +1,5 @@
 {
-  "name": "@psm/locomo",
+  "name": "@psm-memory/locomo",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -1,10 +1,10 @@
-# TypeScript PSM Stack
+# PSM Memory TypeScript Stack
 
 This tree separates reusable memory code from public commands and benchmarks:
 
-- `src/psm-core`: npm package `psm-sdk`; SDK types, JSON parsing, action routing, SQLite memory store, ranking, prompt builders, and service orchestration.
-- `src/psm-cli`: npm package `psm-cli`; thin `psm` command wrapper over the SDK.
-- `src/psm-pi-plugin`: npm package `psm-pi-plugin`; tool registration helpers for agents/plugins.
+- `src/psm-core`: npm package `@psm-memory/sdk`; SDK types, JSON parsing, action routing, SQLite memory store, ranking, prompt builders, and service orchestration.
+- `src/psm-cli`: npm package `@psm-memory/cli`; thin `psm` command wrapper over the SDK.
+- `src/psm-pi-plugin`: npm package `@psm-memory/pi-plugin`; tool registration helpers for agents/plugins.
 - `benchmark/locomo`: benchmark-only LOCOMO ingestion and evidence retrieval tooling.
 
 The public CLI intentionally exposes memory operations only:
@@ -16,7 +16,7 @@ node src/psm-cli/dist/cli.js remember --llm-response "User prefers SQLite for lo
 node src/psm-cli/dist/cli.js recall --question "What database does the user prefer?" --user demo --db user_memory.db --pretty
 ```
 
-After publishing, the same command is exposed as `psm` by the `psm-cli` package.
+After publishing, the same command is exposed as `psm` by the `@psm-memory/cli` package.
 
 JSON is the default output format. `--pretty` only changes formatting.
 

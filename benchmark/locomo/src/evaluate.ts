@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { MemoryStore, rankMemories, type MemoryRecord } from "psm-sdk";
+import { MemoryStore, rankMemories, type MemoryRecord } from "@psm-memory/sdk";
 import { loadSamples, parseOptions, parseTags, tagValue } from "./common.js";
 
 export function main(argv: string[]): number {

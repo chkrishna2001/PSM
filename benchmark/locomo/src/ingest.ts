@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { buildStoragePrompt, MemoryStore, parseStorageDecision } from "psm-sdk";
+import { buildStoragePrompt, MemoryStore, parseStorageDecision } from "@psm-memory/sdk";
 import { flattenTurns, loadSamples, parseOptions } from "./common.js";
 import { LlamaServerRuntime } from "./llama-server-runtime.js";
 

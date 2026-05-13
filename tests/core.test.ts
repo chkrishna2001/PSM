@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction } from "psm-sdk";
+import { MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction } from "@psm-memory/sdk";
 
 test("storage decision parser falls back on invalid JSON", () => {
   const decision = parseStorageDecision("not json", "User likes SQLite.");

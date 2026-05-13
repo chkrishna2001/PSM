@@ -1,4 +1,4 @@
-import { HeuristicRuntime, MemoryStore, PsmService, type ModelRuntime } from "psm-sdk";
+import { HeuristicRuntime, MemoryStore, PsmService, type ModelRuntime } from "@psm-memory/sdk";
 
 export interface PsmPluginOptions {
   dbPath: string;
