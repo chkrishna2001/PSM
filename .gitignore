@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Package manager and local caches
+.npm-cache/
+.yarn/
+.pnpm-store/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data and benchmark outputs
+*.db
+*.db-shm
+*.db-wal
+*.jsonl
+results/
+benchmark/**/results/
+
+# Local datasets and model artifacts
+data/
+models/
+*.onnx
+*.onnx_adapter
+*.gguf
+*.safetensors
+*.bin
+*.zip
+psm_cpu_onnx/
+psm_cuda_onnx/
+psm_lora_adapter/
+psm_merged_fp16/
+
+# Python and .NET local artifacts from earlier experiments
+__pycache__/
+*.pyc
+.dotnet/
+.nuget/
+bin/
+obj/
+nupkg/
+
+# Local-only archive
+archive/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

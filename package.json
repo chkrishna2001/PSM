@@ -6,8 +6,7 @@
     "src/psm-core",
     "src/psm-cli",
     "src/psm-pi-plugin",
-    "benchmark/locomo",
-    "tools/locomo-benchmark"
+    "benchmark/locomo"
   ],
   "scripts": {
     "build": "tsc -b",

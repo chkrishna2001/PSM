@@ -5,7 +5,6 @@
     { "path": "./src/psm-cli" },
     { "path": "./src/psm-pi-plugin" },
     { "path": "./benchmark/locomo" },
-    { "path": "./tools/locomo-benchmark" },
     { "path": "./tests" }
   ]
 }

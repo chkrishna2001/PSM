@@ -5,7 +5,7 @@ This tree separates reusable memory code from public commands and benchmarks:
 - `src/psm-core`: npm package `psm-sdk`; SDK types, JSON parsing, action routing, SQLite memory store, ranking, prompt builders, and service orchestration.
 - `src/psm-cli`: npm package `psm-cli`; thin `psm` command wrapper over the SDK.
 - `src/psm-pi-plugin`: npm package `psm-pi-plugin`; tool registration helpers for agents/plugins.
-- `tools/locomo-benchmark`: benchmark-only LOCOMO evidence retrieval tooling.
+- `benchmark/locomo`: benchmark-only LOCOMO ingestion and evidence retrieval tooling.
 
 The public CLI intentionally exposes memory operations only:
 
