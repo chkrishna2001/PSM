@@ -1,0 +1,30 @@
+{
+  "name": "psm-pi-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "PSM plugin tool wrappers for agent runtimes.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.js.map",
+    "README.md",
+    "package.json"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "psm-sdk": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

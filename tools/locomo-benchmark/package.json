@@ -1,0 +1,7 @@
+{
+  "name": "@psm/locomo-benchmark",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "../../dist/tools/locomo-benchmark/src/index.js"
+}

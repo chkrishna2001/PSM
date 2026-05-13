@@ -1,0 +1,20 @@
+{
+  "name": "psm",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "src/psm-core",
+    "src/psm-cli",
+    "src/psm-pi-plugin",
+    "benchmark/locomo",
+    "tools/locomo-benchmark"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "locomo:evaluate": "node dist/benchmark/locomo/src/evaluate.js",
+    "locomo:ingest": "node dist/benchmark/locomo/src/ingest.js",
+    "locomo:ingest-node": "node dist/benchmark/locomo/src/ingest-node.js"
+  },
+  "dependencies": {}
+}

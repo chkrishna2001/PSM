@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "../../dist"
+  },
+  "references": [{ "path": "../../src/psm-core" }],
+  "include": ["src/**/*.ts", "../../types/**/*.d.ts"]
+}

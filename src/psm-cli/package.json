@@ -1,0 +1,33 @@
+{
+  "name": "psm-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Command line interface for PSM memory context, remember, and recall workflows.",
+  "bin": {
+    "psm": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.js.map",
+    "README.md",
+    "package.json"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "psm-sdk": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "db": "benchmark\\locomo\\results\\locomo-gpu-smoke.db",
+  "data": "benchmark/locomo/data/locomo10.json",
+  "server": "http://127.0.0.1:8080",
+  "seen": 8,
+  "stored": 8,
+  "ignored": 0,
+  "failed": 0,
+  "errors": []
+}

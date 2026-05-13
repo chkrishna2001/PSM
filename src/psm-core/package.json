@@ -1,0 +1,30 @@
+{
+  "name": "psm-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TypeScript SDK for PSM memory routing, storage, recall, and local model runtimes.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.js.map",
+    "README.md",
+    "package.json"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "optionalDependencies": {
+    "node-llama-cpp": "^3.18.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
