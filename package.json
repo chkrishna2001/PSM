@@ -18,8 +18,8 @@
     "locomo:ingest": "node dist/benchmark/locomo/src/ingest.js",
     "locomo:ingest-node": "node dist/benchmark/locomo/src/ingest-node.js"
   },
-  "dependencies": {},
   "devDependencies": {
-    "@changesets/cli": "^2.29.7"
+    "@changesets/cli": "^2.29.7",
+    "typescript": "^6.0.3"
   }
 }
