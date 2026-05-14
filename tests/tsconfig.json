@@ -4,6 +4,9 @@
     "composite": true,
     "outDir": "../dist"
   },
-  "references": [{ "path": "../src/psm-core" }],
+  "references": [
+    { "path": "../src/psm-core" },
+    { "path": "../src/psm-pi-plugin" }
+  ],
   "include": ["*.ts", "../types/**/*.d.ts"]
 }

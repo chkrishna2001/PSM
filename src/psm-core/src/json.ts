@@ -1,5 +1,5 @@
 import { normalizeAction } from "./actions.js";
-import { memoryTables, type MemoryPayload, type MemoryTable, type RecallPlan, type StorageDecision } from "./types.js";
+import { memoryTables, type ContextItem, type ContextRender, type MemoryPayload, type MemoryTable, type RecallPlan, type StorageDecision } from "./types.js";
 
 export function extractJsonObject(text: string): string | null {
   const start = text.indexOf("{");
@@ -66,8 +66,39 @@ export function parseRecallPlan(rawText: string, question: string, topK = 5): Re
   }
 }
 
+export function parseContextRender(rawText: string, topK = 5): ContextRender {
+  const raw_json = extractJsonObject(rawText) ?? rawText.trim();
+  try {
+    const parsed = JSON.parse(raw_json) as Record<string, unknown>;
+    const rawItems = Array.isArray(parsed.context_items)
+      ? parsed.context_items
+      : Array.isArray(parsed.memory_context)
+        ? parsed.memory_context
+        : [];
+    const context_items = rawItems
+      .map(normalizeContextItem)
+      .filter((item): item is ContextItem => item !== null)
+      .slice(0, topK);
+    return {
+      context_items,
+      reasoning: stringOr(parsed.reasoning, "PSM selected context items."),
+      raw_json
+    };
+  } catch (error) {
+    return {
+      context_items: [],
+      reasoning: `Model returned invalid context JSON. ${error instanceof Error ? error.message : String(error)}`,
+      raw_json,
+      parse_error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 function normalizeMemory(value: unknown, fallbackContent: string): MemoryPayload | null {
   if (value === null) return null;
+  if (typeof value === "string" && value.trim()) {
+    return { content: value };
+  }
   if (!isRecord(value)) {
     return { content: fallbackContent };
   }
@@ -83,8 +114,24 @@ function normalizeMemory(value: unknown, fallbackContent: string): MemoryPayload
   };
 }
 
+function normalizeContextItem(value: unknown): ContextItem | null {
+  if (typeof value === "string" && value.trim()) {
+    return { table: "memory", content: value };
+  }
+  if (!isRecord(value)) return null;
+  const content = stringOrUndefined(value.content);
+  if (!content) return null;
+  const table = stringOrUndefined(value.table);
+  return {
+    id: stringOrUndefined(value.id),
+    table: table === "episodic" || table === "semantic" || table === "archival" ? table : "memory",
+    content,
+    reason: stringOrUndefined(value.reason)
+  };
+}
+
 function normalizeTables(value: unknown): MemoryTable[] {
-  const allowed = new Set<string>(memoryTables);
+  const allowed = new Set<string>(["semantic", "episodic", "archival"]);
   const tables = stringArray(value).filter((table): table is MemoryTable => allowed.has(table));
   return tables.length > 0 ? tables : ["semantic", "episodic"];
 }

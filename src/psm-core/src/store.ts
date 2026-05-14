@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import Database from "better-sqlite3";
 import { routeForAction } from "./actions.js";
-import type { MemoryAction, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision } from "./types.js";
+import type { MemoryAction, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision, WrittenMemoryRef } from "./types.js";
 import { memoryTables } from "./types.js";
 
 type DbRow = Record<string, unknown>;
 
 export class MemoryStore {
-  private readonly db: DatabaseSync;
+  private readonly db: Database.Database;
 
   constructor(readonly dbPath: string) {
-    this.db = new DatabaseSync(dbPath);
+    this.db = new Database(dbPath);
     this.db.exec("PRAGMA foreign_keys = ON;");
   }
 
@@ -83,46 +83,59 @@ CREATE TABLE IF NOT EXISTS decisions (
   raw_json TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+  memory_table TEXT NOT NULL,
+  memory_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  model TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  embedding_json TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (memory_table, memory_id, model)
+);
 CREATE INDEX IF NOT EXISTS idx_episodic_user_created ON episodic(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_semantic_user_created ON semantic(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conflicts_status_created ON conflicts(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_decisions_user_created ON decisions(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings(user_id, model);
 `);
   }
 
-  applyDecision(userId: string, source: string, decision: StorageDecision, extraTags: string[] = []): { action: MemoryAction; route: string; written: string[] } {
+  applyDecision(userId: string, source: string, decision: StorageDecision, extraTags: string[] = []): { action: MemoryAction; route: string; written: string[]; memory_refs: WrittenMemoryRef[] } {
     const route = routeForAction(decision.action);
     this.insertDecision(userId, source, decision.action, route, decision.reasoning, decision.raw_json);
     const memory = withExtraTags(decision.memory ?? { content: source }, extraTags);
     const content = memory.content?.trim() || source;
     const written: string[] = [];
+    const memory_refs: WrittenMemoryRef[] = [];
 
     switch (route) {
       case "ignore":
       case "recall_only":
-        return { action: decision.action, route, written };
+        return { action: decision.action, route, written, memory_refs };
       case "semantic_upsert":
       case "update_with_supersede":
-        this.insertSemantic(userId, content, memory, [source]);
+        memory_refs.push({ table: "semantic", id: this.insertSemantic(userId, content, memory, [source]), content });
         written.push("semantic");
-        return { action: decision.action, route, written };
+        return { action: decision.action, route, written, memory_refs };
       case "decay_existing_then_insert":
         this.insertDecaySchedule(userId, content, memory.decay_rate ?? 0.03);
-        this.insertEpisodic(userId, content, memory);
+        memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("decay_schedule", "episodic");
-        return { action: decision.action, route, written };
+        return { action: decision.action, route, written, memory_refs };
       case "conflict_log_and_hold":
         this.insertConflict(userId, content, decision.reasoning || "PSM flagged potential conflict");
         written.push("conflicts");
         if (decision.action === "flag_and_store") {
-          this.insertEpisodic(userId, content, memory);
+          memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
           written.push("episodic");
         }
-        return { action: decision.action, route, written };
+        return { action: decision.action, route, written, memory_refs };
       default:
-        this.insertEpisodic(userId, content, memory);
+        memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("episodic");
-        return { action: decision.action, route, written };
+        return { action: decision.action, route, written, memory_refs };
     }
   }
 
@@ -185,6 +198,42 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, userId, source, action, route, reasoning,
     return id;
   }
 
+  upsertMemoryEmbedding(ref: WrittenMemoryRef, userId: string, model: string, embedding: number[]): void {
+    this.db.prepare(`
+INSERT INTO memory_embeddings (memory_table, memory_id, user_id, model, dimensions, embedding_json, content_hash, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
+  dimensions = excluded.dimensions,
+  embedding_json = excluded.embedding_json,
+  content_hash = excluded.content_hash,
+  updated_at = CURRENT_TIMESTAMP`).run(
+      ref.table,
+      ref.id,
+      userId,
+      model,
+      embedding.length,
+      JSON.stringify(embedding),
+      hashContent(ref.content)
+    );
+  }
+
+  selectEmbeddingRows(userId: string, model: string): DbRow[] {
+    return this.db.prepare("SELECT * FROM memory_embeddings WHERE user_id = ? AND model = ?").all(userId, model);
+  }
+
+  getMemory(table: "episodic" | "semantic" | "archival", id: string): MemoryRecord | undefined {
+    if (table === "episodic") {
+      const row = this.db.prepare("SELECT *, 'episodic' as memory_table FROM episodic WHERE id = ?").get(id);
+      return row ? asMemoryRecord(row) : undefined;
+    }
+    if (table === "semantic") {
+      const row = this.db.prepare("SELECT *, 'semantic' as memory_table FROM semantic WHERE id = ?").get(id);
+      return row ? asMemoryRecord(row) : undefined;
+    }
+    const row = this.db.prepare("SELECT id, user_id, content, NULL as strength, NULL as decay_rate, NULL as emotional_weight, NULL as confidence, NULL as tags, NULL as source_episodes, 'archival' as memory_table, archived_at as created_at, NULL as last_accessed FROM archival WHERE id = ?").get(id);
+    return row ? asMemoryRecord(row) : undefined;
+  }
+
   selectTable(table: MemoryTable, limit: number): DbRow[] {
     if (!memoryTables.includes(table)) throw new Error(`Unsupported table: ${table}`);
     return this.db.prepare(`SELECT * FROM ${table} ORDER BY rowid DESC LIMIT ?`).all(limit);
@@ -219,6 +268,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, userId, source, action, route, reasoning,
   close(): void {
     this.db.close();
   }
+}
+
+function hashContent(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
 }
 
 function asMemoryRecord(row: DbRow): MemoryRecord {

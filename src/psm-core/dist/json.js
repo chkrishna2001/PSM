@@ -1,5 +1,4 @@
 import { normalizeAction } from "./actions.js";
-import { memoryTables } from "./types.js";
 export function extractJsonObject(text) {
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
@@ -65,9 +64,40 @@ export function parseRecallPlan(rawText, question, topK = 5) {
         };
     }
 }
+export function parseContextRender(rawText, topK = 5) {
+    const raw_json = extractJsonObject(rawText) ?? rawText.trim();
+    try {
+        const parsed = JSON.parse(raw_json);
+        const rawItems = Array.isArray(parsed.context_items)
+            ? parsed.context_items
+            : Array.isArray(parsed.memory_context)
+                ? parsed.memory_context
+                : [];
+        const context_items = rawItems
+            .map(normalizeContextItem)
+            .filter((item) => item !== null)
+            .slice(0, topK);
+        return {
+            context_items,
+            reasoning: stringOr(parsed.reasoning, "PSM selected context items."),
+            raw_json
+        };
+    }
+    catch (error) {
+        return {
+            context_items: [],
+            reasoning: `Model returned invalid context JSON. ${error instanceof Error ? error.message : String(error)}`,
+            raw_json,
+            parse_error: error instanceof Error ? error.message : String(error)
+        };
+    }
+}
 function normalizeMemory(value, fallbackContent) {
     if (value === null)
         return null;
+    if (typeof value === "string" && value.trim()) {
+        return { content: value };
+    }
     if (!isRecord(value)) {
         return { content: fallbackContent };
     }
@@ -82,8 +112,25 @@ function normalizeMemory(value, fallbackContent) {
         source_episodes: stringArray(value.source_episodes)
     };
 }
+function normalizeContextItem(value) {
+    if (typeof value === "string" && value.trim()) {
+        return { table: "memory", content: value };
+    }
+    if (!isRecord(value))
+        return null;
+    const content = stringOrUndefined(value.content);
+    if (!content)
+        return null;
+    const table = stringOrUndefined(value.table);
+    return {
+        id: stringOrUndefined(value.id),
+        table: table === "episodic" || table === "semantic" || table === "archival" ? table : "memory",
+        content,
+        reason: stringOrUndefined(value.reason)
+    };
+}
 function normalizeTables(value) {
-    const allowed = new Set(memoryTables);
+    const allowed = new Set(["semantic", "episodic", "archival"]);
     const tables = stringArray(value).filter((table) => allowed.has(table));
     return tables.length > 0 ? tables : ["semantic", "episodic"];
 }

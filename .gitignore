@@ -51,6 +51,7 @@ nupkg/
 
 # Local-only archive
 archive/
+hf-upload/
 
 # OS/editor noise
 .DS_Store

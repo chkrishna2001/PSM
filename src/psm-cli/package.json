@@ -4,7 +4,11 @@
   "type": "module",
   "description": "Command line interface for PSM Memory context, remember, and recall workflows.",
   "bin": {
+    "psm-memory": "./dist/cli.js",
     "psm": "./dist/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node ./dist/install-model.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,6 +22,7 @@
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "dist/**/*.js.map",
+    "CHANGELOG.md",
     "README.md",
     "package.json"
   ],

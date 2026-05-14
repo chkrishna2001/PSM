@@ -31,6 +31,18 @@ export interface RecallPlan {
     raw_json: string;
     parse_error?: string;
 }
+export interface ContextItem {
+    id?: string;
+    table: "episodic" | "semantic" | "archival" | "memory";
+    content: string;
+    reason?: string;
+}
+export interface ContextRender {
+    context_items: ContextItem[];
+    reasoning: string;
+    raw_json: string;
+    parse_error?: string;
+}
 export interface MemoryRecord {
     id: string;
     user_id: string;
@@ -49,8 +61,16 @@ export interface RankedMemory extends MemoryRecord {
     score: number;
     metadata: Record<string, unknown>;
 }
+export interface WrittenMemoryRef {
+    table: "episodic" | "semantic" | "archival";
+    id: string;
+    content: string;
+}
 export interface ModelRuntime {
     generateJson(prompt: string, options?: GenerateOptions): Promise<string>;
+}
+export interface EmbeddingRuntime {
+    embed(text: string): Promise<number[]>;
 }
 export interface GenerateOptions {
     maxTokens?: number;

@@ -16,13 +16,15 @@ node src/psm-cli/dist/cli.js remember --llm-response "User prefers SQLite for lo
 node src/psm-cli/dist/cli.js recall --question "What database does the user prefer?" --user demo --db user_memory.db --pretty
 ```
 
-After publishing, the same command is exposed as `psm` by the `@psm-memory/cli` package.
+After publishing, the primary command is exposed as `psm-memory` by the `@psm-memory/cli` package. The shorter `psm` command is also available as an alias.
 
 JSON is the default output format. `--pretty` only changes formatting.
 
 ## Runtime
 
-Without `--model`, the CLI uses a deterministic fallback runtime for local tests. Passing `--model psm.gguf` selects `NodeLlamaRuntime`, which is the intended GGUF integration point for `node-llama-cpp`. The source keeps `node-llama-cpp` optional so the SDK and CLI can build in environments where native dependencies are not installed.
+The npm CLI package downloads the default Q4_K_M GGUF model during package installation. The CLI uses this managed model automatically.
+
+Set `PSM_MEMORY_SKIP_MODEL_DOWNLOAD=1` to skip the install-time download in CI or packaging environments. Users can run `psm-memory setup` later to download the model into the local PSM Memory cache.
 
 The merged local model was converted with llama.cpp:
 
