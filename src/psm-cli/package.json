@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Command line interface for PSM Memory context, remember, and recall workflows.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chkrishna2001/PSM.git",
+    "directory": "src/psm-cli"
+  },
   "bin": {
-    "psm-memory": "./dist/cli.js",
-    "psm": "./dist/cli.js"
+    "psm-memory": "dist/cli.js",
+    "psm": "dist/cli.js"
   },
   "scripts": {
     "postinstall": "node ./dist/install-model.js"

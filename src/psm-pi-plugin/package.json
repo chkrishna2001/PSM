@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "type": "module",
   "description": "PSM Memory plugin tool wrappers for agent runtimes.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chkrishna2001/PSM.git",
+    "directory": "src/psm-pi-plugin"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

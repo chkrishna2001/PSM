@@ -31,6 +31,9 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
         env:
@@ -41,25 +44,16 @@ jobs:
 
       - name: Dry run SDK publish
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm publish --workspace src/psm-core --access public --provenance --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --workspace src/psm-core --access public --dry-run
 
       - name: Dry run CLI publish
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm publish --workspace src/psm-cli --access public --provenance --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --workspace src/psm-cli --access public --dry-run
 
       - name: Dry run PI Plugin publish
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm publish --workspace src/psm-pi-plugin --access public --provenance --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --workspace src/psm-pi-plugin --access public --dry-run
 
       - name: Publish changed packages
         if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
         run: npm run release
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"

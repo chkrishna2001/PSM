@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "type": "module",
   "description": "TypeScript SDK for PSM Memory routing, storage, recall, and local model runtimes.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chkrishna2001/PSM.git",
+    "directory": "src/psm-core"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
