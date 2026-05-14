@@ -8,6 +8,8 @@ This folder contains the LOCOMO data, ingestion database, and benchmark outputs 
 - `results/`: benchmark outputs.
 - `src/ingest.ts`: batched ingestion through PSM.
 - `src/evaluate.ts`: evidence retrieval evaluation over the SQLite memory DB.
+- `psm-memory-locomo-colab.ipynb`: Colab notebook that installs the published npm packages and runs a LOCOMO smoke/full benchmark.
+- `colab/locomo-benchmark.mjs`: Colab harness used by the notebook.
 
 ## Start llama.cpp Server
 
