@@ -1,0 +1,44 @@
+[
+  {
+    "system": "Mem0 managed platform",
+    "score": 92.5,
+    "metric": "LoCoMo LLM-as-judge answer accuracy (%)",
+    "setup": "Token-efficient memory algorithm; reported mean 6,956 tokens per retrieval call",
+    "source": "https://mem0.ai/research"
+  },
+  {
+    "system": "Memori Advanced Augmentation",
+    "score": 81.95,
+    "metric": "LoCoMo LLM-as-judge answer accuracy (%)",
+    "setup": "Average of three rounds; GPT-4.1-mini cost basis reported for context tokens",
+    "source": "https://memorilabs.ai/docs/memori-cloud/benchmark/results/"
+  },
+  {
+    "system": "Zep",
+    "score": 79.09,
+    "metric": "LoCoMo LLM-as-judge answer accuracy (%)",
+    "setup": "Reported by Memori as a comparative baseline",
+    "source": "https://memorilabs.ai/docs/memori-cloud/benchmark/results/"
+  },
+  {
+    "system": "LangMem",
+    "score": 78.05,
+    "metric": "LoCoMo LLM-as-judge answer accuracy (%)",
+    "setup": "Reported by Memori as a comparative baseline",
+    "source": "https://memorilabs.ai/docs/memori-cloud/benchmark/results/"
+  },
+  {
+    "system": "Letta Filesystem",
+    "score": 74.0,
+    "metric": "LoCoMo LLM-as-judge answer accuracy (%)",
+    "setup": "GPT-4o mini agent with attached LOCOMO conversation file and file-search tools",
+    "source": "https://www.letta.com/blog/benchmarking-ai-agent-memory"
+  },
+  {
+    "system": "Mem0",
+    "score": 62.47,
+    "metric": "LoCoMo LLM-as-judge answer accuracy (%)",
+    "setup": "Reported by Memori as a comparative baseline",
+    "source": "https://memorilabs.ai/docs/memori-cloud/benchmark/results/"
+  }
+]

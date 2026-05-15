@@ -67,4 +67,31 @@ If CUDA is available through `node-llama-cpp`, startup logs should show CUDA as 
 benchmark\locomo\run-evaluate.ps1 -TopK 3
 ```
 
+## Compare Against Published Memory Tool Results
+
+For a true comparable score, run answer evaluation after ingest. This retrieves PSM memories, generates an answer for each LOCOMO question, then asks an LLM judge to score the generated answer against the gold answer. By default this uses OpenRouter with `nvidia/nemotron-3-super-120b-a12b:free`; set `OPENROUTER_API_KEY` before running.
+
+```powershell
+npm run build
+$env:OPENROUTER_API_KEY = "sk-or-..."
+node dist/benchmark/locomo/src/answer-evaluate.js --db benchmark/locomo/results/locomo-psm-memory.db --out benchmark/locomo/results/locomo-answer-results.json --top-k 50
+```
+
+Use `--answer-model`, `--judge-model`, and `--base-url` if you want a different OpenAI-compatible provider.
+
+Then generate the comparison report from the answer result:
+
+```powershell
+node dist/benchmark/locomo/src/report.js --psm benchmark/locomo/results/locomo-answer-results.json --baselines benchmark/locomo/baselines/memory-tools.json --out benchmark/locomo/results/locomo-comparison.md
+```
+
+The older retrieval-only evaluation still reports evidence retrieval quality (`hit_at_1`, `hit_at_3`): it checks whether retrieved memories contain at least one gold LOCOMO evidence id. Use that as a diagnostic, not as the headline comparison score.
+
+```powershell
+npm run build
+node dist/benchmark/locomo/src/report.js --psm benchmark/locomo/results/locomo-results.json --baselines benchmark/locomo/baselines/memory-tools.json --out benchmark/locomo/results/locomo-comparison.md
+```
+
+The Colab notebook writes `/content/locomo/results/locomo-answer-results.json`, `/content/locomo/results/locomo-comparison.md`, and copies both to `MyDrive/psm-memory-locomo/`.
+
 Current timing on Q4_K_M CPU runtime: 100 LOCOMO turns took about 5 minutes 53 seconds, so the full 5,882-turn ingest is expected to take roughly 5-6 hours unless GPU offload is active.

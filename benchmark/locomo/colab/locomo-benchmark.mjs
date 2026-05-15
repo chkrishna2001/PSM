@@ -9,6 +9,8 @@ import {
   TransformersEmbeddingRuntime
 } from "@psm-memory/sdk";
 
+const defaultOpenRouterModel = "nvidia/nemotron-3-super-120b-a12b:free";
+
 const command = process.argv[2] ?? "help";
 const args = parseArgs(process.argv.slice(3));
 
@@ -16,10 +18,16 @@ if (command === "ingest") {
   process.exitCode = await ingest(args);
 } else if (command === "evaluate") {
   process.exitCode = evaluate(args);
+} else if (command === "answer-evaluate") {
+  process.exitCode = await answerEvaluate(args);
+} else if (command === "report") {
+  process.exitCode = report(args);
 } else {
   console.log(`Usage:
   node locomo-benchmark.mjs ingest --data <locomo10.json> --db <db> --model <gguf> [--limit n] [--batch-size n] [--progress progress.json] [--checkpoint-dir dir]
   node locomo-benchmark.mjs evaluate --data <locomo10.json> --db <db> --out <results.json> [--top-k n]
+  node locomo-benchmark.mjs answer-evaluate --data <locomo10.json> --db <db> --out <answer-results.json> [--top-k n]
+  node locomo-benchmark.mjs report --psm <locomo-results.json> --baselines <memory-tools.json> --out <comparison.md>
 `);
 }
 
@@ -187,6 +195,98 @@ function evaluate(options) {
   return records.length === 0 ? 1 : 0;
 }
 
+async function answerEvaluate(options) {
+  const dataPath = stringOption(options, "data", "/content/PSM/benchmark/locomo/data/locomo10.json");
+  const dbPath = stringOption(options, "db", "/content/locomo/results/locomo-psm-memory.db");
+  const outPath = stringOption(options, "out", "/content/locomo/results/locomo-answer-results.json");
+  const topK = intOption(options, "top-k", 50);
+  const limit = intOption(options, "limit", 0);
+  const checkpointEvery = intOption(options, "checkpoint-every", 10);
+  const answerModel = stringOption(options, "answer-model", process.env.LOCOMO_ANSWER_MODEL || defaultOpenRouterModel);
+  const judgeModel = stringOption(options, "judge-model", process.env.LOCOMO_JUDGE_MODEL || defaultOpenRouterModel);
+  const baseUrl = stringOption(options, "base-url", process.env.OPENROUTER_BASE_URL || process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1");
+  const apiKey = stringOption(options, "api-key", process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || "");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY is required. Set it in Colab before running answer-evaluate.");
+
+  const existing = loadExistingAnswerResults(outPath);
+  const done = new Set(existing.records.map(answerRecordKey));
+  const records = [...existing.records];
+  const samples = loadSamples(dataPath);
+  const store = new MemoryStore(dbPath);
+  let processedThisRun = 0;
+
+  try {
+    for (const sample of samples) {
+      const sampleId = String(sample.sample_id ?? "unknown");
+      const userId = `locomo-${sampleId}`;
+      const memories = store.selectMemories(userId, ["semantic", "episodic"], 10000);
+      if (memories.length === 0) continue;
+      for (const qa of sample.qa ?? []) {
+        const evidence = (qa.evidence ?? []).map(String).filter(Boolean);
+        if (evidence.length === 0) continue;
+        const question = String(qa.question ?? "");
+        const category = String(qa.category ?? "unknown");
+        const key = `${sampleId}\n${category}\n${question}`;
+        if (done.has(key)) continue;
+        if (limit > 0 && processedThisRun >= limit) {
+          writeAnswerResults(outPath, summarizeAnswers(records, topK, answerModel, judgeModel), records);
+          return records.length === 0 ? 1 : 0;
+        }
+
+        const ranked = rankMemories(question, memories, topK);
+        const selectedIds = ranked.map(locomoDiaId).filter(Boolean);
+        const generatedAnswer = await answerQuestion({ apiKey, baseUrl, answerModel }, question, ranked);
+        const judgment = await judgeAnswer({ apiKey, baseUrl, judgeModel }, question, String(qa.answer ?? ""), generatedAnswer);
+
+        records.push({
+          sample_id: sampleId,
+          category,
+          question,
+          gold_answer: String(qa.answer ?? ""),
+          evidence,
+          selected_ids: selectedIds,
+          generated_answer: generatedAnswer,
+          judgment: judgment.correct ? "correct" : "incorrect",
+          score: judgment.correct ? 1 : 0,
+          judge_reasoning: judgment.reasoning,
+          answer_model: answerModel,
+          judge_model: judgeModel
+        });
+        done.add(key);
+        processedThisRun++;
+
+        if (processedThisRun % checkpointEvery === 0) {
+          writeAnswerResults(outPath, summarizeAnswers(records, topK, answerModel, judgeModel), records);
+          console.log(`answered=${records.length} this_run=${processedThisRun} accuracy=${answerAccuracy(records).toFixed(4)}`);
+        }
+      }
+    }
+  } finally {
+    store.close();
+  }
+
+  const summary = summarizeAnswers(records, topK, answerModel, judgeModel);
+  writeAnswerResults(outPath, summary, records);
+  console.log(JSON.stringify(summary, null, 2));
+  console.log(`Wrote ${outPath}`);
+  return records.length === 0 ? 1 : 0;
+}
+
+function report(options) {
+  const psmPath = stringOption(options, "psm", "/content/locomo/results/locomo-results.json");
+  const baselinesPath = stringOption(options, "baselines", "/content/PSM/benchmark/locomo/baselines/memory-tools.json");
+  const outPath = stringOption(options, "out", "/content/locomo/results/locomo-comparison.md");
+  const psm = JSON.parse(readFileSync(psmPath, "utf8"));
+  const baselines = JSON.parse(readFileSync(baselinesPath, "utf8"));
+  const markdown = renderReport(psm, baselines);
+
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, markdown, "utf8");
+  console.log(markdown);
+  console.log(`Wrote ${outPath}`);
+  return 0;
+}
+
 function finish(store, stats) {
   stats.ended_at = new Date().toISOString();
   const outPath = "/content/locomo/results/ingest-summary.json";
@@ -272,6 +372,177 @@ function summarize(records, topK) {
     hit_at_1: records.filter((record) => record.hit_at_1 === true).length / denom,
     [`hit_at_${topK}`]: records.filter((record) => record.hit_at_k === true).length / denom
   };
+}
+
+async function answerQuestion(client, question, memories) {
+  const context = memories.map((memory, index) => {
+    const diaId = locomoDiaId(memory);
+    const label = diaId ? `dia_id=${diaId}` : `memory_id=${memory.id}`;
+    return `[${index + 1}] ${label} score=${memory.score}\n${memory.content}`;
+  }).join("\n\n");
+  const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
+    {
+      role: "system",
+      content: "Answer the user's LOCOMO benchmark question using only the provided retrieved memories. Be concise. If the memories do not contain the answer, say you do not know."
+    },
+    {
+      role: "user",
+      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nAnswer:`
+    }
+  ], 256, 0);
+  return content.trim();
+}
+
+async function judgeAnswer(client, question, goldAnswer, generatedAnswer) {
+  const content = await chatCompletion(client.apiKey, client.baseUrl, client.judgeModel, [
+    {
+      role: "system",
+      content: "You are judging a LOCOMO memory benchmark answer. Return JSON only: {\"correct\":true|false,\"reasoning\":\"short reason\"}. Mark correct when the generated answer is semantically consistent with the gold answer. Mark incorrect for missing, contradicted, or unsupported answers."
+    },
+    {
+      role: "user",
+      content: `Question: ${question}\nGold answer: ${goldAnswer}\nGenerated answer: ${generatedAnswer}`
+    }
+  ], 160, 0);
+  const parsed = parseJudgeJson(content);
+  return {
+    correct: parsed.correct,
+    reasoning: parsed.reasoning || content.trim()
+  };
+}
+
+async function chatCompletion(apiKey, baseUrl, model, messages, maxTokens, temperature) {
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "authorization": `Bearer ${apiKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens })
+  });
+  if (!response.ok) {
+    throw new Error(`Chat completion failed ${response.status}: ${await response.text()}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+function parseJudgeJson(value) {
+  const trimmed = value.trim();
+  const json = trimmed.match(/\{[\s\S]*\}/)?.[0] ?? trimmed;
+  try {
+    const parsed = JSON.parse(json);
+    return {
+      correct: parsed.correct === true || String(parsed.correct).toLowerCase() === "true",
+      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : ""
+    };
+  } catch {
+    return {
+      correct: /\btrue\b/i.test(trimmed) && !/\bfalse\b/i.test(trimmed),
+      reasoning: trimmed
+    };
+  }
+}
+
+function summarizeAnswers(records, topK, answerModel, judgeModel) {
+  const byCategory = {};
+  for (const record of records) {
+    const entry = byCategory[record.category] ?? { questions: 0, answer_accuracy: 0 };
+    entry.questions++;
+    entry.answer_accuracy += record.score;
+    byCategory[record.category] = entry;
+  }
+  for (const entry of Object.values(byCategory)) {
+    entry.answer_accuracy = entry.answer_accuracy / (entry.questions || 1);
+  }
+  return {
+    metric: "LoCoMo LLM-as-judge answer accuracy",
+    questions: records.length,
+    answer_accuracy: answerAccuracy(records),
+    top_k: topK,
+    answer_model: answerModel,
+    judge_model: judgeModel,
+    by_category: byCategory
+  };
+}
+
+function writeAnswerResults(path, summary, records) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ summary, records }, null, 2), "utf8");
+  renameSync(tmp, path);
+}
+
+function loadExistingAnswerResults(path) {
+  if (!existsSync(path)) return { summary: {}, records: [] };
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  return {
+    summary: parsed.summary ?? {},
+    records: Array.isArray(parsed.records) ? parsed.records : []
+  };
+}
+
+function answerRecordKey(record) {
+  return `${record.sample_id}\n${record.category}\n${record.question}`;
+}
+
+function answerAccuracy(records) {
+  const denom = records.length || 1;
+  return records.reduce((sum, record) => sum + record.score, 0) / denom;
+}
+
+function renderReport(psm, baselines) {
+  const summary = psm.summary ?? {};
+  const answerAccuracy = typeof summary.answer_accuracy === "number" ? summary.answer_accuracy : undefined;
+  const topKEntry = Object.entries(summary).find(([key]) => /^hit_at_\d+$/.test(key) && key !== "hit_at_1");
+  const topKLabel = topKEntry?.[0]?.replace("hit_at_", "Hit@") ?? "Hit@K";
+  const topKValue = typeof topKEntry?.[1] === "number" ? topKEntry[1] : undefined;
+  const questions = typeof summary.questions === "number" ? String(summary.questions) : "";
+  const sortedBaselines = [...baselines].sort((a, b) => b.score - a.score);
+
+  return [
+    "# LOCOMO Memory Benchmark Comparison",
+    "",
+    answerAccuracy == null
+      ? "This report places the local PSM retrieval run next to published memory-tool results. The PSM run is currently an evidence-retrieval benchmark: it measures whether a gold LOCOMO evidence `dia_id` appears in retrieved memories. Most public tool results below are answer-generation benchmarks scored by an LLM judge, so compare directionally and keep the metric column visible."
+      : "This report places the local PSM answer-generation run next to published memory-tool results. PSM answer accuracy is generated from retrieved PSM memories and scored by an LLM judge, matching the broad LOCOMO scoring style used by public memory-tool reports. Exact numbers still depend on answer model, judge model, top-k, and prompt choices.",
+    "",
+    "## PSM Memory",
+    "",
+    "| System | Metric | Score | Questions | Notes |",
+    "| --- | --- | ---: | ---: | --- |",
+    ...(answerAccuracy == null ? [] : [
+      `| PSM Memory | LoCoMo LLM-as-judge answer accuracy | ${formatPercent(answerAccuracy)} | ${questions} | Answer model: ${escapeCell(String(summary.answer_model ?? ""))}; judge model: ${escapeCell(String(summary.judge_model ?? ""))}; top-k: ${escapeCell(String(summary.top_k ?? ""))}. |`
+    ]),
+    `| PSM Memory | Evidence Hit@1 | ${formatPercent(summary.hit_at_1)} | ${questions} | Retrieved memory contains at least one gold evidence id in the first result. |`,
+    `| PSM Memory | Evidence ${topKLabel} | ${formatPercent(topKValue)} | ${questions} | Retrieved memory contains at least one gold evidence id in the top-k set. |`,
+    "",
+    "## Published Memory Tool Results",
+    "",
+    "| System | Score | Metric | Setup | Source |",
+    "| --- | ---: | --- | --- | --- |",
+    ...sortedBaselines.map((baseline) => `| ${escapeCell(baseline.system)} | ${baseline.score.toFixed(2)}% | ${escapeCell(baseline.metric)} | ${escapeCell(baseline.setup)} | ${baseline.source} |`),
+    "",
+    "## Interpretation",
+    "",
+    ...(answerAccuracy == null ? [
+      "- PSM numbers are not yet directly comparable to Mem0/Zep/Letta-style LoCoMo scores because they stop at retrieval and do not generate or judge final answers.",
+      "- To make PSM fully comparable, add an answerer step over retrieved memories and score answers with the same judge/model/settings used by the target baseline.",
+      "- Until then, PSM Evidence Hit@K is useful for diagnosing memory retrieval quality and estimating whether answer accuracy has enough evidence to improve."
+    ] : [
+      "- Use PSM answer accuracy as the comparable headline score.",
+      "- Keep answer model, judge model, top-k, and prompt text attached to the result because LOCOMO scores are sensitive to these settings.",
+      "- Evidence Hit@K remains useful as a retrieval diagnostic, but the leaderboard comparison should use answer accuracy."
+    ])
+  ].join("\n");
+}
+
+function formatPercent(value) {
+  return typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "";
+}
+
+function escapeCell(value) {
+  return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 function buildStoragePrompt(text) {

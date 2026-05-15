@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "answer-evaluate": "node ../../dist/benchmark/locomo/src/answer-evaluate.js",
     "ingest": "node ../../dist/benchmark/locomo/src/ingest.js",
-    "evaluate": "node ../../dist/benchmark/locomo/src/evaluate.js"
+    "evaluate": "node ../../dist/benchmark/locomo/src/evaluate.js",
+    "report": "node ../../dist/benchmark/locomo/src/report.js"
   }
 }
