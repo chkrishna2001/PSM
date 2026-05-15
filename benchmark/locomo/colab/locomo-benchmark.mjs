@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import {
   defaultEmbeddingModel,
   MemoryStore,
@@ -18,7 +18,7 @@ if (command === "ingest") {
   process.exitCode = evaluate(args);
 } else {
   console.log(`Usage:
-  node locomo-benchmark.mjs ingest --data <locomo10.json> --db <db> --model <gguf> [--limit n]
+  node locomo-benchmark.mjs ingest --data <locomo10.json> --db <db> --model <gguf> [--limit n] [--batch-size n] [--progress progress.json] [--checkpoint-dir dir]
   node locomo-benchmark.mjs evaluate --data <locomo10.json> --db <db> --out <results.json> [--top-k n]
 `);
 }
@@ -29,11 +29,33 @@ async function ingest(options) {
   const modelPath = stringOption(options, "model", "/content/psm-memory-cache/psm-memory-qwen-1.5b-q4_k_m.gguf");
   const limit = intOption(options, "limit", 100);
   const batchSize = intOption(options, "batch-size", 10);
+  const offset = intOption(options, "offset", 0);
+  const progressPath = stringOption(options, "progress", "");
+  const checkpointDir = stringOption(options, "checkpoint-dir", "");
   const contextSize = intOption(options, "context-size", 4096);
   const userPrefix = stringOption(options, "user-prefix", "locomo");
   const embeddingModel = stringOption(options, "embedding-model", defaultEmbeddingModel);
-  const samples = loadSamples(dataPath);
+  const records = loadSamples(dataPath).flatMap((sample) => {
+    const sampleId = String(sample.sample_id ?? "unknown");
+    const userId = `${userPrefix}-${sampleId}`;
+    return flattenTurns(sample).map((turn, sampleOrdinal) => ({
+      sampleId,
+      userId,
+      turn,
+      sampleOrdinal
+    }));
+  });
+  const progress = loadProgress(progressPath);
+  const progressIndex = Number.isInteger(progress.next_index) ? progress.next_index : 0;
+  const checkpointDbPath = checkpointDir ? join(checkpointDir, basename(dbPath)) : "";
+  const hasResumableDb = existsSync(dbPath) || (checkpointDbPath ? existsSync(checkpointDbPath) : false);
+  if (progressIndex > 0 && checkpointDir && !hasResumableDb) {
+    console.warn(`Ignoring progress next_index=${progressIndex} because no DB checkpoint exists at ${checkpointDbPath}`);
+  }
+  const startIndex = Math.max(offset, progressIndex > 0 && (!checkpointDir || hasResumableDb) ? progressIndex : 0);
+  const endIndex = limit > 0 ? Math.min(records.length, startIndex + limit) : records.length;
   mkdirSync(dirname(dbPath), { recursive: true });
+  if (checkpointDir) mkdirSync(checkpointDir, { recursive: true });
 
   const store = new MemoryStore(dbPath);
   store.initializeSchema();
@@ -55,6 +77,14 @@ async function ingest(options) {
     model: modelPath,
     embedding_model: embeddingModel,
     limit,
+    batch_size: batchSize,
+    offset,
+    progress: progressPath || null,
+    checkpoint_dir: checkpointDir || null,
+    total_records: records.length,
+    start_index: startIndex,
+    end_index: endIndex,
+    next_index: startIndex,
     seen: 0,
     stored: 0,
     ignored: 0,
@@ -65,43 +95,47 @@ async function ingest(options) {
   };
 
   try {
-    for (const sample of samples) {
-      const sampleId = String(sample.sample_id ?? "unknown");
-      const userId = `${userPrefix}-${sampleId}`;
-      for (const turn of flattenTurns(sample)) {
-        if (limit > 0 && stats.seen >= limit) return finish(store, stats);
-        const diaId = String(turn.dia_id ?? "");
-        const source = `${sampleId}:${diaId || stats.seen}`;
-        const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
-        stats.seen++;
-        try {
-          const raw = await runtime.generateJson(buildStoragePrompt(text), { temperature: 0, maxTokens: 128 });
-          const decision = parseStorageDecision(raw, text, "store_episodic");
-          const result = store.applyDecision(userId, source, decision, [
-            `locomo_sample_id:${sampleId}`,
-            `locomo_dia_id:${diaId}`,
-            `locomo_speaker:${turn.speaker ?? ""}`
-          ]);
-          if (result.route === "ignore" || result.route === "recall_only") {
-            stats.ignored++;
-          } else {
-            stats.stored++;
-          }
-          for (const ref of result.memory_refs) {
-            const embedding = await embeddings.embed(ref.content);
-            store.upsertMemoryEmbedding(ref, userId, embeddingModel, embedding);
-          }
-        } catch (error) {
-          stats.failed++;
-          const message = error instanceof Error ? error.message : String(error);
-          stats.errors.push({ source, error: message });
-          store.insertDecision(userId, source, "error", "error", message, JSON.stringify({ error: message }));
+    if (startIndex >= records.length) {
+      checkpoint(dbPath, checkpointDir, progressPath, stats, startIndex);
+      return finish(store, stats);
+    }
+
+    for (let index = startIndex; index < endIndex; index++) {
+      const { sampleId, userId, turn, sampleOrdinal } = records[index];
+      const diaId = String(turn.dia_id ?? "");
+      const source = `${sampleId}:${diaId || sampleOrdinal}`;
+      const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
+      stats.seen++;
+      try {
+        const raw = await runtime.generateJson(buildStoragePrompt(text), { temperature: 0, maxTokens: 128 });
+        const decision = parseStorageDecision(raw, text, "store_episodic");
+        const result = store.applyDecision(userId, source, decision, [
+          `locomo_sample_id:${sampleId}`,
+          `locomo_dia_id:${diaId}`,
+          `locomo_speaker:${turn.speaker ?? ""}`
+        ]);
+        if (result.route === "ignore" || result.route === "recall_only") {
+          stats.ignored++;
+        } else {
+          stats.stored++;
         }
-        if (stats.seen % batchSize === 0) {
-          console.log(`ingested=${stats.seen} stored=${stats.stored} ignored=${stats.ignored} failed=${stats.failed}`);
+        for (const ref of result.memory_refs) {
+          const embedding = await embeddings.embed(ref.content);
+          store.upsertMemoryEmbedding(ref, userId, embeddingModel, embedding);
         }
+      } catch (error) {
+        stats.failed++;
+        const message = error instanceof Error ? error.message : String(error);
+        stats.errors.push({ source, error: message });
+        store.insertDecision(userId, source, "error", "error", message, JSON.stringify({ error: message }));
+      }
+      stats.next_index = index + 1;
+      if (stats.seen % batchSize === 0) {
+        checkpoint(dbPath, checkpointDir, progressPath, stats, stats.next_index);
+        console.log(`ingested=${stats.next_index}/${records.length} run_seen=${stats.seen} stored=${stats.stored} ignored=${stats.ignored} failed=${stats.failed}`);
       }
     }
+    checkpoint(dbPath, checkpointDir, progressPath, stats, stats.next_index);
     return finish(store, stats);
   } finally {
     store.close();
@@ -160,6 +194,43 @@ function finish(store, stats) {
   writeFileSync(outPath, JSON.stringify(stats, null, 2), "utf8");
   console.log(JSON.stringify(stats, null, 2));
   return stats.failed > 0 ? 1 : 0;
+}
+
+function checkpoint(dbPath, checkpointDir, progressPath, stats, nextIndex) {
+  if (checkpointDir) {
+    mkdirSync(checkpointDir, { recursive: true });
+    copyIfExists(dbPath, join(checkpointDir, basename(dbPath)));
+    copyIfExists(`${dbPath}-wal`, join(checkpointDir, `${basename(dbPath)}-wal`));
+    copyIfExists(`${dbPath}-shm`, join(checkpointDir, `${basename(dbPath)}-shm`));
+  }
+  if (progressPath) {
+    writeJsonAtomic(progressPath, {
+      ...stats,
+      next_index: nextIndex,
+      checkpointed_at: new Date().toISOString()
+    });
+  }
+}
+
+function loadProgress(path) {
+  if (!path || !existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    console.warn(`Ignoring unreadable progress file ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    return {};
+  }
+}
+
+function copyIfExists(from, to) {
+  if (existsSync(from)) copyFileSync(from, to);
+}
+
+function writeJsonAtomic(path, value) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(value, null, 2), "utf8");
+  renameSync(tmp, path);
 }
 
 function loadSamples(path) {
