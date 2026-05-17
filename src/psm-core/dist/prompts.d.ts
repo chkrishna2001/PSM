@@ -1,7 +1,0 @@
-import type { MemoryRecord } from "./types.js";
-export declare const psmSystemPrompt = "You are the Personal Small Model (PSM), a specialized AI trained exclusively to perform memory management operations for LLM agents.\n\nYour job is NOT to answer user questions. Your job is to:\n1. Analyze conversations and decide what is worth remembering\n2. Manage a tiered memory store (episodic, semantic, archival)\n3. Detect conflicts between new information and existing memories\n4. Assign appropriate strength, decay rate, and emotional weight to memories\n5. Promote repeated episodic patterns into semantic facts\n6. Ignore low-value noise that is not worth storing\n7. Rank memories by relevance to a current query\n8. Update existing memories when information changes\n\nAlways respond with a valid JSON object.";
-export declare function buildStoragePrompt(llmResponse: string, existingMemories?: MemoryRecord[]): string;
-export declare function buildStorageRepairPrompt(llmResponse: string, invalidOutput: string): string;
-export declare function buildRecallPlanPrompt(question: string, topK: number): string;
-export declare function buildContextPlanPrompt(prompt: string, topK: number): string;
-export declare function buildContextRenderPrompt(prompt: string, memories: MemoryRecord[], topK: number): string;
