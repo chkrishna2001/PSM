@@ -22,7 +22,7 @@
     "psm": "dist/cli.js"
   },
   "scripts": {
-    "postinstall": "node ./dist/install-model.js"
+    "postinstall": "node ./postinstall.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,6 +33,7 @@
     }
   },
   "files": [
+    "postinstall.js",
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "dist/**/*.js.map",
