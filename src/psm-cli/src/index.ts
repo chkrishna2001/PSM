@@ -1,16 +1,23 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { defaultEmbeddingModel, MemoryStore, NodeLlamaRuntime, PsmService, TransformersEmbeddingRuntime, memoryTables, type EmbeddingRuntime, type MemoryTable, type ModelRuntime } from "@psm-memory/sdk";
-import { boolOption, intOption, parseArgs, required, stringOption } from "./args.js";
+import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, resolvePsmMemoryDir, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
+import { callDaemon, startDaemon } from "./daemon.js";
 import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
 
 export async function run(argv: string[]): Promise<number> {
-  const { command, options } = parseArgs(argv);
-  const dbPath = stringOption(options, "db", "user_memory.db");
+  const { command, options, positionals } = parseArgs(argv);
+  const json = boolOption(options, "json") || boolOption(options, "pretty");
   const pretty = boolOption(options, "pretty");
 
   try {
+    if (command === "version" || command === "--version" || command === "-v") {
+      write(`${cliVersion()}\n`);
+      return 0;
+    }
+
     if (command === "help" || command === "--help" || command === "-h") {
       write(helpText());
       return 0;
@@ -21,23 +28,95 @@ export async function run(argv: string[]): Promise<number> {
       return 0;
     }
 
+    if (command === "daemon-run") {
+      await startDaemon();
+      return 0;
+    }
+
+    if (command === "config") {
+      if (boolOption(options, "path")) {
+        write(`${defaultPsmConfigPath()}\n`);
+      } else {
+        output({ path: defaultPsmConfigPath(), config: readPsmConfig() }, true);
+      }
+      return 0;
+    }
+
     if (command === "setup") {
       const force = boolOption(options, "force");
-      const modelPath = await setupModel({
-        force,
-        log: (message) => write(`${message}\n`)
-      });
-      const embeddingModel = stringOption(options, "embedding-model", defaultEmbeddingModel);
-      if (!boolOption(options, "skip-embeddings")) {
+      const config = await resolveSetupConfig(options, { interactive: canPrompt() && !boolOption(options, "yes") });
+      writePsmConfig(config);
+      const modelPath = boolOption(options, "skip-model")
+        ? undefined
+        : await setupModel({
+          force,
+          log: (message) => write(`${message}\n`)
+        });
+      const dbPath = configuredDbPath(options);
+      mkdirSync(dirname(dbPath), { recursive: true });
+      const store = new MemoryStore(dbPath);
+      try {
+        store.initializeSchema();
+      } finally {
+        store.close();
+      }
+      const embeddingModel = config.embeddings.model;
+      if (config.embeddings.enabled && !boolOption(options, "skip-embeddings")) {
         write(`Preparing embedding model: ${embeddingModel}\n`);
         await createEmbeddingRuntime({ ...options, "embedding-model": embeddingModel }).runtime.embed("PSM Memory embedding setup check.");
       }
-      output({ model: modelPath, embedding_model: boolOption(options, "skip-embeddings") ? undefined : embeddingModel, installed: true }, pretty);
+      output({ model: modelPath, config: defaultPsmConfigPath(), memory_dir: config.memoryDir, db: dbPath, schema_migrated: true, embedding_model: config.embeddings.enabled && !boolOption(options, "skip-embeddings") ? embeddingModel : undefined, daemon: config.daemon, installed: true }, pretty || json);
+      return 0;
+    }
+
+    if (command === "migrate") {
+      const dbPath = adminDbPath(options);
+      mkdirSync(dirname(dbPath), { recursive: true });
+      const store = new MemoryStore(dbPath);
+      try {
+        store.initializeSchema();
+      } finally {
+        store.close();
+      }
+      output({ db: dbPath, schema_migrated: true }, pretty);
+      return 0;
+    }
+
+    if (command === "backup") {
+      const dbPath = adminDbPath(options);
+      if (!existsSync(dbPath)) throw new Error(`Memory DB does not exist: ${dbPath}`);
+      const out = stringOption(options, "out", defaultBackupPath(dbPath));
+      mkdirSync(dirname(out), { recursive: true });
+      copyFileSync(dbPath, out);
+      output({ db: dbPath, backup: out }, pretty);
+      return 0;
+    }
+
+    if (command === "export") {
+      const dbPath = adminDbPath(options);
+      const out = stringOption(options, "out", positionals[0] ?? "");
+      const archive = exportMemories(dbPath);
+      if (out) {
+        mkdirSync(dirname(out), { recursive: true });
+        writeFileSync(out, `${JSON.stringify(archive, null, 2)}\n`, "utf8");
+        output({ db: dbPath, out, counts: archive.counts }, pretty);
+      } else {
+        output(archive, true);
+      }
+      return 0;
+    }
+
+    if (command === "import") {
+      const dbPath = adminDbPath(options);
+      const inputPath = stringOption(options, "in", positionals[0] ?? "");
+      if (!inputPath) throw new Error("Usage: psm-memory import <path>");
+      importMemories(dbPath, inputPath);
+      output({ db: dbPath, imported: inputPath }, pretty);
       return 0;
     }
 
     if (command === "install-agent") {
-      const agents = parseAgentList(required(options, "agent"));
+      const agents = parseAgentList(stringOption(options, "agent", positionals[0] ?? ""));
       const installed = installAgents(agents);
       output({
         installed: true,
@@ -47,21 +126,21 @@ export async function run(argv: string[]): Promise<number> {
     }
 
     if (command === "hook") {
-      const mode = argv[1] ?? stringOption(options, "mode", "");
-      if (mode === "context") {
-        await runHookContext(options, pretty);
+      const mode = positionals[0] ?? stringOption(options, "mode", "");
+      if (mode === "recall" || mode === "context") {
+        await runHookRecall(options, pretty || json);
         return 0;
       }
       if (mode === "remember") {
         await runHookRemember(options);
         return 0;
       }
-      throw new Error("Usage: psm-memory hook context|remember");
+      throw new Error("Usage: psm-memory hook recall|remember");
     }
 
-    if (command === "review-log") {
+    if (command === "review" || command === "review-log") {
       const review = buildReviewLog({
-        dbPath: stringOption(options, "db", defaultCodexDbPath()),
+        dbPath: configuredDbPath(options),
         logPath: stringOption(options, "log", defaultHookLogPath()),
         date: stringOption(options, "date", new Date().toISOString().slice(0, 10)),
         limit: intOption(options, "limit", 50)
@@ -74,6 +153,50 @@ export async function run(argv: string[]): Promise<number> {
       return 0;
     }
 
+    if (command === "remember") {
+      const llmResponse = stringOption(options, "llm-response", positionals.join(" "));
+      if (!llmResponse.trim()) throw new Error('Usage: psm-memory remember "memory text"');
+      const daemonResult = await callDaemon({
+        operation: "remember",
+        payload: {
+          llmResponse,
+          userId: defaultUserId(options),
+          source: sourceOptions(options, "manual", "psm-memory remember")
+        }
+      });
+      if (daemonResult) {
+        if (json) {
+          output(daemonResult, pretty);
+        } else {
+          write(renderRememberText(daemonResult));
+        }
+        return 0;
+      }
+    }
+
+    if (command === "recall") {
+      const question = stringOption(options, "question", positionals.join(" "));
+      if (!question.trim()) throw new Error('Usage: psm-memory recall "question"');
+      const daemonResult = await callDaemon({
+        operation: "recall",
+        payload: {
+          question,
+          userId: defaultUserId(options),
+          topK: intOption(options, "top-k", readPsmConfig().recallTopK)
+        }
+      });
+      if (daemonResult) {
+        if (json) {
+          output(daemonResult, pretty);
+        } else {
+          write(renderRecallText(daemonResult));
+        }
+        return 0;
+      }
+    }
+
+    const dbPath = configuredDbPath(options);
+    mkdirSync(dirname(dbPath), { recursive: true });
     const store = new MemoryStore(dbPath);
     try {
       if (command === "init") {
@@ -82,7 +205,7 @@ export async function run(argv: string[]): Promise<number> {
           db: dbPath,
           initialized: true,
           model_installed: hasDefaultModel(),
-          next_step: hasDefaultModel() ? undefined : "Run `psm-memory setup` to download the PSM Memory model before using context, remember, or recall."
+          next_step: hasDefaultModel() ? undefined : "Run `psm-memory setup` to download the PSM Memory model before using remember or recall."
         }, pretty);
         return 0;
       }
@@ -91,29 +214,35 @@ export async function run(argv: string[]): Promise<number> {
       const runtime = createRuntime(options);
       const service = createService(store, runtime, options);
 
-      if (command === "context") {
-        output(await service.context({
-          prompt: required(options, "prompt"),
-          userId: stringOption(options, "user", "default-user"),
-          topK: intOption(options, "top-k", 5)
-        }), pretty);
-        return 0;
-      }
-
       if (command === "remember") {
-        output(await service.remember({
-          llmResponse: required(options, "llm-response"),
-          userId: stringOption(options, "user", "default-user")
-        }), pretty);
+        const llmResponse = stringOption(options, "llm-response", positionals.join(" "));
+        if (!llmResponse.trim()) throw new Error('Usage: psm-memory remember "memory text"');
+        const result = await service.remember({
+          llmResponse,
+          userId: defaultUserId(options),
+          source: sourceOptions(options, "manual", "psm-memory remember")
+        });
+        if (json) {
+          output(result, pretty);
+        } else {
+          write(renderRememberText(result));
+        }
         return 0;
       }
 
       if (command === "recall") {
-        output(await service.recall({
-          question: required(options, "question"),
-          userId: stringOption(options, "user", "default-user"),
-          topK: intOption(options, "top-k", 5)
-        }), pretty);
+        const question = stringOption(options, "question", positionals.join(" "));
+        if (!question.trim()) throw new Error('Usage: psm-memory recall "question"');
+        const result = await service.recall({
+          question,
+          userId: defaultUserId(options),
+          topK: intOption(options, "top-k", readPsmConfig().recallTopK)
+        });
+        if (json) {
+          output(result, pretty);
+        } else {
+          write(renderRecallText(result));
+        }
         return 0;
       }
 
@@ -142,20 +271,21 @@ export async function run(argv: string[]): Promise<number> {
 
 function createRuntime(options: Record<string, string | boolean>): ModelRuntime {
   const modelPath = resolveModelPath();
+  const config = readPsmConfig();
   return new NodeLlamaRuntime({
     modelPath,
-    contextSize: intOption(options, "context-size", 4096),
-    gpu: stringOption(options, "gpu", "auto") as "auto",
-    gpuLayers: stringOption(options, "gpu-layers", "auto") as "auto"
+    contextSize: intOption(options, "context-size", config.runtime.contextSize),
+    gpu: stringOption(options, "gpu", config.runtime.gpu) as "auto",
+    gpuLayers: stringOption(options, "gpu-layers", config.runtime.gpuLayers) as "auto"
   });
 }
 
 function createService(store: MemoryStore, runtime: ModelRuntime, options: Record<string, string | boolean>): PsmService {
-  return new PsmService(store, runtime, boolOption(options, "no-embeddings") ? undefined : createEmbeddingRuntime(options));
+  return new PsmService(store, runtime, boolOption(options, "no-embeddings") || !readPsmConfig().embeddings.enabled ? undefined : createEmbeddingRuntime(options));
 }
 
 function createEmbeddingRuntime(options: Record<string, string | boolean>): { model: string; runtime: EmbeddingRuntime } {
-  const model = stringOption(options, "embedding-model", process.env.PSM_MEMORY_EMBEDDING_MODEL ?? defaultEmbeddingModel);
+  const model = stringOption(options, "embedding-model", process.env.PSM_MEMORY_EMBEDDING_MODEL ?? readPsmConfig().embeddings.model);
   return {
     model,
     runtime: new TransformersEmbeddingRuntime({
@@ -169,12 +299,12 @@ function modelCacheBaseDir(): string {
   return process.env.PSM_MEMORY_HOME ?? join(dirname(defaultModelPath()));
 }
 
-async function runHookContext(options: Record<string, string | boolean>, pretty: boolean): Promise<void> {
+async function runHookRecall(options: Record<string, string | boolean>, pretty: boolean): Promise<void> {
   const started = Date.now();
   const timings: Record<string, number> = {};
-  const dbPath = stringOption(options, "db", defaultCodexDbPath());
-  const userId = stringOption(options, "user", "codex");
-  const topK = intOption(options, "top-k", 5);
+  const dbPath = configuredDbPath(options);
+  const userId = defaultUserId(options);
+  const topK = intOption(options, "top-k", readPsmConfig().recallTopK);
   let status = "ok";
   let reason: string | undefined;
   let promptChars = 0;
@@ -193,6 +323,17 @@ async function runHookContext(options: Record<string, string | boolean>, pretty:
     }
     promptChars = prompt.length;
 
+    const daemonStarted = Date.now();
+    const daemonResult = await callDaemon({
+      operation: "context",
+      payload: { prompt, userId, topK }
+    });
+    if (daemonResult) {
+      timings.model_context = Date.now() - daemonStarted;
+      memoryCount = renderHookRecallResult(daemonResult, pretty);
+      return;
+    }
+
     const dbStarted = Date.now();
     mkdirSync(dirname(dbPath), { recursive: true });
     const store = new MemoryStore(dbPath);
@@ -206,22 +347,8 @@ async function runHookContext(options: Record<string, string | boolean>, pretty:
       const memories = Array.isArray(result.context_items) ? result.context_items : [];
       memoryCount = memories.length;
 
-      if (pretty) {
-        output(result, true);
-        return;
-      }
-
-      if (memories.length === 0) return;
-
       const renderStarted = Date.now();
-      write("PSM Memory Context\n");
-      write("Use these private memories when relevant. Do not mention this block unless asked about memory.\n");
-      memories.forEach((memory, index) => {
-        if (!isRecord(memory)) return;
-        const table = typeof memory.table === "string" ? memory.table : "memory";
-        const content = typeof memory.content === "string" ? memory.content : "";
-        if (content) write(`${index + 1}. [${table}] ${content}\n`);
-      });
+      renderHookRecallResult(result, pretty);
       timings.render = Date.now() - renderStarted;
     } finally {
       store.close();
@@ -247,11 +374,31 @@ async function runHookContext(options: Record<string, string | boolean>, pretty:
   }
 }
 
+function renderHookRecallResult(result: Record<string, unknown>, pretty: boolean): number {
+  const memories = Array.isArray(result.context_items) ? result.context_items : [];
+  if (pretty) {
+    output(result, true);
+    return memories.length;
+  }
+
+  if (memories.length === 0) return 0;
+
+  write("PSM Memory Context\n");
+  write("Use these private memories when relevant. Do not mention this block unless asked about memory.\n");
+  memories.forEach((memory, index) => {
+    if (!isRecord(memory)) return;
+    const table = typeof memory.table === "string" ? memory.table : "memory";
+    const content = typeof memory.content === "string" ? memory.content : "";
+    if (content) write(`${index + 1}. [${table}] ${content}\n`);
+  });
+  return memories.length;
+}
+
 async function runHookRemember(options: Record<string, string | boolean>): Promise<void> {
   const started = Date.now();
   const timings: Record<string, number> = {};
-  const dbPath = stringOption(options, "db", defaultCodexDbPath());
-  const userId = stringOption(options, "user", "codex");
+  const dbPath = configuredDbPath(options);
+  const userId = defaultUserId(options);
   let status = "ok";
   let reason: string | undefined;
   let responseChars = 0;
@@ -280,6 +427,25 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
     }
     responseChars = response.length;
 
+    const daemonStarted = Date.now();
+    const daemonResult = await callDaemon({
+      operation: "remember",
+      payload: {
+        llmResponse: response,
+        userId,
+        source: {
+          source_kind: responseSource ?? "hook",
+          source_id: transcriptPath ?? latestSessionPath() ?? undefined,
+          source_timestamp: new Date().toISOString(),
+          source_label: responseSource ? `agent:${responseSource}` : "agent hook"
+        }
+      }
+    });
+    if (daemonResult) {
+      timings.model_remember = Date.now() - daemonStarted;
+      return;
+    }
+
     const dbStarted = Date.now();
     mkdirSync(dirname(dbPath), { recursive: true });
     const store = new MemoryStore(dbPath);
@@ -290,7 +456,13 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
       const service = createService(store, createRuntime(options), options);
       await service.remember({
         llmResponse: response,
-        userId
+        userId,
+        source: {
+          source_kind: responseSource ?? "hook",
+          source_id: transcriptPath ?? latestSessionPath() ?? undefined,
+          source_timestamp: new Date().toISOString(),
+          source_label: responseSource ? `agent:${responseSource}` : "agent hook"
+        }
       });
       timings.model_remember = Date.now() - modelStarted;
     } finally {
@@ -360,6 +532,11 @@ function transcriptAssistantText(path: string | undefined): string | undefined {
 }
 
 function latestCodexAssistantText(): string | undefined {
+  const latestPath = latestSessionPath();
+  return transcriptAssistantText(latestPath);
+}
+
+function latestSessionPath(): string | undefined {
   const sessionsRoot = join(homedir(), ".codex", "sessions");
   if (!existsSync(sessionsRoot)) return undefined;
 
@@ -377,7 +554,7 @@ function latestCodexAssistantText(): string | undefined {
     }
   }
 
-  return transcriptAssistantText(latestPath);
+  return latestPath;
 }
 
 function walkJsonlFiles(root: string, maxDepth: number): string[] {
@@ -410,6 +587,7 @@ type AgentName = "codex" | "claude";
 const allAgents: AgentName[] = ["codex", "claude"];
 
 function parseAgentList(value: string): AgentName[] {
+  if (!value.trim()) throw new Error("Usage: psm-memory install-agent codex|claude|all");
   const requested = value
     .split(",")
     .map((agent) => agent.trim().toLowerCase())
@@ -437,15 +615,15 @@ function installCodexHooks(): Record<string, unknown> {
   const current = readHooksJson(hooksPath);
   const hooks = isRecord(current.hooks) ? current.hooks : {};
   removeOldPsmHooks(hooks);
-  addHook(hooks, "UserPromptSubmit", "psm-memory hook context");
+  addHook(hooks, "UserPromptSubmit", "psm-memory hook recall");
   addHook(hooks, "Stop", "psm-memory hook remember");
-  mkdirSync(dirname(defaultCodexDbPath()), { recursive: true });
+  mkdirSync(dirname(configuredDbPath({})), { recursive: true });
   writeFileSync(hooksPath, `${JSON.stringify({ ...current, hooks }, null, 2)}\n`, "utf8");
   return {
     agent: "codex",
     config: codexConfigPath(),
     hooks: hooksPath,
-    commands: ["psm-memory hook context", "psm-memory hook remember"]
+    commands: ["psm-memory hook recall", "psm-memory hook remember"]
   };
 }
 
@@ -456,15 +634,15 @@ function installClaudeHooks(): Record<string, unknown> {
   const current = readJsonObject(settingsPath);
   const hooks = isRecord(current.hooks) ? current.hooks : {};
   removeOldPsmHooks(hooks);
-  addHook(hooks, "UserPromptSubmit", "psm-memory hook context");
+  addHook(hooks, "UserPromptSubmit", "psm-memory hook recall");
   addHook(hooks, "Stop", "psm-memory hook remember", { async: true });
-  mkdirSync(dirname(defaultCodexDbPath()), { recursive: true });
+  mkdirSync(dirname(configuredDbPath({})), { recursive: true });
   writeFileSync(settingsPath, `${JSON.stringify({ ...current, hooks }, null, 2)}\n`, "utf8");
 
   return {
     agent: "claude",
     settings: settingsPath,
-    commands: ["psm-memory hook context", "psm-memory hook remember"]
+    commands: ["psm-memory hook recall", "psm-memory hook remember"]
   };
 }
 
@@ -505,7 +683,7 @@ function removeOldPsmHooks(hooks: Record<string, unknown>): void {
         const childHooks = Array.isArray(entry.hooks) ? entry.hooks : [];
         const filtered = childHooks.filter((hook) => {
           if (!isRecord(hook) || typeof hook.command !== "string") return true;
-          return !/psm-codex-hook\.ps1|psm-memory hook (context|remember)/i.test(hook.command);
+          return !/psm-codex-hook\.ps1|psm-memory hook (context|recall|remember)/i.test(hook.command);
         });
         return { ...entry, hooks: filtered };
       })
@@ -524,10 +702,6 @@ function addHook(hooks: Record<string, unknown>, event: string, command: string,
   ];
 }
 
-function defaultCodexDbPath(): string {
-  return process.env.PSM_MEMORY_DB ?? join(homedir(), ".codex", "memories", "psm-memory.db");
-}
-
 function codexConfigPath(): string {
   return join(homedir(), ".codex", "config.toml");
 }
@@ -541,7 +715,85 @@ function claudeSettingsPath(): string {
 }
 
 function defaultHookLogPath(): string {
-  return process.env.PSM_MEMORY_HOOK_LOG ?? join(dirname(defaultCodexDbPath()), "psm-memory-hooks.jsonl");
+  return process.env.PSM_MEMORY_HOOK_LOG ?? join(dirname(configuredDbPath({})), "psm-memory-hooks.jsonl");
+}
+
+function defaultBackupPath(dbPath: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return join(dirname(dbPath), `psm-memory-${stamp}.db`);
+}
+
+interface MemoryArchive {
+  format: "psm-memory-export";
+  version: 1;
+  exported_at: string;
+  counts: Record<string, number>;
+  tables: Record<string, Record<string, unknown>[]>;
+}
+
+function exportMemories(dbPath: string): MemoryArchive {
+  if (!existsSync(dbPath)) throw new Error(`Memory DB does not exist: ${dbPath}`);
+  const store = new MemoryStore(dbPath);
+  try {
+    store.initializeSchema();
+    const tables: Record<string, Record<string, unknown>[]> = {
+      episodic: store.selectTable("episodic", 1_000_000),
+      semantic: store.selectTable("semantic", 1_000_000),
+      archival: store.selectTable("archival", 1_000_000),
+      conflicts: store.selectTable("conflicts", 1_000_000),
+      decisions: store.selectTable("decisions", 1_000_000),
+      decay_schedule: store.selectTable("decay_schedule", 1_000_000)
+    };
+    return {
+      format: "psm-memory-export",
+      version: 1,
+      exported_at: new Date().toISOString(),
+      counts: Object.fromEntries(Object.entries(tables).map(([table, rows]) => [table, rows.length])),
+      tables
+    };
+  } finally {
+    store.close();
+  }
+}
+
+function importMemories(dbPath: string, inputPath: string): void {
+  const archive = JSON.parse(readFileSync(inputPath, "utf8")) as Partial<MemoryArchive>;
+  if (archive.format !== "psm-memory-export" || archive.version !== 1 || !isRecord(archive.tables)) {
+    throw new Error("Unsupported PSM memory export format.");
+  }
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const store = new MemoryStore(dbPath);
+  try {
+    store.initializeSchema();
+    insertRows(store, "episodic", Array.isArray(archive.tables.episodic) ? archive.tables.episodic : []);
+    insertRows(store, "semantic", Array.isArray(archive.tables.semantic) ? archive.tables.semantic : []);
+    insertRows(store, "archival", Array.isArray(archive.tables.archival) ? archive.tables.archival : []);
+    insertRows(store, "conflicts", Array.isArray(archive.tables.conflicts) ? archive.tables.conflicts : []);
+    insertRows(store, "decisions", Array.isArray(archive.tables.decisions) ? archive.tables.decisions : []);
+    insertRows(store, "decay_schedule", Array.isArray(archive.tables.decay_schedule) ? archive.tables.decay_schedule : []);
+  } finally {
+    store.close();
+  }
+}
+
+function insertRows(store: MemoryStore, table: string, rows: Record<string, unknown>[]): void {
+  for (const row of rows) {
+    store.insertRawRow(table, row);
+  }
+}
+
+function sourceOptions(options: Record<string, string | boolean>, fallbackKind = "", fallbackLabel = ""): {
+  source_kind?: string;
+  source_id?: string;
+  source_timestamp?: string;
+  source_label?: string;
+} {
+  return {
+    source_kind: stringOption(options, "source-kind", fallbackKind),
+    source_id: stringOption(options, "source-id", ""),
+    source_timestamp: stringOption(options, "source-timestamp", new Date().toISOString()),
+    source_label: stringOption(options, "source-label", fallbackLabel)
+  };
 }
 
 interface ReviewLogOptions {
@@ -681,6 +933,150 @@ function writeHookAudit(entry: Record<string, unknown>): void {
   }
 }
 
+function configuredDbPath(options: Record<string, string | boolean>): string {
+  const explicit = stringOption(options, "db", "");
+  return resolvePsmDbPath({
+    dbPath: explicit,
+    memoryDir: stringOption(options, "memory-dir", "")
+  });
+}
+
+function adminDbPath(options: Record<string, string | boolean>): string {
+  return configuredDbPath(options);
+}
+
+async function resolveSetupConfig(options: Record<string, string | boolean>, setup: { interactive: boolean }): Promise<PsmConfig> {
+  const current = readPsmConfig();
+  const defaults = defaultPsmConfig();
+  const base: PsmConfig = {
+    ...current,
+    memoryDir: resolvePsmMemoryDir(stringOption(options, "memory-dir", "")),
+    userId: stringOption(options, "user", current.userId),
+    recallTopK: intOption(options, "recall-top-k", current.recallTopK),
+    embeddings: {
+      ...current.embeddings,
+      model: stringOption(options, "embedding-model", current.embeddings.model),
+      enabled: boolOption(options, "skip-embeddings") ? false : current.embeddings.enabled
+    },
+    runtime: {
+      ...current.runtime,
+      contextSize: intOption(options, "context-size", current.runtime.contextSize),
+      gpu: stringOption(options, "gpu", current.runtime.gpu),
+      gpuLayers: stringOption(options, "gpu-layers", current.runtime.gpuLayers)
+    },
+    daemon: {
+      ...current.daemon,
+      enabled: boolOption(options, "daemon") || current.daemon.enabled,
+      autostart: boolOption(options, "daemon") || current.daemon.autostart,
+      idleTimeoutMs: intOption(options, "daemon-idle-ms", current.daemon.idleTimeoutMs),
+      startupTimeoutMs: intOption(options, "daemon-startup-ms", current.daemon.startupTimeoutMs)
+    }
+  };
+
+  if (!setup.interactive) return base;
+
+  const answers = await promptForConfig(base, defaults);
+  return {
+    ...base,
+    ...answers,
+    embeddings: {
+      ...base.embeddings,
+      ...(answers.embeddings ?? {})
+    },
+    daemon: {
+      ...base.daemon,
+      ...(answers.daemon ?? {})
+    }
+  };
+}
+
+async function promptForConfig(current: PsmConfig, defaults: PsmConfig): Promise<Partial<PsmConfig>> {
+  write("PSM Memory setup\n");
+  write(`Config file: ${defaultPsmConfigPath()}\n`);
+  write("Press Enter to accept a default.\n\n");
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const memoryDir = await ask(rl, "Memory directory", current.memoryDir || defaults.memoryDir);
+    const userId = await ask(rl, "Local user id", current.userId || defaults.userId);
+    const recallTopK = Number(await ask(rl, "Recall candidate count", String(current.recallTopK || defaults.recallTopK)));
+    const embeddingsEnabled = yesNo(await ask(rl, "Enable embeddings", current.embeddings.enabled ? "yes" : "no"), current.embeddings.enabled);
+    const embeddingModel = embeddingsEnabled
+      ? await ask(rl, "Embedding model", current.embeddings.model || defaults.embeddings.model)
+      : current.embeddings.model;
+    const daemonEnabled = yesNo(await ask(rl, "Enable PSM daemon config", current.daemon.enabled ? "yes" : "no"), current.daemon.enabled);
+    const daemonAutostart = daemonEnabled
+      ? yesNo(await ask(rl, "Daemon autostart on first memory call", current.daemon.autostart ? "yes" : "no"), current.daemon.autostart)
+      : current.daemon.autostart;
+    const idleTimeoutMs = daemonEnabled
+      ? Number(await ask(rl, "Daemon idle timeout ms", String(current.daemon.idleTimeoutMs || defaults.daemon.idleTimeoutMs)))
+      : current.daemon.idleTimeoutMs;
+    const startupTimeoutMs = daemonEnabled
+      ? Number(await ask(rl, "Daemon startup timeout ms", String(current.daemon.startupTimeoutMs || defaults.daemon.startupTimeoutMs)))
+      : current.daemon.startupTimeoutMs;
+
+    return {
+      memoryDir,
+      userId,
+      recallTopK: Number.isInteger(recallTopK) && recallTopK > 0 ? recallTopK : current.recallTopK,
+      embeddings: {
+        enabled: embeddingsEnabled,
+        model: embeddingModel
+      },
+      daemon: {
+        ...current.daemon,
+        enabled: daemonEnabled,
+        autostart: daemonAutostart,
+        idleTimeoutMs: Number.isInteger(idleTimeoutMs) && idleTimeoutMs > 0 ? idleTimeoutMs : current.daemon.idleTimeoutMs,
+        startupTimeoutMs: Number.isInteger(startupTimeoutMs) && startupTimeoutMs > 0 ? startupTimeoutMs : current.daemon.startupTimeoutMs
+      }
+    };
+  } finally {
+    rl.close();
+  }
+}
+
+function ask(rl: { question(query: string, callback: (answer: string) => void): void }, label: string, fallback: string): Promise<string> {
+  return new Promise((resolveAnswer) => {
+    rl.question(`${label} [${fallback}]: `, (answer) => resolveAnswer(answer.trim() || fallback));
+  });
+}
+
+function yesNo(value: string, fallback: boolean): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (["y", "yes", "true", "1", "on"].includes(normalized)) return true;
+  if (["n", "no", "false", "0", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function canPrompt(): boolean {
+  return process.env.PSM_MEMORY_NONINTERACTIVE !== "1" && process.env.CI !== "true" && process.stdin.isTTY === true && process.stdout.isTTY === true;
+}
+
+function defaultUserId(options: Record<string, string | boolean>): string {
+  const explicit = stringOption(options, "user", "");
+  if (explicit) return explicit;
+  return readPsmConfig().userId;
+}
+
+function renderRecallText(result: Record<string, unknown>): string {
+  const memories = Array.isArray(result.memories) ? result.memories : [];
+  if (memories.length === 0) return "No relevant PSM memories.\n";
+  const lines = ["PSM Memory", ""];
+  for (const memory of memories) {
+    if (!isRecord(memory) || typeof memory.content !== "string" || !memory.content.trim()) continue;
+    lines.push(`- ${memory.content.replace(/^-\s*/, "")}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function renderRememberText(result: Record<string, unknown>): string {
+  const route = typeof result.route === "string" ? result.route : "";
+  if (route === "ignore" || route === "recall_only" || route === "parse_error_noop") return "No memory stored.\n";
+  const written = Array.isArray(result.written) ? result.written.filter((item) => typeof item === "string") : [];
+  return written.length > 0 ? `Remembered: ${written.join(", ")}.\n` : "Remembered.\n";
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -697,33 +1093,48 @@ function write(value: string): void {
   process.stdout.write(value);
 }
 
+function cliVersion(): string {
+  const packageJsonPath = new URL("../package.json", import.meta.url).pathname.replace(/^\//, "");
+  const raw = readFileSync(packageJsonPath, "utf8");
+  const parsed = JSON.parse(raw) as { version?: string };
+  return typeof parsed.version === "string" && parsed.version.trim() ? parsed.version : "unknown";
+}
+
 function helpText(): string {
   return `PSM Memory commands:
-  setup [--force] [--pretty]
-  install-agent --agent codex|claude|all[,agent...] [--pretty]
-  hook context|remember
-  init --db <path>
-  context --prompt <text> --user <id> --db <path> [--pretty]
-  remember --llm-response <text> --user <id> --db <path> [--pretty]
-  recall --question <text> --user <id> --db <path> [--pretty]
-  review-log --db <path> [--log <path>] [--date YYYY-MM-DD] [--pretty]
-  show --table episodic|semantic|archival|conflicts|decisions|decay_schedule --db <path> [--limit n] [--pretty]
-  conflicts --status unresolved|resolved|dismissed --db <path> [--limit n] [--pretty]
+  version [--version | -v]
+  setup [--memory-dir <path>] [--force] [--pretty]
+  remember "<text>" [--json]
+  recall "<question>" [--json]
+  install-agent codex|claude|all[,agent...] [--pretty]
+  review [--date YYYY-MM-DD] [--pretty]
+  config [--path]
+  export [out.json] [--pretty]
+  import <export.json> [--pretty]
+  backup [--out <path>] [--pretty]
+  migrate [--pretty]
 
 The model downloads automatically during npm install. If that was skipped or failed, run "psm-memory setup".
-JSON output is the default. Run "psm-memory advanced" for advanced runtime options.
+Interactive setup writes an editable config file. Run "psm-memory config --path" to locate it.
 `;
 }
 
 function advancedHelpText(): string {
-  return `PSM Memory advanced options:
-  --top-k <n>             Number of memories to retrieve for context or recall. Default: 5.
-  --embedding-model <id>  Hugging Face embedding model. Default: ${defaultEmbeddingModel}.
-  --no-embeddings         Disable vector search and use lexical retrieval only.
+  return `PSM Memory developer/debug options:
+  --db <path>             Override the configured DB for admin, tests, or benchmarks.
+  --top-k <n>             Override recall candidate count. Default: 5.
+  --embedding-model <id>  Override embedding model. Default: ${defaultEmbeddingModel}.
+  --no-embeddings         Disable vector search for debugging.
+  --recall-top-k <n>      Persist the default recall candidate count during setup.
+  --daemon                Enable daemon autostart config during setup.
+  --daemon-idle-ms <n>    Persist daemon idle shutdown timeout during setup.
+  --daemon-startup-ms <n> Persist daemon startup wait timeout during setup.
+  setup --yes             Accept defaults without prompting.
+  setup --skip-model      Skip PSM model download during setup.
   setup --skip-embeddings Skip embedding model preparation during setup.
-  --context-size <n>      Context size for the local GGUF runtime. Default: 4096.
-  --gpu <mode>            GPU backend for node-llama-cpp. Default: auto.
-  --gpu-layers <mode>     GPU layer offload for node-llama-cpp. Default: auto.
+  --context-size <n>      Override local GGUF runtime context size.
+  --gpu <mode>            Override node-llama-cpp backend selection.
+  --gpu-layers <mode>     Override GPU layer offload.
 
 Default model path:
   ${defaultModelPath()}

@@ -1,8 +1,17 @@
 {
   "name": "@psm-memory/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
-  "description": "TypeScript SDK for PSM Memory routing, storage, recall, and local model runtimes.",
+  "description": "Local-first SDK for PSM Memory storage, grounded recall, embeddings, config, and model-backed memory decisions.",
+  "keywords": [
+    "ai-memory",
+    "agent-memory",
+    "local-first",
+    "sqlite",
+    "embeddings",
+    "llm",
+    "gguf"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chkrishna2001/PSM.git",

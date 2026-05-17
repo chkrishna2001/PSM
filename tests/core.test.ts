@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, type ModelRuntime } from "@psm-memory/sdk";
+import { run as runCli } from "@psm-memory/cli";
 import { createPsmHooks } from "@psm-memory/pi-plugin";
 
 const testRuntime: ModelRuntime = {
@@ -35,11 +36,131 @@ const testRuntime: ModelRuntime = {
   }
 };
 
+async function captureCli(argv: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+  const originalStdout = process.stdout.write;
+  const originalStderr = process.stderr.write;
+  let stdout = "";
+  let stderr = "";
+  process.stdout.write = ((data: string) => {
+    stdout += data;
+    return true;
+  }) as typeof process.stdout.write;
+  process.stderr.write = ((data: string) => {
+    stderr += data;
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    const code = await runCli(argv);
+    return { code, stdout, stderr };
+  } finally {
+    process.stdout.write = originalStdout;
+    process.stderr.write = originalStderr;
+  }
+}
+
 test("storage decision parser falls back on invalid JSON", () => {
   const decision = parseStorageDecision("not json", "User likes SQLite.");
   assert.equal(decision.action, "store_episodic");
   assert.equal(decision.memory?.content, "User likes SQLite.");
   assert.ok(decision.parse_error);
+});
+
+test("CLI help exposes the single memory flow", async () => {
+  const result = await captureCli(["help"]);
+  assert.equal(result.code, 0);
+  assert.ok(result.stdout.includes('remember "<text>"'));
+  assert.ok(result.stdout.includes('recall "<question>"'));
+  assert.ok(!result.stdout.includes("context --prompt"));
+  assert.ok(!result.stdout.includes("--top-k"));
+  assert.ok(!result.stdout.includes("--embedding-model"));
+});
+
+test("CLI exposes version output", async () => {
+  const direct = await captureCli(["version"]);
+  const flag = await captureCli(["--version"]);
+  const shortFlag = await captureCli(["-v"]);
+  assert.equal(direct.code, 0);
+  assert.equal(flag.code, 0);
+  assert.equal(shortFlag.code, 0);
+  assert.equal(direct.stdout.trim(), "0.1.1");
+  assert.equal(flag.stdout.trim(), "0.1.1");
+  assert.equal(shortFlag.stdout.trim(), "0.1.1");
+});
+
+test("CLI init uses PSM-owned app data by default", async () => {
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalPsmDb = process.env.PSM_MEMORY_DB;
+  const originalPsmDir = process.env.PSM_MEMORY_DIR;
+  const localAppData = `dist/test-cli-appdata-${Date.now()}`;
+  delete process.env.PSM_MEMORY_DB;
+  delete process.env.PSM_MEMORY_DIR;
+  process.env.LOCALAPPDATA = localAppData;
+  try {
+    const result = await captureCli(["init", "--pretty"]);
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    assert.ok(String(parsed.db).includes("psm-memory"));
+    assert.ok(String(parsed.db).endsWith("psm-memory.db"));
+    assert.ok(!String(parsed.db).includes(".codex"));
+  } finally {
+    if (originalLocalAppData === undefined) {
+      delete process.env.LOCALAPPDATA;
+    } else {
+      process.env.LOCALAPPDATA = originalLocalAppData;
+    }
+    if (originalPsmDb === undefined) {
+      delete process.env.PSM_MEMORY_DB;
+    } else {
+      process.env.PSM_MEMORY_DB = originalPsmDb;
+    }
+    if (originalPsmDir === undefined) {
+      delete process.env.PSM_MEMORY_DIR;
+    } else {
+      process.env.PSM_MEMORY_DIR = originalPsmDir;
+    }
+  }
+});
+
+test("CLI setup writes editable config with daemon settings", async () => {
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalPsmDb = process.env.PSM_MEMORY_DB;
+  const originalPsmDir = process.env.PSM_MEMORY_DIR;
+  const localAppData = `dist/test-cli-setup-${Date.now()}`;
+  delete process.env.PSM_MEMORY_DB;
+  delete process.env.PSM_MEMORY_DIR;
+  process.env.LOCALAPPDATA = localAppData;
+  try {
+    const memoryDir = `${localAppData}/custom-memory`;
+    const result = await captureCli(["setup", "--memory-dir", memoryDir, "--user", "test-user", "--daemon", "--daemon-idle-ms", "900000", "--daemon-startup-ms", "60000", "--skip-model", "--skip-embeddings", "--yes", "--pretty"]);
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+    assert.ok(String(parsed.memory_dir).endsWith("custom-memory"));
+    assert.ok(String(parsed.config).endsWith("config.json"));
+    const configResult = await captureCli(["config"]);
+    assert.equal(configResult.code, 0, configResult.stderr);
+    const configOutput = JSON.parse(configResult.stdout) as { config: { userId: string; daemon: { enabled: boolean; autostart: boolean; idleTimeoutMs: number; startupTimeoutMs: number } } };
+    assert.equal(configOutput.config.userId, "test-user");
+    assert.equal(configOutput.config.daemon.enabled, true);
+    assert.equal(configOutput.config.daemon.autostart, true);
+    assert.equal(configOutput.config.daemon.idleTimeoutMs, 900000);
+    assert.equal(configOutput.config.daemon.startupTimeoutMs, 60000);
+  } finally {
+    if (originalLocalAppData === undefined) {
+      delete process.env.LOCALAPPDATA;
+    } else {
+      process.env.LOCALAPPDATA = originalLocalAppData;
+    }
+    if (originalPsmDb === undefined) {
+      delete process.env.PSM_MEMORY_DB;
+    } else {
+      process.env.PSM_MEMORY_DB = originalPsmDb;
+    }
+    if (originalPsmDir === undefined) {
+      delete process.env.PSM_MEMORY_DIR;
+    } else {
+      process.env.PSM_MEMORY_DIR = originalPsmDir;
+    }
+  }
 });
 
 test("storage decision parser accepts string memory payloads", () => {
@@ -101,6 +222,35 @@ test("SQLite store applies episodic decisions", () => {
   assert.equal(rows[0].content, "User likes TypeScript.");
 });
 
+test("SQLite store persists source and temporal metadata", () => {
+  const store = new MemoryStore(`dist/test-metadata-${Date.now()}.db`);
+  store.initializeSchema();
+  store.applyDecision("u1", "session-1", parseStorageDecision(JSON.stringify({
+    action: "store_episodic",
+    memory: {
+      content: "User shipped the CLI yesterday.",
+      confidence: 0.9,
+      source_kind: "transcript",
+      source_id: "session-1",
+      source_timestamp: "2026-05-16T10:00:00.000Z",
+      source_label: "Codex session",
+      temporal_expression: "yesterday",
+      resolved_time: "2026-05-15",
+      resolved_time_confidence: 0.85
+    },
+    reasoning: "Durable shipped-work memory."
+  }), "fallback"));
+  const rows = store.selectMemories("u1", ["episodic"], 10);
+  store.close();
+  assert.equal(rows[0].source_kind, "transcript");
+  assert.equal(rows[0].source_id, "session-1");
+  assert.equal(rows[0].source_timestamp, "2026-05-16T10:00:00.000Z");
+  assert.equal(rows[0].temporal_expression, "yesterday");
+  assert.equal(rows[0].resolved_time, "2026-05-15");
+  assert.equal(rows[0].resolved_time_confidence, 0.85);
+  assert.ok(rows[0].created_at);
+});
+
 test("PI hooks inject memory before prompt and store response asynchronously", async () => {
   const dbPath = `dist/test-pi-hooks-${Date.now()}.db`;
   const seedStore = new MemoryStore(dbPath);
@@ -151,6 +301,82 @@ test("service remember repairs invalid model JSON before writing", async () => {
   store.close();
 });
 
+test("service remember applies source metadata when model omits it", async () => {
+  const dbPath = `dist/test-remember-source-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  const runtime: ModelRuntime = {
+    async generateJson(): Promise<string> {
+      return JSON.stringify({
+        action: "store_episodic",
+        memory: { content: "User prefers source provenance in memories.", confidence: 0.9 },
+        reasoning: "Durable product preference."
+      });
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  await service.remember({
+    userId: "u1",
+    llmResponse: "User prefers provenance.",
+    source: {
+      source_kind: "transcript",
+      source_id: "session-2",
+      source_timestamp: "2026-05-16T12:00:00.000Z",
+      source_label: "Test session"
+    }
+  });
+  const rows = store.selectMemories("u1", ["episodic"], 10);
+  store.close();
+  assert.equal(rows[0].source_kind, "transcript");
+  assert.equal(rows[0].source_id, "session-2");
+  assert.equal(rows[0].source_timestamp, "2026-05-16T12:00:00.000Z");
+  assert.equal(rows[0].source_label, "Test session");
+});
+
+test("service context uses exact DB rows instead of generated memory text", async () => {
+  const dbPath = `dist/test-context-plan-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  store.insertSemantic("u1", "User prefers SQLite for local databases.");
+  store.insertEpisodic("u1", "User fixed a TypeScript bug yesterday.", {
+    source_kind: "transcript",
+    source_id: "session-3",
+    source_timestamp: "2026-05-16T12:00:00.000Z",
+    temporal_expression: "yesterday",
+    resolved_time: "2026-05-15"
+  });
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "specific_event_recall",
+          target_tables: ["episodic"],
+          filters: {},
+          ranking_hints: ["TypeScript bug yesterday"],
+          temporal_intent: "recent relative date",
+          top_k: 3
+        });
+      }
+      return "- [episodic | source_time=2024-01-15T14:30:00.000Z] User struggled with Terraform state management in production.";
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "What did I fix yesterday?", topK: 3 });
+  store.close();
+  const rows = result.memory_context as Array<Record<string, unknown>>;
+  const items = result.context_items as Array<Record<string, unknown>>;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].table, "episodic");
+  assert.equal(rows[0].source_id, "session-3");
+  assert.equal(items[0].memory_id, rows[0].id);
+  assert.equal(items[0].resolved_time, "2026-05-15");
+  assert.ok(/resolved_time=2026-05-15/.test(String(items[0].content)));
+  assert.ok(!/Terraform/.test(String(items[0].content)));
+  assert.equal((result.grounding as Record<string, unknown>).generated_text_allowed, false);
+});
+
 test("service remember does not write if repair also returns invalid JSON", async () => {
   const dbPath = `dist/test-invalid-remember-${Date.now()}.db`;
   const store = new MemoryStore(dbPath);
@@ -168,4 +394,29 @@ test("service remember does not write if repair also returns invalid JSON", asyn
   assert.equal(store.selectTable("decisions", 10).length, 0);
   assert.equal(store.selectMemories("u1", ["episodic"], 10).length, 0);
   store.close();
+});
+
+test("raw row import preserves memories across databases", () => {
+  const sourceDb = `dist/test-export-source-${Date.now()}.db`;
+  const targetDb = `dist/test-export-target-${Date.now()}.db`;
+  const source = new MemoryStore(sourceDb);
+  source.initializeSchema();
+  source.insertEpisodic("u1", "User migrated portable memories yesterday.", {
+    source_kind: "transcript",
+    source_id: "session-export",
+    source_timestamp: "2026-05-16T15:00:00.000Z",
+    temporal_expression: "yesterday",
+    resolved_time: "2026-05-15"
+  });
+  const exportedRows = source.selectTable("episodic", 10);
+  source.close();
+
+  const target = new MemoryStore(targetDb);
+  target.initializeSchema();
+  target.insertRawRow("episodic", exportedRows[0]);
+  const rows = target.selectMemories("u1", ["episodic"], 10);
+  target.close();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source_id, "session-export");
+  assert.equal(rows[0].resolved_time, "2026-05-15");
 });

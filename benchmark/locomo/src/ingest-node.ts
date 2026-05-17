@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { MemoryStore, NodeLlamaRuntime, parseStorageDecision } from "@psm-memory/sdk";
 import { flattenTurns, loadSamples, parseOptions } from "./common.js";
+import { buildLocomoMemoryPrompt } from "./storage-prompt.js";
 
 interface IngestStats {
   db: string;
@@ -20,6 +21,7 @@ export async function main(argv: string[]): Promise<number> {
   const gpu = getOption(argv, "gpu", "auto") as "auto" | "cuda" | "vulkan" | "metal";
   const gpuLayers = parseGpuLayers(getOption(argv, "gpu-layers", "auto"));
   const contextSize = Number(getOption(argv, "context-size", "4096"));
+  const windowSize = Number(getOption(argv, "window-size", "2"));
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
   store.initializeSchema();
@@ -45,19 +47,23 @@ export async function main(argv: string[]): Promise<number> {
   for (const sample of samples) {
     const sampleId = String(sample.sample_id ?? "unknown");
     const userId = `locomo-${sampleId}`;
-    for (const turn of flattenTurns(sample)) {
+    const turns = flattenTurns(sample);
+    for (let index = 0; index < turns.length; index++) {
+      const turn = turns[index];
       if (options.limit > 0 && stats.seen >= options.limit) return finish(store, stats);
       const diaId = String(turn.dia_id ?? "");
       const source = `${sampleId}:${diaId || stats.seen}`;
       const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
       stats.seen++;
       try {
-        const raw = await runtime.generateJson(buildLocomoStoragePrompt(text), { temperature: 0, maxTokens: 96 });
+        const prompt = buildLocomoMemoryPrompt({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 });
+        const raw = await runtime.generateJson(prompt, { temperature: 0, maxTokens: 256 });
         const decision = parseStorageDecision(raw, text, "store_episodic");
         const result = store.applyDecision(userId, source, decision, [
           `locomo_sample_id:${sampleId}`,
           `locomo_dia_id:${diaId}`,
-          `locomo_speaker:${turn.speaker ?? ""}`
+          `locomo_speaker:${turn.speaker ?? ""}`,
+          `locomo_session:${turn.session ?? ""}`
         ]);
         if (result.route === "ignore" || result.route === "recall_only") stats.ignored++;
         else stats.stored++;
@@ -93,18 +99,6 @@ function parseGpuLayers(value: string): "auto" | "max" | number {
   if (value === "auto" || value === "max") return value;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : "auto";
-}
-
-function buildLocomoStoragePrompt(text: string): string {
-  return `<|system|>
-You are PSM, a memory-management model. Return JSON only.
-Choose action: ignore, store_episodic, promote_semantic, update_existing, flag_conflict.
-JSON shape: {"action":"store_episodic","memory":{"content":"...","type":"episodic","strength":0.75,"decay_rate":0.02,"emotional_weight":0.2,"confidence":0.8,"tags":[]},"reasoning":"..."}
-<|user|>
-Remember this conversation turn if useful:
-${JSON.stringify(text)}
-<|assistant|>
-`;
 }
 
 if (process.argv[1]?.endsWith("ingest-node.js")) {

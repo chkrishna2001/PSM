@@ -1,10 +1,10 @@
 # PSM Memory
 
-PSM Memory is a local-first memory layer for AI agents.
+PSM Memory is a local-first shared memory layer for AI agents.
 
 The project is based on the idea described in [The Personal Small Model (PSM): Memory as a Learned Cognitive Primitive](https://dev.to/chkrishna2001/the-personal-small-model-psm-memory-as-a-learned-cognitive-primitive-324f): memory should not be treated as a database problem alone. A dedicated small model should learn memory operations such as relevance gating, storage decisions, consolidation, contradiction detection, decay, and recall weighting.
 
-In this repo, the Personal Small Model (PSM) is used as a memory specialist around a per-user SQLite store. The primary LLM keeps doing the main reasoning work. PSM decides what should be remembered, how it should be stored, and what context should be surfaced later.
+In this repo, the Personal Small Model (PSM) is used as a memory specialist around a shared per-user SQLite store. The primary LLM keeps doing the main reasoning work. PSM decides what should be remembered, how it should be stored, and what should be recalled later.
 
 ## Why This Exists
 
@@ -39,7 +39,7 @@ The PSM weights do not store user content. User memory stays in the local SQLite
 This repo currently ships three public packages:
 
 - `@psm-memory/sdk`: memory store, PSM service orchestration, local model runtime, embeddings, ranking, and parsing.
-- `@psm-memory/cli`: `psm-memory` command for setup, hooks, recall, remember, review logs, and agent installation.
+- `@psm-memory/cli`: `psm-memory` command for setup, remember, recall, review, export, and agent installation.
 - `@psm-memory/pi-plugin`: helper APIs for agent/plugin runtimes.
 
 Implemented capabilities:
@@ -49,20 +49,21 @@ Implemented capabilities:
 - SQLite memory tables for episodic, semantic, archival, conflicts, decay schedule, and decisions.
 - Text embeddings with Hugging Face Transformers.
 - Vector-backed candidate retrieval with lexical fallback.
-- PSM-authored final context rendering.
+- PSM-authored recall for humans and agents.
+- Exact DB-backed context injection; retrieved memories are copied from stored rows instead of generated free-form.
 - JSON repair retry when PSM returns malformed remember output.
 - Codex and Claude hook installers.
 - Local hook audit logs and review reports.
 
 ## Install
 
-After publishing:
+After publishing, install the CLI globally:
 
 ```bash
 npm install -g @psm-memory/cli
 ```
 
-Then download or verify the local PSM model and embedding model:
+Global install runs setup. When run from an interactive terminal, setup asks for the shared memory directory, local user id, recall count, embedding settings, and daemon settings. Press Enter to accept the defaults. The same setup can be rerun later:
 
 ```bash
 psm-memory setup
@@ -72,6 +73,9 @@ The CLI installs:
 
 - PSM GGUF model: `chkrishna2001/psm-memory-qwen-1.5b-gguf`
 - default text embedding model: `Xenova/all-MiniLM-L6-v2`
+- editable config: `config.json` in the PSM app-data directory
+
+When daemon autostart is enabled, normal `remember` and `recall` commands start the daemon on first use. The daemon binds to a dynamic local port, writes runtime discovery data to `daemon.json` in the memory directory, and exits after the configured idle timeout.
 
 To skip model download during package install:
 
@@ -80,47 +84,43 @@ PSM_MEMORY_SKIP_MODEL_DOWNLOAD=1 npm install -g @psm-memory/cli
 psm-memory setup
 ```
 
-## Basic Usage
-
-Initialize a memory database:
+To skip install-time setup entirely:
 
 ```bash
-psm-memory init --db user_memory.db
+PSM_MEMORY_SKIP_SETUP=1 npm install -g @psm-memory/cli
 ```
 
-Store memory from an agent response:
+## Basic Usage
+
+Store a memory:
 
 ```bash
-psm-memory remember \
-  --db user_memory.db \
-  --user demo \
-  --llm-response "User prefers SQLite for local-first tools."
+psm-memory remember "User prefers SQLite for local-first tools."
 ```
 
 Recall relevant memory:
 
 ```bash
-psm-memory recall \
-  --db user_memory.db \
-  --user demo \
-  --question "What database should I use?"
+psm-memory recall "What database should I use?"
 ```
 
-Build private context for an agent prompt:
+Recall returns readable text by default so humans and agents can use the same output. Use JSON only when a tool needs structured data:
 
 ```bash
-psm-memory context \
-  --db user_memory.db \
-  --user demo \
-  --prompt "Which database should this local tool use?"
+psm-memory recall "What database should I use?" --json
 ```
 
-Show stored memories:
+Choose a custom shared memory directory during setup:
 
 ```bash
-psm-memory show --db user_memory.db --table episodic --pretty
-psm-memory show --db user_memory.db --table semantic --pretty
-psm-memory show --db user_memory.db --table decisions --pretty
+psm-memory setup --memory-dir C:\psm-memory
+```
+
+Find or inspect the editable config file:
+
+```bash
+psm-memory config --path
+psm-memory config
 ```
 
 ## Agent Hooks
@@ -130,35 +130,29 @@ PSM Memory can install hooks for supported local agents.
 Codex:
 
 ```bash
-psm-memory install-agent --agent codex
+psm-memory install-agent codex
 ```
 
 Claude Code:
 
 ```bash
-psm-memory install-agent --agent claude
+psm-memory install-agent claude
 ```
 
 Both:
 
 ```bash
-psm-memory install-agent --agent codex,claude
+psm-memory install-agent codex,claude
 ```
 
-The installed hooks call:
+The installed hooks call internal PSM hook commands that automate the same flow:
 
 ```bash
-psm-memory hook context
+psm-memory hook recall
 psm-memory hook remember
 ```
 
-The hook commands read JSON from stdin, use the local PSM model, and write to the default database:
-
-```text
-~/.codex/memories/psm-memory.db
-```
-
-They do not depend on PowerShell or repository source paths.
+The hook commands read agent JSON from stdin, use the local PSM model, and write to the shared PSM-owned memory store. They do not depend on PowerShell or repository source paths.
 
 ## Review Logs
 
@@ -167,7 +161,7 @@ PSM runs automatically during agent sessions, so users need a way to inspect wha
 Review today’s hook activity and memory decisions:
 
 ```bash
-psm-memory review-log --date 2026-05-14
+psm-memory review --date 2026-05-14
 ```
 
 The review report includes:
@@ -190,10 +184,10 @@ PSM Memory uses vectors as candidate retrieval, not as the memory system itself:
 ```text
 embedding search -> candidate memories
 PSM recall plan  -> target tables and hints
-PSM renderer     -> final concise context
+exact DB rows    -> final concise context
 ```
 
-Vectors help find semantically similar memories. PSM decides whether those memories matter and how they should be presented.
+Vectors help find semantically similar memories. PSM decides which memory rows matter, but injected context is copied from exact stored rows so recall cannot invent new memory facts.
 
 ## Local-First Privacy Model
 
@@ -263,9 +257,8 @@ A plain `git push` does not publish to npm.
 
 This is an early implementation of the PSM architecture. The current system is usable locally, but important work remains:
 
-- warm daemon to avoid repeated model cold starts
+- daemon hardening and lifecycle polish
 - better consolidation and decay jobs
 - richer user review/feedback export
 - OpenCode/Cursor/Antigravity integrations
 - stronger embedding backends and possible multimodal memory
-

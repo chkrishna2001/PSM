@@ -36,6 +36,13 @@ export interface MemoryPayload {
   confidence?: number;
   tags?: string[];
   source_episodes?: string[];
+  source_kind?: string;
+  source_id?: string;
+  source_timestamp?: string;
+  source_label?: string;
+  temporal_expression?: string;
+  resolved_time?: string;
+  resolved_time_confidence?: number;
 }
 
 export interface StorageDecision {
@@ -54,20 +61,33 @@ export interface RecallPlan {
   target_tables: MemoryTable[];
   filters: Record<string, unknown>;
   ranking_hints: string[];
+  temporal_intent?: string;
   top_k: number;
   raw_json: string;
+  plan_fallback?: boolean;
   parse_error?: string;
 }
 
 export interface ContextItem {
   id?: string;
+  memory_id?: string;
   table: "episodic" | "semantic" | "archival" | "memory";
   content: string;
   reason?: string;
+  source_kind?: string;
+  source_id?: string;
+  source_timestamp?: string;
+  source_label?: string;
+  saved_at?: string;
+  temporal_expression?: string;
+  resolved_time?: string;
+  resolved_time_confidence?: number;
+  score?: number;
 }
 
 export interface ContextRender {
   context_items: ContextItem[];
+  selected_ids?: string[];
   reasoning: string;
   raw_json: string;
   parse_error?: string;
@@ -83,6 +103,13 @@ export interface MemoryRecord {
   confidence?: number;
   tags?: string | null;
   source_episodes?: string | null;
+  source_kind?: string | null;
+  source_id?: string | null;
+  source_timestamp?: string | null;
+  source_label?: string | null;
+  temporal_expression?: string | null;
+  resolved_time?: string | null;
+  resolved_time_confidence?: number;
   table: "episodic" | "semantic" | "archival";
   created_at?: string;
   last_accessed?: string | null;
@@ -129,4 +156,12 @@ export interface RecallRequest {
 export interface RememberRequest {
   llmResponse: string;
   userId: string;
+  source?: MemorySourceMetadata;
+}
+
+export interface MemorySourceMetadata {
+  source_kind?: string;
+  source_id?: string;
+  source_timestamp?: string;
+  source_label?: string;
 }

@@ -1,14 +1,19 @@
 export interface ParsedArgs {
   command: string;
   options: Record<string, string | boolean>;
+  positionals: string[];
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
   const options: Record<string, string | boolean> = {};
+  const positionals: string[] = [];
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i];
-    if (!token.startsWith("--")) continue;
+    if (!token.startsWith("--")) {
+      positionals.push(token);
+      continue;
+    }
     const key = token.slice(2);
     const next = rest[i + 1];
     if (next && !next.startsWith("--")) {
@@ -18,7 +23,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       options[key] = true;
     }
   }
-  return { command: command.toLowerCase(), options };
+  return { command: command.toLowerCase(), options, positionals };
 }
 
 export function required(options: Record<string, string | boolean>, key: string): string {

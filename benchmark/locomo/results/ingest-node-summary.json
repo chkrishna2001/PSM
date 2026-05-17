@@ -1,9 +1,9 @@
 {
-  "db": "benchmark\\locomo\\results\\locomo-node-gpu-compact-25.db",
+  "db": ".\\benchmark\\locomo\\results\\locomo-window-smoke.db",
   "data": "benchmark/locomo/data/locomo10.json",
-  "model": "models\\psm-q4_k_m.gguf",
-  "seen": 25,
-  "stored": 25,
+  "model": "C:\\Users\\chkri\\AppData\\Local\\psm-memory\\models\\psm-memory-qwen-1.5b-q4_k_m.gguf",
+  "seen": 100,
+  "stored": 100,
   "ignored": 0,
   "failed": 0,
   "errors": []

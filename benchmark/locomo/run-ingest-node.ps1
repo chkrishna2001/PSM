@@ -5,7 +5,8 @@ param(
     [int]$BatchSize = 25,
     [string]$Gpu = "auto",
     [string]$GpuLayers = "auto",
-    [int]$ContextSize = 4096
+    [int]$ContextSize = 4096,
+    [int]$WindowSize = 2
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +21,8 @@ try {
         "--model", $Model,
         "--gpu", $Gpu,
         "--gpu-layers", $GpuLayers,
-        "--context-size", "$ContextSize"
+        "--context-size", "$ContextSize",
+        "--window-size", "$WindowSize"
     )
     if ($Limit -gt 0) {
         $args += @("--limit", "$Limit")

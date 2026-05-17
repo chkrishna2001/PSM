@@ -1,8 +1,17 @@
 {
   "name": "@psm-memory/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
-  "description": "Command line interface for PSM Memory context, remember, and recall workflows.",
+  "description": "CLI for shared local PSM Memory with interactive setup, remember/recall, agent hooks, export, and daemon autostart.",
+  "keywords": [
+    "ai-memory",
+    "agent-memory",
+    "local-first",
+    "cli",
+    "codex",
+    "claude",
+    "daemon"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chkrishna2001/PSM.git",
@@ -35,7 +44,7 @@
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "@psm-memory/sdk": "0.1.0"
+    "@psm-memory/sdk": "0.1.1"
   },
   "publishConfig": {
     "access": "public"

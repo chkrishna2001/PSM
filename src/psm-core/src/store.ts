@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS episodic (
   emotional_weight REAL NOT NULL,
   confidence REAL NOT NULL,
   tags TEXT,
+  source_kind TEXT,
+  source_id TEXT,
+  source_timestamp TEXT,
+  source_label TEXT,
+  temporal_expression TEXT,
+  resolved_time TEXT,
+  resolved_time_confidence REAL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_accessed TEXT,
   promoted INTEGER NOT NULL DEFAULT 0
@@ -44,6 +51,13 @@ CREATE TABLE IF NOT EXISTS semantic (
   confidence REAL NOT NULL,
   tags TEXT,
   source_episodes TEXT,
+  source_kind TEXT,
+  source_id TEXT,
+  source_timestamp TEXT,
+  source_label TEXT,
+  temporal_expression TEXT,
+  resolved_time TEXT,
+  resolved_time_confidence REAL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_accessed TEXT
 );
@@ -100,6 +114,7 @@ CREATE INDEX IF NOT EXISTS idx_conflicts_status_created ON conflicts(status, cre
 CREATE INDEX IF NOT EXISTS idx_decisions_user_created ON decisions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings(user_id, model);
 `);
+    this.ensureMemoryMetadataColumns();
   }
 
   applyDecision(userId: string, source: string, decision: StorageDecision, extraTags: string[] = []): { action: MemoryAction; route: string; written: string[]; memory_refs: WrittenMemoryRef[] } {
@@ -142,8 +157,12 @@ CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings
   insertEpisodic(userId: string, content: string, memory: MemoryPayload = {}): string {
     const id = randomUUID();
     this.db.prepare(`
-INSERT INTO episodic (id, user_id, content, strength, decay_rate, emotional_weight, confidence, tags, promoted)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(
+INSERT INTO episodic (
+  id, user_id, content, strength, decay_rate, emotional_weight, confidence, tags,
+  source_kind, source_id, source_timestamp, source_label, temporal_expression, resolved_time, resolved_time_confidence,
+  promoted
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(
       id,
       userId,
       content,
@@ -151,7 +170,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(
       memory.decay_rate ?? 0.02,
       memory.emotional_weight ?? 0.2,
       memory.confidence ?? 0.8,
-      JSON.stringify(memory.tags ?? [])
+      JSON.stringify(memory.tags ?? []),
+      memory.source_kind ?? null,
+      memory.source_id ?? null,
+      memory.source_timestamp ?? null,
+      memory.source_label ?? null,
+      memory.temporal_expression ?? null,
+      memory.resolved_time ?? null,
+      memory.resolved_time_confidence ?? null
     );
     return id;
   }
@@ -159,8 +185,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`).run(
   insertSemantic(userId: string, content: string, memory: MemoryPayload = {}, sourceEpisodes: string[] = []): string {
     const id = randomUUID();
     this.db.prepare(`
-INSERT INTO semantic (id, user_id, content, strength, decay_rate, emotional_weight, confidence, tags, source_episodes)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+INSERT INTO semantic (
+  id, user_id, content, strength, decay_rate, emotional_weight, confidence, tags, source_episodes,
+  source_kind, source_id, source_timestamp, source_label, temporal_expression, resolved_time, resolved_time_confidence
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       id,
       userId,
       content,
@@ -169,7 +198,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       memory.emotional_weight ?? 0.2,
       memory.confidence ?? 0.85,
       JSON.stringify(memory.tags ?? []),
-      JSON.stringify(memory.source_episodes ?? sourceEpisodes)
+      JSON.stringify(memory.source_episodes ?? sourceEpisodes),
+      memory.source_kind ?? null,
+      memory.source_id ?? null,
+      memory.source_timestamp ?? null,
+      memory.source_label ?? null,
+      memory.temporal_expression ?? null,
+      memory.resolved_time ?? null,
+      memory.resolved_time_confidence ?? null
     );
     return id;
   }
@@ -230,13 +266,27 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
       const row = this.db.prepare("SELECT *, 'semantic' as memory_table FROM semantic WHERE id = ?").get(id);
       return row ? asMemoryRecord(row) : undefined;
     }
-    const row = this.db.prepare("SELECT id, user_id, content, NULL as strength, NULL as decay_rate, NULL as emotional_weight, NULL as confidence, NULL as tags, NULL as source_episodes, 'archival' as memory_table, archived_at as created_at, NULL as last_accessed FROM archival WHERE id = ?").get(id);
+    const row = this.db.prepare("SELECT id, user_id, content, NULL as strength, NULL as decay_rate, NULL as emotional_weight, NULL as confidence, NULL as tags, NULL as source_episodes, NULL as source_kind, NULL as source_id, NULL as source_timestamp, NULL as source_label, NULL as temporal_expression, NULL as resolved_time, NULL as resolved_time_confidence, 'archival' as memory_table, archived_at as created_at, NULL as last_accessed FROM archival WHERE id = ?").get(id);
     return row ? asMemoryRecord(row) : undefined;
   }
 
   selectTable(table: MemoryTable, limit: number): DbRow[] {
     if (!memoryTables.includes(table)) throw new Error(`Unsupported table: ${table}`);
     return this.db.prepare(`SELECT * FROM ${table} ORDER BY rowid DESC LIMIT ?`).all(limit);
+  }
+
+  insertRawRow(table: string, row: DbRow): void {
+    if (!memoryTables.includes(table as MemoryTable)) throw new Error(`Unsupported table: ${table}`);
+    const columns = tableColumns(this.db, table).filter((column) => column !== "rowid");
+    const selected = columns.filter((column) => row[column] !== undefined);
+    if (selected.length === 0) return;
+    const placeholders = selected.map(() => "?").join(", ");
+    const updates = selected
+      .filter((column) => column !== "id")
+      .map((column) => `${column} = excluded.${column}`)
+      .join(", ");
+    const conflict = selected.includes("id") && updates ? ` ON CONFLICT(id) DO UPDATE SET ${updates}` : selected.includes("id") ? " ON CONFLICT(id) DO NOTHING" : "";
+    this.db.prepare(`INSERT INTO ${table} (${selected.join(", ")}) VALUES (${placeholders})${conflict}`).run(...selected.map((column) => rawValue(row[column])));
   }
 
   selectConflicts(status: string, limit: number): DbRow[] {
@@ -251,7 +301,7 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
       } else if (table === "semantic") {
         rows.push(...this.db.prepare("SELECT *, 'semantic' as memory_table FROM semantic WHERE user_id = ? ORDER BY created_at DESC LIMIT ?").all(userId, limit).map(asMemoryRecord));
       } else if (table === "archival") {
-        rows.push(...this.db.prepare("SELECT id, user_id, content, NULL as strength, NULL as decay_rate, NULL as emotional_weight, NULL as confidence, NULL as tags, NULL as source_episodes, 'archival' as memory_table, archived_at as created_at, NULL as last_accessed FROM archival WHERE user_id = ? ORDER BY archived_at DESC LIMIT ?").all(userId, limit).map(asMemoryRecord));
+        rows.push(...this.db.prepare("SELECT id, user_id, content, NULL as strength, NULL as decay_rate, NULL as emotional_weight, NULL as confidence, NULL as tags, NULL as source_episodes, NULL as source_kind, NULL as source_id, NULL as source_timestamp, NULL as source_label, NULL as temporal_expression, NULL as resolved_time, NULL as resolved_time_confidence, 'archival' as memory_table, archived_at as created_at, NULL as last_accessed FROM archival WHERE user_id = ? ORDER BY archived_at DESC LIMIT ?").all(userId, limit).map(asMemoryRecord));
       }
     }
     return rows;
@@ -267,6 +317,26 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
 
   close(): void {
     this.db.close();
+  }
+
+  private ensureMemoryMetadataColumns(): void {
+    const columns: Array<[string, string]> = [
+      ["source_kind", "TEXT"],
+      ["source_id", "TEXT"],
+      ["source_timestamp", "TEXT"],
+      ["source_label", "TEXT"],
+      ["temporal_expression", "TEXT"],
+      ["resolved_time", "TEXT"],
+      ["resolved_time_confidence", "REAL"]
+    ];
+    for (const table of ["episodic", "semantic"]) {
+      const existing = new Set(this.db.prepare(`PRAGMA table_info(${table})`).all().map((row) => String((row as DbRow).name)));
+      for (const [column, type] of columns) {
+        if (!existing.has(column)) {
+          this.db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
+        }
+      }
+    }
   }
 }
 
@@ -290,6 +360,13 @@ function asMemoryRecord(row: DbRow): MemoryRecord {
     confidence: asNumber(row.confidence),
     tags: row.tags == null ? null : String(row.tags),
     source_episodes: row.source_episodes == null ? null : String(row.source_episodes),
+    source_kind: row.source_kind == null ? null : String(row.source_kind),
+    source_id: row.source_id == null ? null : String(row.source_id),
+    source_timestamp: row.source_timestamp == null ? null : String(row.source_timestamp),
+    source_label: row.source_label == null ? null : String(row.source_label),
+    temporal_expression: row.temporal_expression == null ? null : String(row.temporal_expression),
+    resolved_time: row.resolved_time == null ? null : String(row.resolved_time),
+    resolved_time_confidence: asNumber(row.resolved_time_confidence),
     table: row.memory_table as MemoryRecord["table"],
     created_at: row.created_at == null ? undefined : String(row.created_at),
     last_accessed: row.last_accessed == null ? null : String(row.last_accessed)
@@ -298,6 +375,15 @@ function asMemoryRecord(row: DbRow): MemoryRecord {
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
+}
+
+function tableColumns(db: Database.Database, table: string): string[] {
+  return db.prepare(`PRAGMA table_info(${table})`).all().map((row) => String((row as DbRow).name));
+}
+
+function rawValue(value: unknown): unknown {
+  if (Array.isArray(value) || (typeof value === "object" && value !== null)) return JSON.stringify(value);
+  return value;
 }
 
 function withExtraTags(memory: MemoryPayload, extraTags: string[]): MemoryPayload {

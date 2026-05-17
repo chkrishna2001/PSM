@@ -1,4 +1,5 @@
 export * from "./actions.js";
+export * from "./config.js";
 export * from "./embeddings.js";
 export * from "./json.js";
 export * from "./llama-runtime.js";

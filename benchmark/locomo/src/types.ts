@@ -2,6 +2,10 @@ export interface LocomoTurn {
   dia_id?: string;
   speaker?: string;
   text?: string;
+  img_url?: string[];
+  blip_caption?: string;
+  query?: string;
+  session?: string;
 }
 
 export interface LocomoQa {

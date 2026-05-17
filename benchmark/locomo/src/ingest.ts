@@ -1,8 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { buildStoragePrompt, MemoryStore, parseStorageDecision } from "@psm-memory/sdk";
+import { MemoryStore, parseStorageDecision } from "@psm-memory/sdk";
 import { flattenTurns, loadSamples, parseOptions } from "./common.js";
 import { LlamaServerRuntime } from "./llama-server-runtime.js";
+import { buildLocomoMemoryPrompt } from "./storage-prompt.js";
+import type { LocomoSample, LocomoTurn } from "./types.js";
 
 interface IngestStats {
   db: string;
@@ -17,6 +19,7 @@ interface IngestStats {
 
 export async function main(argv: string[]): Promise<number> {
   const options = parseOptions(argv);
+  const windowSize = Number(getOption(argv, "window-size", "2"));
   const samples = loadSamples(options.data);
   const runtime = new LlamaServerRuntime(options.server);
   const store = new MemoryStore(options.db);
@@ -42,8 +45,9 @@ export async function main(argv: string[]): Promise<number> {
       const pending: Array<Promise<void>> = [];
       for (const turn of batch) {
         if (options.limit > 0 && stats.seen + pending.length >= options.limit) break;
+        const index = i + pending.length;
         const ordinal: number = stats.seen + pending.length;
-        pending.push(ingestTurn(runtime, store, stats, userId, sampleId, turn, ordinal));
+        pending.push(ingestTurn(runtime, store, stats, userId, sample, turns, index, windowSize, sampleId, turn, ordinal));
       }
       stats.seen += pending.length;
       await Promise.all(pending);
@@ -60,20 +64,26 @@ async function ingestTurn(
   store: MemoryStore,
   stats: IngestStats,
   userId: string,
+  sample: LocomoSample,
+  turns: LocomoTurn[],
+  index: number,
+  windowSize: number,
   sampleId: string,
-  turn: { dia_id?: string; speaker?: string; text?: string },
+  turn: LocomoTurn,
   ordinal: number
 ): Promise<void> {
   const diaId = String(turn.dia_id ?? "");
   const source = `${sampleId}:${diaId || ordinal}`;
   const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
   try {
-    const raw = await runtime.generateJson(buildStoragePrompt(text), { temperature: 0, maxTokens: 192 });
+    const prompt = buildLocomoMemoryPrompt({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 });
+    const raw = await runtime.generateJson(prompt, { temperature: 0, maxTokens: 256 });
     const decision = parseStorageDecision(raw, text, "store_episodic");
     const result = store.applyDecision(userId, source, decision, [
       `locomo_sample_id:${sampleId}`,
       `locomo_dia_id:${diaId}`,
-      `locomo_speaker:${turn.speaker ?? ""}`
+      `locomo_speaker:${turn.speaker ?? ""}`,
+      `locomo_session:${turn.session ?? ""}`
     ]);
     if (result.route === "ignore" || result.route === "recall_only") stats.ignored++;
     else stats.stored++;
@@ -91,6 +101,11 @@ function finish(store: MemoryStore, stats: IngestStats): number {
   store.close();
   process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
   return stats.failed > 0 ? 1 : 0;
+}
+
+function getOption(argv: string[], key: string, fallback: string): string {
+  const index = argv.indexOf(`--${key}`);
+  return index >= 0 && argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[index + 1] : fallback;
 }
 
 if (process.argv[1]?.endsWith("ingest.js")) {

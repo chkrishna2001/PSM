@@ -1,7 +1,9 @@
-import { MemoryStore, NodeLlamaRuntime, PsmService, type ModelRuntime } from "@psm-memory/sdk";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, type ModelRuntime } from "@psm-memory/sdk";
 
 export interface PsmPluginOptions {
-  dbPath: string;
+  dbPath?: string;
   userId?: string;
   runtime?: ModelRuntime;
   modelPath?: string;
@@ -48,11 +50,6 @@ export function createPsmTools(options: PsmPluginOptions): Record<string, (input
   const { service, defaultUser } = createService(options);
 
   return {
-    "psm.context": async (input) => service.context({
-      prompt: requireString(input, "prompt"),
-      userId: stringOr(input.user, defaultUser),
-      topK: numberOr(input.top_k, options.topK ?? 5)
-    }),
     "psm.remember": async (input) => service.remember({
       llmResponse: requireString(input, "llm_response"),
       userId: stringOr(input.user, defaultUser)
@@ -99,7 +96,12 @@ export function createPsmHooks(options: PsmPluginOptions): PsmHooks {
 
     const task = service.remember({
       llmResponse,
-      userId: stringOr(input.userId, defaultUser)
+      userId: stringOr(input.userId, defaultUser),
+      source: {
+        source_kind: "pi-plugin",
+        source_timestamp: new Date().toISOString(),
+        source_label: "PI plugin response"
+      }
     }).then(() => undefined);
 
     pending.add(task);
@@ -128,10 +130,12 @@ export function createPsmHooks(options: PsmPluginOptions): PsmHooks {
 }
 
 function createService(options: PsmPluginOptions): { store: MemoryStore; service: PsmService; defaultUser: string } {
-  const store = new MemoryStore(options.dbPath);
+  const dbPath = resolvePsmDbPath({ dbPath: options.dbPath });
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const store = new MemoryStore(dbPath);
   store.initializeSchema();
   const service = new PsmService(store, resolveRuntime(options));
-  const defaultUser = options.userId ?? "default-user";
+  const defaultUser = options.userId ?? readPsmConfig().userId;
 
   return { store, service, defaultUser };
 }
@@ -143,14 +147,13 @@ function resolveRuntime(options: PsmPluginOptions): ModelRuntime {
 }
 
 function renderMemoryContext(rawContext: Record<string, unknown>): string {
-  const memories = Array.isArray(rawContext.memory_context) ? rawContext.memory_context : [];
+  const memories = Array.isArray(rawContext.context_items) ? rawContext.context_items : [];
   if (memories.length === 0) return "";
 
   const lines = memories.map((memory, index) => {
     const item = memory as Record<string, unknown>;
-    const table = typeof item.table === "string" ? item.table : "memory";
     const content = typeof item.content === "string" ? item.content : "";
-    return `${index + 1}. [${table}] ${content}`;
+    return `${index + 1}. ${content}`;
   }).filter((line) => line.trim());
 
   if (lines.length === 0) return "";

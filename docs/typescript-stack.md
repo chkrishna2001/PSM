@@ -10,15 +10,14 @@ This tree separates reusable memory code from public commands and benchmarks:
 The public CLI intentionally exposes memory operations only:
 
 ```powershell
-node src/psm-cli/dist/cli.js init --db user_memory.db
-node src/psm-cli/dist/cli.js context --prompt "What should I know?" --user demo --db user_memory.db --pretty
-node src/psm-cli/dist/cli.js remember --llm-response "User prefers SQLite for local apps." --user demo --db user_memory.db --pretty
-node src/psm-cli/dist/cli.js recall --question "What database does the user prefer?" --user demo --db user_memory.db --pretty
+node src/psm-cli/dist/cli.js setup
+node src/psm-cli/dist/cli.js remember "User prefers SQLite for local apps."
+node src/psm-cli/dist/cli.js recall "What database does the user prefer?"
 ```
 
 After publishing, the primary command is exposed as `psm-memory` by the `@psm-memory/cli` package. The shorter `psm` command is also available as an alias.
 
-JSON is the default output format. `--pretty` only changes formatting.
+Recall returns readable text by default. Use `--json` when tooling needs structured output.
 
 ## Runtime
 
@@ -78,3 +77,7 @@ benchmark\locomo\run-evaluate.ps1 -TopK 3
 ```
 
 The benchmark uses SDK storage and ranking helpers so recall behavior is aligned with the CLI path.
+
+## Grounding Invariant
+
+Agent-injected memory context must be built from exact database rows. PSM may plan retrieval and rank candidates, but it must not generate free-form memory facts for injection. Every context item must carry the stored memory id/table and copied content from that row.

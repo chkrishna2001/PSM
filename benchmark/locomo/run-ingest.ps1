@@ -4,6 +4,7 @@ param(
     [int]$Limit = 0,
     [int]$BatchSize = 4,
     [int]$Port = 8080,
+    [int]$WindowSize = 2,
     [switch]$UseGpu
 )
 
@@ -59,7 +60,8 @@ try {
         "dist\benchmark\locomo\src\ingest.js",
         "--batch-size", "$BatchSize",
         "--db", $Db,
-        "--server", "http://127.0.0.1:$Port"
+        "--server", "http://127.0.0.1:$Port",
+        "--window-size", "$WindowSize"
     )
     if ($Limit -gt 0) {
         $ingestArgs += @("--limit", "$Limit")

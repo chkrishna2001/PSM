@@ -45,13 +45,16 @@ export function parseRecallPlan(rawText: string, question: string, topK = 5): Re
   const raw_json = extractJsonObject(rawText) ?? rawText.trim();
   try {
     const parsed = JSON.parse(raw_json) as Record<string, unknown>;
+    const targetTables = normalizeTables(parsed.target_tables);
     return {
       intent: stringOr(parsed.intent, "recall"),
-      target_tables: normalizeTables(parsed.target_tables),
+      target_tables: targetTables.tables,
       filters: isRecord(parsed.filters) ? parsed.filters : {},
       ranking_hints: stringArray(parsed.ranking_hints),
-      top_k: positiveInt(parsed.top_k, topK),
-      raw_json
+      temporal_intent: stringOrUndefined(parsed.temporal_intent),
+      top_k: Math.min(positiveInt(parsed.top_k, topK), topK),
+      raw_json,
+      plan_fallback: targetTables.fallback
     };
   } catch (error) {
     return {
@@ -59,8 +62,10 @@ export function parseRecallPlan(rawText: string, question: string, topK = 5): Re
       target_tables: ["semantic", "episodic"],
       filters: {},
       ranking_hints: keywords(question),
+      temporal_intent: undefined,
       top_k: topK,
       raw_json,
+      plan_fallback: true,
       parse_error: error instanceof Error ? error.message : String(error)
     };
   }
@@ -70,6 +75,7 @@ export function parseContextRender(rawText: string, topK = 5): ContextRender {
   const raw_json = extractJsonObject(rawText) ?? rawText.trim();
   try {
     const parsed = JSON.parse(raw_json) as Record<string, unknown>;
+    const selected_ids = stringArray(parsed.selected_ids).slice(0, topK);
     const rawItems = Array.isArray(parsed.context_items)
       ? parsed.context_items
       : Array.isArray(parsed.memory_context)
@@ -81,6 +87,7 @@ export function parseContextRender(rawText: string, topK = 5): ContextRender {
       .slice(0, topK);
     return {
       context_items,
+      selected_ids,
       reasoning: stringOr(parsed.reasoning, "PSM selected context items."),
       raw_json
     };
@@ -110,7 +117,14 @@ function normalizeMemory(value: unknown, fallbackContent: string): MemoryPayload
     emotional_weight: numberOrUndefined(value.emotional_weight),
     confidence: numberOrUndefined(value.confidence),
     tags: stringArray(value.tags),
-    source_episodes: stringArray(value.source_episodes)
+    source_episodes: stringArray(value.source_episodes),
+    source_kind: stringOrUndefined(value.source_kind),
+    source_id: stringOrUndefined(value.source_id),
+    source_timestamp: stringOrUndefined(value.source_timestamp),
+    source_label: stringOrUndefined(value.source_label),
+    temporal_expression: stringOrUndefined(value.temporal_expression),
+    resolved_time: stringOrUndefined(value.resolved_time),
+    resolved_time_confidence: numberOrUndefined(value.resolved_time_confidence)
   };
 }
 
@@ -130,10 +144,10 @@ function normalizeContextItem(value: unknown): ContextItem | null {
   };
 }
 
-function normalizeTables(value: unknown): MemoryTable[] {
+function normalizeTables(value: unknown): { tables: MemoryTable[]; fallback: boolean } {
   const allowed = new Set<string>(["semantic", "episodic", "archival"]);
   const tables = stringArray(value).filter((table): table is MemoryTable => allowed.has(table));
-  return tables.length > 0 ? tables : ["semantic", "episodic"];
+  return tables.length > 0 ? { tables, fallback: false } : { tables: ["semantic", "episodic"], fallback: true };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

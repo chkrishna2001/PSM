@@ -1,8 +1,16 @@
 {
   "name": "@psm-memory/pi-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
-  "description": "PSM Memory plugin tool wrappers for agent runtimes.",
+  "description": "Agent runtime hooks for shared local PSM Memory recall and response remembering.",
+  "keywords": [
+    "ai-memory",
+    "agent-memory",
+    "local-first",
+    "plugin",
+    "hooks",
+    "llm"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chkrishna2001/PSM.git",
@@ -28,7 +36,7 @@
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "@psm-memory/sdk": "0.1.0"
+    "@psm-memory/sdk": "0.1.1"
   },
   "publishConfig": {
     "access": "public"
