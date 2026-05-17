@@ -2,6 +2,7 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readF
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, resolvePsmMemoryDir, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
 import { callDaemon, startDaemon } from "./daemon.js";
@@ -1094,7 +1095,7 @@ function write(value: string): void {
 }
 
 function cliVersion(): string {
-  const packageJsonPath = new URL("../package.json", import.meta.url).pathname.replace(/^\//, "");
+  const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const raw = readFileSync(packageJsonPath, "utf8");
   const parsed = JSON.parse(raw) as { version?: string };
   return typeof parsed.version === "string" && parsed.version.trim() ? parsed.version : "unknown";

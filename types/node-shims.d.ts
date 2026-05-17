@@ -78,6 +78,10 @@ declare module "node:path" {
   export function resolve(...paths: string[]): string;
 }
 
+declare module "node:url" {
+  export function fileURLToPath(url: URL | string): string;
+}
+
 declare module "node:os" {
   export function homedir(): string;
   export function platform(): string;
