@@ -9,6 +9,7 @@ This folder contains the LOCOMO data, ingestion database, and benchmark outputs 
 - `src/ingest.ts`: batched ingestion through PSM.
 - `src/evaluate.ts`: evidence retrieval evaluation over the SQLite memory DB.
 - `psm-memory-locomo-colab.ipynb`: Colab notebook that installs the published npm packages and runs a LOCOMO smoke/full benchmark.
+- `psm-memory-locomo-ingest-colab.ipynb`: Colab notebook for resumable LOCOMO ingestion with Drive checkpoints after each batch.
 - `colab/locomo-benchmark.mjs`: Colab harness used by the notebook.
 
 ## Start llama.cpp Server
@@ -95,3 +96,5 @@ node dist/benchmark/locomo/src/report.js --psm benchmark/locomo/results/locomo-r
 The Colab notebook writes `/content/locomo/results/locomo-answer-results.json`, `/content/locomo/results/locomo-comparison.md`, and copies both to `MyDrive/psm-memory-locomo/`.
 
 Current timing on Q4_K_M CPU runtime: 100 LOCOMO turns took about 5 minutes 53 seconds, so the full 5,882-turn ingest is expected to take roughly 5-6 hours unless GPU offload is active.
+
+The ingestion notebook checkpoints the SQLite DB and `locomo-ingest-progress.json` into Google Drive after each batch. Set `BATCH_SIZE = 1` if you want the most crash-resistant recovery behavior.
