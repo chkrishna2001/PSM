@@ -208,6 +208,7 @@ async function answerEvaluate(options) {
   const dbPath = stringOption(options, "db", "/content/locomo/results/locomo-psm-memory.db");
   const outPath = stringOption(options, "out", "/content/locomo/results/locomo-answer-results.json");
   const topK = intOption(options, "top-k", 50);
+  const answerContextK = intOption(options, "answer-context-k", Math.min(5, topK));
   const limit = intOption(options, "limit", 0);
   const checkpointEvery = intOption(options, "checkpoint-every", 10);
   const answerModel = stringOption(options, "answer-model", process.env.LOCOMO_ANSWER_MODEL || defaultOpenRouterModel);
@@ -237,7 +238,7 @@ async function answerEvaluate(options) {
         const key = `${sampleId}\n${category}\n${question}`;
         if (done.has(key)) continue;
         if (limit > 0 && processedThisRun >= limit) {
-          writeAnswerResults(outPath, summarizeAnswers(records, topK, answerModel, judgeModel), records);
+          writeAnswerResults(outPath, summarizeAnswers(records, topK, answerContextK, answerModel, judgeModel), records);
           return records.length === 0 ? 1 : 0;
         }
 
@@ -246,7 +247,12 @@ async function answerEvaluate(options) {
         const selectedIds = contextItems.flatMap((item) => item.source_ids ?? []);
         const hitAt1 = hitAt(evidence, selectedIds, 1);
         const hitAtK = hitAt(evidence, selectedIds, topK);
-        const generatedAnswer = cleanAnswer(await answerQuestion({ apiKey, baseUrl, answerModel }, question, contextItems));
+        const extraction = await extractEvidence({ apiKey, baseUrl, answerModel }, question, contextItems);
+        const answerContextItems = selectAnswerContextItems(contextItems, extraction.selectedIndexes, answerContextK);
+        const answerContextSelectedIds = answerContextItems.flatMap((item) => item.source_ids ?? []);
+        const answerContextMemoryIds = answerContextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
+        const answerContextHitAtK = hitAt(evidence, answerContextSelectedIds, answerContextK);
+        const generatedAnswer = cleanAnswer(await answerQuestion({ apiKey, baseUrl, answerModel }, question, extraction.evidence, answerContextItems));
         const judgment = await judgeAnswer({ apiKey, baseUrl, judgeModel }, question, String(qa.answer ?? ""), generatedAnswer);
 
         records.push({
@@ -256,9 +262,17 @@ async function answerEvaluate(options) {
           gold_answer: String(qa.answer ?? ""),
           evidence,
           selected_ids: selectedIds,
+          answer_context_memory_ids: answerContextMemoryIds,
+          answer_context_selected_ids: answerContextSelectedIds,
           hit_at_1: hitAt1,
           hit_at_k: hitAtK,
+          answer_context_hit_at_k: answerContextHitAtK,
           psm_context_items: contextItems,
+          answer_context_items: answerContextItems,
+          extracted_evidence: extraction.evidence,
+          evidence_extraction_raw: extraction.raw,
+          gold_evidence_present_in_top_k: hitAtK,
+          gold_evidence_used_in_answer_context: answerContextHitAtK,
           generated_answer: generatedAnswer,
           judgment: judgment.correct ? "correct" : "incorrect",
           score: judgment.correct ? 1 : 0,
@@ -270,7 +284,7 @@ async function answerEvaluate(options) {
         processedThisRun++;
 
         if (processedThisRun % checkpointEvery === 0) {
-          writeAnswerResults(outPath, summarizeAnswers(records, topK, answerModel, judgeModel), records);
+          writeAnswerResults(outPath, summarizeAnswers(records, topK, answerContextK, answerModel, judgeModel), records);
           console.log(`answered=${records.length} this_run=${processedThisRun} accuracy=${answerAccuracy(records).toFixed(4)}`);
         }
       }
@@ -279,7 +293,7 @@ async function answerEvaluate(options) {
     store.close();
   }
 
-  const summary = summarizeAnswers(records, topK, answerModel, judgeModel);
+  const summary = summarizeAnswers(records, topK, answerContextK, answerModel, judgeModel);
   writeAnswerResults(outPath, summary, records);
   console.log(JSON.stringify(summary, null, 2));
   console.log(`Wrote ${outPath}`);
@@ -481,7 +495,38 @@ ${JSON.stringify(payload)}
 `;
 }
 
-async function answerQuestion(client, question, contextItems) {
+async function extractEvidence(client, question, contextItems) {
+  const context = renderContextForPrompt(contextItems);
+  const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
+    {
+      role: "system",
+      content: "Extract evidence for a LOCOMO question from retrieved memories. Return JSON only: {\"evidence\":\"short exact fact or empty string\",\"selected_indices\":[1,2]}. Use only the provided memories. Prefer the exact date, place, relationship status, activity, name, or fact that directly answers the question. If no memory answers the question, use an empty evidence string and empty selected_indices."
+    },
+    {
+      role: "user",
+      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nJSON only:`
+    }
+  ], 220, 0);
+  return parseEvidenceExtraction(content);
+}
+
+async function answerQuestion(client, question, extractedEvidence, contextItems) {
+  const context = renderContextForPrompt(contextItems);
+  const evidence = extractedEvidence.trim() || "No direct evidence extracted.";
+  const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
+    {
+      role: "system",
+      content: "Answer the LOCOMO benchmark question using only the extracted evidence and retrieved memories. Return only the shortest final answer, not analysis, reasoning, citations, or explanations. For when/date questions, return the date or time phrase. For relationship/status questions, return the status. If the evidence does not contain the answer, return exactly: I do not know."
+    },
+    {
+      role: "user",
+      content: `Extracted evidence:\n${evidence}\n\nRetrieved memories:\n${context}\n\nQuestion: ${question}\n\nFinal answer only:`
+    }
+  ], 128, 0);
+  return content.trim();
+}
+
+function renderContextForPrompt(contextItems) {
   const context = contextItems.map((item, index) => {
     const table = typeof item.table === "string" ? item.table : "memory";
     const id = typeof item.id === "string" && item.id ? ` id=${item.id}` : "";
@@ -489,17 +534,40 @@ async function answerQuestion(client, question, contextItems) {
     const content = typeof item.content === "string" ? item.content : "";
     return `[${index + 1}] [${table}]${id}${sources} ${content}`;
   }).join("\n");
-  const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
-    {
-      role: "system",
-      content: "Answer the LOCOMO benchmark question using only the retrieved memories. Return only the shortest final answer. Do not explain, cite, list memories, or mention uncertainty unless the answer is absent. If the memories do not contain the answer, return exactly: I do not know."
-    },
-    {
-      role: "user",
-      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nReturn only the answer text:`
-    }
-  ], 256, 0);
-  return content.trim();
+  return context;
+}
+
+function parseEvidenceExtraction(value) {
+  const trimmed = value.trim();
+  const json = trimmed.match(/\{[\s\S]*\}/)?.[0] ?? trimmed;
+  try {
+    const parsed = JSON.parse(json);
+    return {
+      evidence: typeof parsed.evidence === "string" ? parsed.evidence.trim() : "",
+      selectedIndexes: Array.isArray(parsed.selected_indices)
+        ? parsed.selected_indices.map((item) => Number(item) - 1).filter((item) => Number.isInteger(item) && item >= 0)
+        : [],
+      raw: trimmed
+    };
+  } catch {
+    return {
+      evidence: "",
+      selectedIndexes: [],
+      raw: trimmed
+    };
+  }
+}
+
+function selectAnswerContextItems(contextItems, selectedIndexes, answerContextK) {
+  const selected = selectedIndexes.map((index) => contextItems[index]).filter(Boolean);
+  const result = [];
+  for (const item of [...selected, ...contextItems]) {
+    if (result.length >= answerContextK) break;
+    const key = `${item.table}:${item.memory_id ?? item.id ?? item.content}`;
+    if (result.some((existing) => `${existing.table}:${existing.memory_id ?? existing.id ?? existing.content}` === key)) continue;
+    result.push(item);
+  }
+  return result;
 }
 
 function contextPrompt(question, memories) {
@@ -598,7 +666,7 @@ function cleanAnswer(value) {
   return answer.trim();
 }
 
-function summarizeAnswers(records, topK, answerModel, judgeModel) {
+function summarizeAnswers(records, topK, answerContextK, answerModel, judgeModel) {
   const byCategory = {};
   for (const record of records) {
     const entry = byCategory[record.category] ?? { questions: 0, answer_accuracy: 0 };
@@ -615,7 +683,9 @@ function summarizeAnswers(records, topK, answerModel, judgeModel) {
     answer_accuracy: answerAccuracy(records),
     hit_at_1: records.filter((record) => record.hit_at_1 === true).length / (records.length || 1),
     [`hit_at_${topK}`]: records.filter((record) => record.hit_at_k === true).length / (records.length || 1),
+    answer_context_hit_at_k: records.filter((record) => record.answer_context_hit_at_k === true).length / (records.length || 1),
     top_k: topK,
+    answer_context_k: answerContextK,
     answer_model: answerModel,
     judge_model: judgeModel,
     by_category: byCategory

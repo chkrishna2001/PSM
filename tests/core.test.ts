@@ -70,9 +70,41 @@ test("CLI help exposes the single memory flow", async () => {
   assert.equal(result.code, 0);
   assert.ok(result.stdout.includes('remember "<text>"'));
   assert.ok(result.stdout.includes('recall "<question>"'));
+  assert.ok(result.stdout.includes("install-agent codex|claude|gemini|all"));
   assert.ok(!result.stdout.includes("context --prompt"));
   assert.ok(!result.stdout.includes("--top-k"));
   assert.ok(!result.stdout.includes("--embedding-model"));
+});
+
+test("CLI installs Gemini hooks using Gemini JSON protocol", async () => {
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalPsmDir = process.env.PSM_MEMORY_DIR;
+  const root = `dist/test-gemini-hooks-${Date.now()}`;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  process.env.LOCALAPPDATA = root;
+  process.env.PSM_MEMORY_DIR = `${root}/memory`;
+  try {
+    const result = await captureCli(["install-agent", "gemini", "--pretty"]);
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout) as { agents: Array<{ agent: string; settings: string }> };
+    assert.equal(parsed.agents[0].agent, "gemini");
+    assert.ok(parsed.agents[0].settings.endsWith(".gemini\\settings.json") || parsed.agents[0].settings.endsWith(".gemini/settings.json"));
+    const settings = JSON.parse((await import("node:fs")).readFileSync(parsed.agents[0].settings, "utf8")) as {
+      hooksConfig?: { enabled?: boolean };
+      hooks?: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    assert.equal(settings.hooksConfig?.enabled, true);
+    assert.equal(settings.hooks?.BeforeAgent?.[0]?.hooks?.[0]?.command, "psm-memory hook recall --agent gemini");
+    assert.equal(settings.hooks?.AfterAgent?.[0]?.hooks?.[0]?.command, "psm-memory hook remember --agent gemini");
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalUserProfile;
+    if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = originalLocalAppData;
+    if (originalPsmDir === undefined) delete process.env.PSM_MEMORY_DIR; else process.env.PSM_MEMORY_DIR = originalPsmDir;
+  }
 });
 
 test("CLI exposes version output", async () => {

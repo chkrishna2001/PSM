@@ -306,10 +306,12 @@ async function runHookRecall(options: Record<string, string | boolean>, pretty: 
   const dbPath = configuredDbPath(options);
   const userId = defaultUserId(options);
   const topK = intOption(options, "top-k", readPsmConfig().recallTopK);
+  const hookAgent = stringOption(options, "agent", "");
   let status = "ok";
   let reason: string | undefined;
   let promptChars = 0;
   let memoryCount = 0;
+  let hookOutputWritten = false;
 
   try {
     const readStarted = Date.now();
@@ -331,7 +333,8 @@ async function runHookRecall(options: Record<string, string | boolean>, pretty: 
     });
     if (daemonResult) {
       timings.model_context = Date.now() - daemonStarted;
-      memoryCount = renderHookRecallResult(daemonResult, pretty);
+      memoryCount = renderHookRecallResult(daemonResult, pretty, hookAgent);
+      hookOutputWritten = true;
       return;
     }
 
@@ -349,7 +352,8 @@ async function runHookRecall(options: Record<string, string | boolean>, pretty: 
       memoryCount = memories.length;
 
       const renderStarted = Date.now();
-      renderHookRecallResult(result, pretty);
+      renderHookRecallResult(result, pretty, hookAgent);
+      hookOutputWritten = true;
       timings.render = Date.now() - renderStarted;
     } finally {
       store.close();
@@ -372,27 +376,49 @@ async function runHookRecall(options: Record<string, string | boolean>, pretty: 
       memories: memoryCount,
       timings_ms: timings
     });
+    if (hookAgent === "gemini" && !hookOutputWritten) output({ suppressOutput: true }, false);
   }
 }
 
-function renderHookRecallResult(result: Record<string, unknown>, pretty: boolean): number {
+function renderHookRecallResult(result: Record<string, unknown>, pretty: boolean, hookAgent = ""): number {
   const memories = Array.isArray(result.context_items) ? result.context_items : [];
   if (pretty) {
     output(result, true);
     return memories.length;
   }
 
+  if (hookAgent === "gemini") {
+    const memoryContext = renderHookMemoryContext(memories);
+    output(memoryContext ? {
+      hookSpecificOutput: {
+        hookEventName: "BeforeAgent",
+        additionalContext: memoryContext
+      },
+      suppressOutput: true
+    } : { suppressOutput: true }, false);
+    return memories.length;
+  }
+
   if (memories.length === 0) return 0;
 
-  write("PSM Memory Context\n");
-  write("Use these private memories when relevant. Do not mention this block unless asked about memory.\n");
+  write(renderHookMemoryContext(memories));
+  write("\n");
+  return memories.length;
+}
+
+function renderHookMemoryContext(memories: unknown[]): string {
+  if (memories.length === 0) return "";
+  const lines = [
+    "PSM Memory Context",
+    "Use these private memories when relevant. Do not mention this block unless asked about memory."
+  ];
   memories.forEach((memory, index) => {
     if (!isRecord(memory)) return;
     const table = typeof memory.table === "string" ? memory.table : "memory";
     const content = typeof memory.content === "string" ? memory.content : "";
-    if (content) write(`${index + 1}. [${table}] ${content}\n`);
+    if (content) lines.push(`${index + 1}. [${table}] ${content}`);
   });
-  return memories.length;
+  return lines.length > 2 ? lines.join("\n") : "";
 }
 
 async function runHookRemember(options: Record<string, string | boolean>): Promise<void> {
@@ -400,6 +426,7 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
   const timings: Record<string, number> = {};
   const dbPath = configuredDbPath(options);
   const userId = defaultUserId(options);
+  const hookAgent = stringOption(options, "agent", "");
   let status = "ok";
   let reason: string | undefined;
   let responseChars = 0;
@@ -413,7 +440,7 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
     timings.read_input = Date.now() - readStarted;
 
     const transcriptStarted = Date.now();
-    const directResponse = firstText(hookInput, ["last_assistant_message", "response", "assistant_response", "output", "text"]);
+    const directResponse = firstText(hookInput, ["prompt_response", "last_assistant_message", "response", "assistant_response", "output", "text"]);
     const transcriptPath = firstText(hookInput, ["transcript_path", "transcriptPath"]);
     const transcriptResponse = transcriptAssistantText(transcriptPath);
     const latestSessionResponse = transcriptResponse ? undefined : latestCodexAssistantText();
@@ -486,6 +513,7 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
       response_chars: responseChars,
       timings_ms: timings
     });
+    if (hookAgent === "gemini") output({ suppressOutput: true }, false);
   }
 }
 
@@ -583,12 +611,12 @@ function isAssistantEvent(value: unknown): boolean {
   return isRecord(value.payload) && value.payload.role === "assistant";
 }
 
-type AgentName = "codex" | "claude";
+type AgentName = "codex" | "claude" | "gemini";
 
-const allAgents: AgentName[] = ["codex", "claude"];
+const allAgents: AgentName[] = ["codex", "claude", "gemini"];
 
 function parseAgentList(value: string): AgentName[] {
-  if (!value.trim()) throw new Error("Usage: psm-memory install-agent codex|claude|all");
+  if (!value.trim()) throw new Error("Usage: psm-memory install-agent codex|claude|gemini|all");
   const requested = value
     .split(",")
     .map((agent) => agent.trim().toLowerCase())
@@ -604,7 +632,8 @@ function parseAgentList(value: string): AgentName[] {
 function installAgents(agents: AgentName[]): Record<string, unknown>[] {
   return agents.map((agent) => {
     if (agent === "codex") return installCodexHooks();
-    return installClaudeHooks();
+    if (agent === "claude") return installClaudeHooks();
+    return installGeminiHooks();
   });
 }
 
@@ -644,6 +673,26 @@ function installClaudeHooks(): Record<string, unknown> {
     agent: "claude",
     settings: settingsPath,
     commands: ["psm-memory hook recall", "psm-memory hook remember"]
+  };
+}
+
+function installGeminiHooks(): Record<string, unknown> {
+  const settingsPath = geminiSettingsPath();
+  mkdirSync(dirname(settingsPath), { recursive: true });
+
+  const current = readJsonObject(settingsPath);
+  const hooks = isRecord(current.hooks) ? current.hooks : {};
+  removeOldPsmHooks(hooks);
+  addHook(hooks, "BeforeAgent", "psm-memory hook recall --agent gemini");
+  addHook(hooks, "AfterAgent", "psm-memory hook remember --agent gemini");
+  const hooksConfig = isRecord(current.hooksConfig) ? { ...current.hooksConfig, enabled: true } : { enabled: true };
+  mkdirSync(dirname(configuredDbPath({})), { recursive: true });
+  writeFileSync(settingsPath, `${JSON.stringify({ ...current, hooksConfig, hooks }, null, 2)}\n`, "utf8");
+
+  return {
+    agent: "gemini",
+    settings: settingsPath,
+    commands: ["psm-memory hook recall --agent gemini", "psm-memory hook remember --agent gemini"]
   };
 }
 
@@ -713,6 +762,10 @@ function codexHooksPath(): string {
 
 function claudeSettingsPath(): string {
   return join(homedir(), ".claude", "settings.json");
+}
+
+function geminiSettingsPath(): string {
+  return join(homedir(), ".gemini", "settings.json");
 }
 
 function defaultHookLogPath(): string {
@@ -1107,7 +1160,7 @@ function helpText(): string {
   setup [--memory-dir <path>] [--force] [--pretty]
   remember "<text>" [--json]
   recall "<question>" [--json]
-  install-agent codex|claude|all[,agent...] [--pretty]
+  install-agent codex|claude|gemini|all[,agent...] [--pretty]
   review [--date YYYY-MM-DD] [--pretty]
   config [--path]
   export [out.json] [--pretty]

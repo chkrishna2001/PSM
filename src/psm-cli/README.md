@@ -22,14 +22,27 @@ psm-memory install-agent codex
 Install multiple agent integrations:
 
 ```bash
-psm-memory install-agent codex,claude
+psm-memory install-agent codex,claude,gemini
 ```
 
-This writes cross-platform hook commands to `~/.codex/hooks.json`:
+Gemini CLI:
+
+```bash
+psm-memory install-agent gemini
+```
+
+This writes cross-platform hook commands to each agent's settings file. For Codex, that is `~/.codex/hooks.json`:
 
 ```bash
 psm-memory hook recall
 psm-memory hook remember
+```
+
+For Gemini CLI, the installer writes `BeforeAgent` and `AfterAgent` hooks to `~/.gemini/settings.json`:
+
+```bash
+psm-memory hook recall --agent gemini
+psm-memory hook remember --agent gemini
 ```
 
 The hook commands read agent hook JSON from stdin, use the shared PSM-owned memory store, and do not depend on PowerShell or repository source paths.

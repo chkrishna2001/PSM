@@ -139,10 +139,16 @@ Claude Code:
 psm-memory install-agent claude
 ```
 
-Both:
+Gemini CLI:
 
 ```bash
-psm-memory install-agent codex,claude
+psm-memory install-agent gemini
+```
+
+Multiple agents:
+
+```bash
+psm-memory install-agent codex,claude,gemini
 ```
 
 The installed hooks call internal PSM hook commands that automate the same flow:
@@ -150,6 +156,13 @@ The installed hooks call internal PSM hook commands that automate the same flow:
 ```bash
 psm-memory hook recall
 psm-memory hook remember
+```
+
+Gemini CLI hooks are installed in `~/.gemini/settings.json` and use Gemini's JSON hook protocol:
+
+```bash
+psm-memory hook recall --agent gemini
+psm-memory hook remember --agent gemini
 ```
 
 The hook commands read agent JSON from stdin, use the local PSM model, and write to the shared PSM-owned memory store. They do not depend on PowerShell or repository source paths.
