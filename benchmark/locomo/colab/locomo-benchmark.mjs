@@ -181,9 +181,11 @@ function evaluate(options) {
           sample_id: sampleId,
           category: String(qa.category ?? "unknown"),
           question: String(qa.question ?? ""),
-          answer: String(qa.answer ?? ""),
+          gold_answer: String(qa.answer ?? ""),
           evidence,
           selected_ids: selectedIds,
+          answer_judgment: "not_evaluated",
+          score: null,
           hit_at_1: hitAt(evidence, selectedIds, 1),
           hit_at_k: hitAt(evidence, selectedIds, topK)
         });
@@ -401,6 +403,8 @@ function hitAt(evidence, selected, k) {
 function summarize(records, topK) {
   const denom = records.length || 1;
   return {
+    metric: "LOCOMO evidence retrieval only",
+    answer_correctness_evaluated: false,
     questions: records.length,
     hit_at_1: records.filter((record) => record.hit_at_1 === true).length / denom,
     [`hit_at_${topK}`]: records.filter((record) => record.hit_at_k === true).length / denom
