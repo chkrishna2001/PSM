@@ -214,9 +214,6 @@ async function answerEvaluate(options) {
   const judgeModel = stringOption(options, "judge-model", process.env.LOCOMO_JUDGE_MODEL || defaultOpenRouterModel);
   const baseUrl = stringOption(options, "base-url", process.env.OPENROUTER_BASE_URL || process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1");
   const apiKey = stringOption(options, "api-key", process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || "");
-  const psmModel = stringOption(options, "psm-model", process.env.PSM_MEMORY_MODEL || "/content/psm-memory-cache/psm-memory-qwen-1.5b-q4_k_m.gguf");
-  const psmContextSize = intOption(options, "psm-context-size", 4096);
-  const embeddingModel = stringOption(options, "embedding-model", defaultEmbeddingModel);
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is required. Set it in Colab before running answer-evaluate.");
 
   const existing = loadExistingAnswerResults(outPath);
@@ -224,23 +221,6 @@ async function answerEvaluate(options) {
   const records = [...existing.records];
   const samples = loadSamples(dataPath);
   const store = new MemoryStore(dbPath);
-  const service = new PsmService(
-    store,
-    new NodeLlamaRuntime({
-      modelPath: psmModel,
-      contextSize: psmContextSize,
-      gpu: "auto",
-      gpuLayers: "auto",
-      log: (message) => console.error(message)
-    }),
-    {
-      model: embeddingModel,
-      runtime: new TransformersEmbeddingRuntime({
-        model: embeddingModel,
-        cacheDir: "/content/psm-memory-cache/hf"
-      })
-    }
-  );
   let processedThisRun = 0;
 
   try {
@@ -261,9 +241,11 @@ async function answerEvaluate(options) {
           return records.length === 0 ? 1 : 0;
         }
 
-        const psmContext = await service.context({ prompt: contextPrompt(question, memories), userId, topK });
-        const contextItems = extractContextItems(psmContext);
-        const selectedIds = extractSelectedIds(psmContext);
+        const ranked = rankMemories(question, memories, topK);
+        const contextItems = renderRankedContextItems(ranked);
+        const selectedIds = contextItems.flatMap((item) => item.source_ids ?? []);
+        const hitAt1 = hitAt(evidence, selectedIds, 1);
+        const hitAtK = hitAt(evidence, selectedIds, topK);
         const generatedAnswer = cleanAnswer(await answerQuestion({ apiKey, baseUrl, answerModel }, question, contextItems));
         const judgment = await judgeAnswer({ apiKey, baseUrl, judgeModel }, question, String(qa.answer ?? ""), generatedAnswer);
 
@@ -274,6 +256,8 @@ async function answerEvaluate(options) {
           gold_answer: String(qa.answer ?? ""),
           evidence,
           selected_ids: selectedIds,
+          hit_at_1: hitAt1,
+          hit_at_k: hitAtK,
           psm_context_items: contextItems,
           generated_answer: generatedAnswer,
           judgment: judgment.correct ? "correct" : "incorrect",
@@ -381,6 +365,23 @@ function locomoDiaId(memory) {
   return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? "";
 }
 
+function renderRankedContextItems(memories) {
+  return memories.map((memory) => {
+    const table = typeof memory.table === "string" ? memory.table : "memory";
+    const sourceIds = evidenceIdsFromTags(parseTags(memory.tags));
+    return {
+      id: `${table}:${memory.id}`,
+      memory_id: memory.id,
+      table,
+      content: memory.content,
+      score: typeof memory.score === "number" ? memory.score : undefined,
+      source_ids: sourceIds,
+      saved_at: memory.created_at,
+      reason: "Selected by exact DB retrieval ranking."
+    };
+  }).filter((item) => typeof item.content === "string" && item.content.trim().length > 0);
+}
+
 function parseTags(value) {
   if (!value) return [];
   try {
@@ -394,6 +395,17 @@ function parseTags(value) {
 function tagValue(tags, key) {
   const prefix = `${key}:`;
   return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? "";
+}
+
+function evidenceIdsFromTags(tags) {
+  const ids = new Set();
+  const diaId = tagValue(tags, "locomo_dia_id");
+  if (diaId) ids.add(diaId);
+  for (const key of ["related_dia_ids", "locomo_related_dia_ids"]) {
+    const value = tagValue(tags, key);
+    for (const id of value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean)) ids.add(id);
+  }
+  return [...ids];
 }
 
 function hitAt(evidence, selected, k) {
@@ -473,17 +485,18 @@ async function answerQuestion(client, question, contextItems) {
   const context = contextItems.map((item, index) => {
     const table = typeof item.table === "string" ? item.table : "memory";
     const id = typeof item.id === "string" && item.id ? ` id=${item.id}` : "";
+    const sources = Array.isArray(item.source_ids) && item.source_ids.length ? ` sources=${item.source_ids.join(",")}` : "";
     const content = typeof item.content === "string" ? item.content : "";
-    return `[${index + 1}] [${table}]${id} ${content}`;
+    return `[${index + 1}] [${table}]${id}${sources} ${content}`;
   }).join("\n");
   const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
     {
       role: "system",
-      content: "Answer the user's LOCOMO benchmark question using only the provided retrieved memories. Return only the final answer, not analysis, reasoning, steps, citations, or explanations. If the memories do not contain the answer, return exactly: I do not know."
+      content: "Answer the LOCOMO benchmark question using only the retrieved memories. Return only the shortest final answer. Do not explain, cite, list memories, or mention uncertainty unless the answer is absent. If the memories do not contain the answer, return exactly: I do not know."
     },
     {
       role: "user",
-      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nFinal answer only:`
+      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nReturn only the answer text:`
     }
   ], 256, 0);
   return content.trim();
@@ -600,6 +613,8 @@ function summarizeAnswers(records, topK, answerModel, judgeModel) {
     metric: "LoCoMo LLM-as-judge answer accuracy",
     questions: records.length,
     answer_accuracy: answerAccuracy(records),
+    hit_at_1: records.filter((record) => record.hit_at_1 === true).length / (records.length || 1),
+    [`hit_at_${topK}`]: records.filter((record) => record.hit_at_k === true).length / (records.length || 1),
     top_k: topK,
     answer_model: answerModel,
     judge_model: judgeModel,
