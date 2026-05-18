@@ -1,6 +1,6 @@
 import { buildContextPlanPrompt, buildRecallPlanPrompt, buildStoragePrompt, buildStorageRepairPrompt } from "./prompts.js";
 import { parseRecallPlan, parseStorageDecision } from "./json.js";
-import { rankMemories } from "./ranking.js";
+import { hybridRankMemories } from "./ranking.js";
 import { MemoryStore } from "./store.js";
 import type { ContextItem, ContextRequest, EmbeddingRuntime, MemoryRecord, ModelRuntime, RankedMemory, RecallRequest, RememberRequest, WrittenMemoryRef } from "./types.js";
 
@@ -17,8 +17,13 @@ export class PsmService {
     const plan = parseRecallPlan(raw, request.prompt, topK);
     const recallTables = memoryTablesForRecall(plan.target_tables);
     const searchQuery = [...plan.ranking_hints, request.prompt].join(" ");
-    const memories = await this.contextCandidates(request.userId, searchQuery, recallTables, Math.max(100, plan.top_k * 10));
-    const ranked = rankMemories(searchQuery, memories, plan.top_k);
+    const candidates = await this.contextCandidates(request.userId, searchQuery, recallTables, Math.max(100, plan.top_k * 10));
+    const ranked = hybridRankMemories(searchQuery, candidates.memories, {
+      topK: plan.top_k,
+      vectorScores: candidates.vectorScores,
+      preferredTables: recallTables,
+      minScore: 0.15
+    });
     this.store.updateAccess(ranked);
     const contextItems = exactContextItems(ranked, plan.top_k, "Exact DB-backed memory context.");
     return {
@@ -43,8 +48,14 @@ export class PsmService {
     const raw = await this.runtime.generateJson(buildRecallPlanPrompt(request.question, topK), { temperature: 0, maxTokens: 256 });
     const plan = parseRecallPlan(raw, request.question, topK);
     const searchQuery = [...plan.ranking_hints, request.question].join(" ");
-    const memories = await this.contextCandidates(request.userId, searchQuery, memoryTablesForRecall(plan.target_tables), Math.max(100, plan.top_k * 10));
-    const ranked = rankMemories(searchQuery, memories, plan.top_k);
+    const recallTables = memoryTablesForRecall(plan.target_tables);
+    const candidates = await this.contextCandidates(request.userId, searchQuery, recallTables, Math.max(100, plan.top_k * 10));
+    const ranked = hybridRankMemories(searchQuery, candidates.memories, {
+      topK: plan.top_k,
+      vectorScores: candidates.vectorScores,
+      preferredTables: recallTables,
+      minScore: 0.15
+    });
     this.store.updateAccess(ranked);
     return {
       user_id: request.userId,
@@ -113,12 +124,15 @@ export class PsmService {
     }
   }
 
-  private async contextCandidates(userId: string, query: string, tables: MemoryRecord["table"][], limit: number): Promise<MemoryRecord[]> {
+  private async contextCandidates(userId: string, query: string, preferredTables: MemoryRecord["table"][], limit: number): Promise<{ memories: MemoryRecord[]; vectorScores: Map<string, number> }> {
+    const tables = allRecallTables();
+    const lexicalCandidates = this.store.selectMemories(userId, tables, limit);
     if (!this.embeddings) {
-      return this.store.selectMemories(userId, tables, limit);
+      return { memories: lexicalCandidates, vectorScores: new Map() };
     }
 
     const queryEmbedding = await this.embeddings.runtime.embed(query);
+    const vectorScores = new Map<string, number>();
     const scored = this.store.selectEmbeddingRows(userId, this.embeddings.model)
       .map((row) => {
         const table = String(row.memory_table) as MemoryRecord["table"];
@@ -136,9 +150,12 @@ export class PsmService {
       .slice(0, limit);
 
     const memories = scored
-      .map((row) => this.store.getMemory(row.table, row.id))
+      .map((row) => {
+        vectorScores.set(`${row.table}:${row.id}`, row.score);
+        return this.store.getMemory(row.table, row.id);
+      })
       .filter((memory): memory is MemoryRecord => memory !== undefined);
-    return memories.length > 0 ? memories : this.store.selectMemories(userId, tables, limit);
+    return { memories: mergeMemories(lexicalCandidates, memories), vectorScores };
   }
 }
 
@@ -221,4 +238,22 @@ function cosineSimilarity(a: number[], b: number[]): number {
 function memoryTablesForRecall(tables: string[]): MemoryRecord["table"][] {
   const filtered = tables.filter((table): table is MemoryRecord["table"] => table === "episodic" || table === "semantic" || table === "archival");
   return filtered.length > 0 ? filtered : ["semantic", "episodic"];
+}
+
+function allRecallTables(): MemoryRecord["table"][] {
+  return ["semantic", "episodic", "archival"];
+}
+
+function mergeMemories(...groups: MemoryRecord[][]): MemoryRecord[] {
+  const seen = new Set<string>();
+  const result: MemoryRecord[] = [];
+  for (const group of groups) {
+    for (const memory of group) {
+      const key = `${memory.table}:${memory.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(memory);
+    }
+  }
+  return result;
 }

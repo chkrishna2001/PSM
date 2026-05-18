@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, type ModelRuntime } from "@psm-memory/sdk";
+import { hybridRankMemories, MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, type ModelRuntime } from "@psm-memory/sdk";
 import { run as runCli } from "@psm-memory/cli";
 import { createPsmHooks } from "@psm-memory/pi-plugin";
 
@@ -207,6 +207,30 @@ test("ranking returns relevant memories first", () => {
   assert.equal(ranked[0].id, "1");
 });
 
+test("hybrid ranking boosts exact factual terms and numbers", () => {
+  const ranked = hybridRankMemories("When did Melanie paint a sunrise?", [
+    {
+      id: "wrong",
+      user_id: "u",
+      table: "episodic",
+      content: "Melanie experienced a meteor shower during a camping trip last year.",
+      tags: JSON.stringify(["camping", "memory"]),
+      confidence: 0.95,
+      strength: 0.9
+    },
+    {
+      id: "right",
+      user_id: "u",
+      table: "episodic",
+      content: "Melanie shared a painting of a sunrise from 2022 that holds special meaning to her.",
+      tags: JSON.stringify(["painting", "locomo_speaker:Melanie", "locomo_dia_id:D1:12"]),
+      confidence: 0.9,
+      strength: 0.85
+    }
+  ], { topK: 1 });
+  assert.equal(ranked[0].id, "right");
+});
+
 test("SQLite store applies episodic decisions", () => {
   const store = new MemoryStore(`dist/test-core-${Date.now()}.db`);
   store.initializeSchema();
@@ -367,7 +391,7 @@ test("service context uses exact DB rows instead of generated memory text", asyn
   store.close();
   const rows = result.memory_context as Array<Record<string, unknown>>;
   const items = result.context_items as Array<Record<string, unknown>>;
-  assert.equal(rows.length, 1);
+  assert.ok(rows.length >= 1);
   assert.equal(rows[0].table, "episodic");
   assert.equal(rows[0].source_id, "session-3");
   assert.equal(items[0].memory_id, rows[0].id);
@@ -375,6 +399,37 @@ test("service context uses exact DB rows instead of generated memory text", asyn
   assert.ok(/resolved_time=2026-05-15/.test(String(items[0].content)));
   assert.ok(!/Terraform/.test(String(items[0].content)));
   assert.equal((result.grounding as Record<string, unknown>).generated_text_allowed, false);
+});
+
+test("service context treats recall plan tables as boosts instead of hard filters", async () => {
+  const dbPath = `dist/test-context-hybrid-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  store.insertEpisodic("u1", "Melanie shared a painting of a sunrise from 2022 that holds special meaning to her.", {
+    tags: ["painting", "locomo_speaker:Melanie", "locomo_dia_id:D1:12"]
+  });
+  store.insertSemantic("u1", "Melanie enjoys community events and meaningful outdoor memories.");
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "semantic_profile_recall",
+          target_tables: ["semantic"],
+          filters: {},
+          ranking_hints: ["Melanie sunrise painting"],
+          top_k: 3
+        });
+      }
+      return "{}";
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "When did Melanie paint a sunrise?", topK: 3 });
+  store.close();
+  const rows = result.memory_context as Array<Record<string, unknown>>;
+  assert.equal(rows[0].table, "episodic");
+  assert.ok(String(rows[0].content).includes("2022"));
 });
 
 test("service remember does not write if repair also returns invalid JSON", async () => {
