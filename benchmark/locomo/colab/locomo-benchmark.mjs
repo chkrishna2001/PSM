@@ -389,6 +389,11 @@ function parseTags(value) {
   }
 }
 
+function tagValue(tags, key) {
+  const prefix = `${key}:`;
+  return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? "";
+}
+
 function hitAt(evidence, selected, k) {
   return evidence.some((id) => selected.slice(0, k).includes(id));
 }
