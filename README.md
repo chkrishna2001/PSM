@@ -50,10 +50,10 @@ Implemented capabilities:
 - Text embeddings with Hugging Face Transformers.
 - Vector-backed candidate retrieval with lexical fallback.
 - PSM-authored recall for humans and agents.
-- Exact DB-backed context injection; retrieved memories are copied from stored rows instead of generated free-form.
+- Grounded agent context rendering; PSM can turn retrieved rows into concise context notes, and SDK validation falls back to exact stored statements if rendering is invalid.
 - JSON repair retry when PSM returns malformed remember output.
 - Codex and Claude hook installers.
-- Local hook audit logs and review reports.
+- Local hook audit logs, review reports, and opt-in full PSM model I/O traces.
 
 ## Install
 
@@ -62,6 +62,8 @@ After publishing, install the CLI globally:
 ```bash
 npm install -g @psm-memory/cli
 ```
+
+Install only the CLI for normal use. The CLI declares `@psm-memory/sdk` as a dependency, so npm installs the SDK automatically. You do not need to install both packages unless you are testing unpublished local tarballs.
 
 Global install runs setup. When run from an interactive terminal, setup asks for the shared memory directory, local user id, recall count, embedding settings, and daemon settings. Press Enter to accept the defaults. The same setup can be rerun later:
 
@@ -89,6 +91,12 @@ To skip install-time setup entirely:
 ```bash
 PSM_MEMORY_SKIP_SETUP=1 npm install -g @psm-memory/cli
 ```
+
+Package roles:
+
+- `@psm-memory/cli`: install this for the `psm-memory` command and agent hooks. It pulls the SDK transitively.
+- `@psm-memory/pi-plugin`: install this when embedding PSM Memory in another agent/plugin runtime. It pulls the SDK transitively.
+- `@psm-memory/sdk`: install this directly only when building a custom integration against the SDK APIs.
 
 ## Basic Usage
 
@@ -167,6 +175,18 @@ psm-memory hook remember --agent gemini
 
 The hook commands read agent JSON from stdin, use the local PSM model, and write to the shared PSM-owned memory store. They do not depend on PowerShell or repository source paths.
 
+The current retrieval path for hook context is:
+
+```text
+agent/user prompt
+-> PSM creates a retrieval plan
+-> SDK reads candidate rows from episodic, semantic, archival, memory_facts, and embeddings when enabled
+-> SDK ranks candidates with hybrid lexical/vector scoring
+-> PSM renders grounded context notes from the selected rows
+-> SDK validates the rendered notes against source rows and falls back to complete stored statements if needed
+-> agent receives the private PSM Memory Context block
+```
+
 ## Review Logs
 
 PSM runs automatically during agent sessions, so users need a way to inspect what happened afterward.
@@ -188,6 +208,22 @@ The review report includes:
 
 No data is uploaded. Users can choose what, if anything, to share.
 
+## Full PSM I/O Tracing
+
+For debugging or collecting feedback from trusted testers, enable full local tracing of every prompt sent to PSM and every raw model response:
+
+```bash
+psm-memory setup --trace-psm --trace-path C:\psm-memory\psm-model-io.jsonl
+```
+
+You can also enable it per shell:
+
+```bash
+PSM_MEMORY_TRACE=1 PSM_MEMORY_TRACE_PATH=./psm-model-io.jsonl psm-memory recall "What should I do?"
+```
+
+Trace records are JSONL and include the operation name, generation options, full prompt, raw output, errors, and timing. The file is local only and is not uploaded automatically. It contains private prompts, memories, and assistant responses, so testers should share it only when they explicitly choose to.
+
 ## Why Vector Search Is Still Used
 
 The article argues that memory is more than vector search. That does not mean vectors are useless.
@@ -197,10 +233,10 @@ PSM Memory uses vectors as candidate retrieval, not as the memory system itself:
 ```text
 embedding search -> candidate memories
 PSM recall plan  -> target tables and hints
-exact DB rows    -> final concise context
+PSM render        -> grounded agent context
 ```
 
-Vectors help find semantically similar memories. PSM decides which memory rows matter, but injected context is copied from exact stored rows so recall cannot invent new memory facts.
+Vectors help find semantically similar memories. PSM decides which memory rows matter and can render concise context notes from those rows. The SDK validates rendered context against selected DB rows and falls back to complete stored statements if PSM returns invalid or ungrounded output.
 
 ## Local-First Privacy Model
 
@@ -209,6 +245,7 @@ PSM Memory is designed so user content stays outside model weights.
 - PSM weights are shared memory skill.
 - SQLite memory stores are local and user-specific.
 - Hook audit logs are local JSONL files.
+- Full model I/O traces are local and opt-in.
 - No upload path is implemented.
 - Training feedback should be exported only by explicit user action.
 

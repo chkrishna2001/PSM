@@ -9,4 +9,5 @@ export * from "./ranking.js";
 export * from "./service.js";
 export * from "./store.js";
 export * from "./temporal.js";
+export * from "./trace.js";
 export * from "./types.js";

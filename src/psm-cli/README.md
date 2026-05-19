@@ -9,7 +9,15 @@ psm-memory recall "How should I answer?"
 psm-memory config --path
 ```
 
-`npm install -g @psm-memory/cli` runs setup. In an interactive terminal it asks for the shared memory directory, local user id, recall count, embedding settings, and daemon settings. The answers are stored in an editable `config.json`; run `psm-memory config --path` to locate it.
+Install globally:
+
+```bash
+npm install -g @psm-memory/cli
+```
+
+Install only the CLI for normal use. npm installs `@psm-memory/sdk` automatically because it is a CLI dependency. A separate SDK install is only needed for custom SDK integrations or unpublished local-tarball testing.
+
+Global install runs setup. In an interactive terminal it asks for the shared memory directory, local user id, recall count, embedding settings, daemon settings, and optional tracing settings. The answers are stored in an editable `config.json`; run `psm-memory config --path` to locate it.
 
 When daemon autostart is enabled, `remember` and `recall` start a background daemon on first use. The daemon uses an OS-assigned local port, records it in `daemon.json` in the memory directory, and shuts down after the configured idle timeout.
 
@@ -47,7 +55,21 @@ psm-memory hook remember --agent gemini
 
 The hook commands read agent hook JSON from stdin, use the shared PSM-owned memory store, and do not depend on PowerShell or repository source paths.
 
-Recall/context injected into agents is grounded in exact stored DB rows. PSM may plan retrieval and ranking, but it does not generate new memory facts for injection.
+Recall/context injected into agents is grounded in stored DB rows. PSM plans retrieval, SDK ranks DB/fact candidates, PSM renders concise context notes from selected rows, and SDK validation falls back to complete stored statements if rendering is invalid or ungrounded.
+
+Enable full local PSM model I/O tracing for debugging:
+
+```bash
+psm-memory setup --trace-psm --trace-path C:\psm-memory\psm-model-io.jsonl
+```
+
+Or per shell:
+
+```bash
+PSM_MEMORY_TRACE=1 PSM_MEMORY_TRACE_PATH=./psm-model-io.jsonl psm-memory recall "What should I do?"
+```
+
+Trace files contain full prompts, raw model outputs, errors, and timings. They are local only and can include private data.
 
 The CLI downloads the default PSM Memory Qwen 1.5B Q4_K_M GGUF model during npm installation.
 

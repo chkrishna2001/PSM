@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hybridRankMemories, MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, type ModelRuntime } from "@psm-memory/sdk";
+import { hybridRankMemories, MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, TraceModelRuntime, type ModelRuntime } from "@psm-memory/sdk";
 import { run as runCli } from "@psm-memory/cli";
 import { createPsmHooks } from "@psm-memory/pi-plugin";
 
@@ -199,19 +199,22 @@ test("CLI setup writes editable config with daemon settings", async () => {
   process.env.LOCALAPPDATA = localAppData;
   try {
     const memoryDir = `${localAppData}/custom-memory`;
-    const result = await captureCli(["setup", "--memory-dir", memoryDir, "--user", "test-user", "--daemon", "--daemon-idle-ms", "900000", "--daemon-startup-ms", "60000", "--skip-model", "--skip-embeddings", "--yes", "--pretty"]);
+    const tracePath = `${localAppData}/psm-model-io.jsonl`;
+    const result = await captureCli(["setup", "--memory-dir", memoryDir, "--user", "test-user", "--daemon", "--daemon-idle-ms", "900000", "--daemon-startup-ms", "60000", "--trace-psm", "--trace-path", tracePath, "--skip-model", "--skip-embeddings", "--yes", "--pretty"]);
     assert.equal(result.code, 0, result.stderr);
     const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
     assert.ok(String(parsed.memory_dir).endsWith("custom-memory"));
     assert.ok(String(parsed.config).endsWith("config.json"));
     const configResult = await captureCli(["config"]);
     assert.equal(configResult.code, 0, configResult.stderr);
-    const configOutput = JSON.parse(configResult.stdout) as { config: { userId: string; daemon: { enabled: boolean; autostart: boolean; idleTimeoutMs: number; startupTimeoutMs: number } } };
+    const configOutput = JSON.parse(configResult.stdout) as { config: { userId: string; daemon: { enabled: boolean; autostart: boolean; idleTimeoutMs: number; startupTimeoutMs: number }; trace: { enabled: boolean; path: string } } };
     assert.equal(configOutput.config.userId, "test-user");
     assert.equal(configOutput.config.daemon.enabled, true);
     assert.equal(configOutput.config.daemon.autostart, true);
     assert.equal(configOutput.config.daemon.idleTimeoutMs, 900000);
     assert.equal(configOutput.config.daemon.startupTimeoutMs, 60000);
+    assert.equal(configOutput.config.trace.enabled, true);
+    assert.equal(configOutput.config.trace.path, tracePath);
   } finally {
     if (originalLocalAppData === undefined) {
       delete process.env.LOCALAPPDATA;
@@ -276,6 +279,27 @@ test("action routing maps conflicts and semantic promotion", () => {
   assert.equal(routeForAction("flag_conflict"), "conflict_log_and_hold");
   assert.equal(routeForAction("promote_semantic"), "semantic_upsert");
   assert.equal(routeForAction("store_episodic"), "episodic_insert");
+});
+
+test("trace runtime logs full PSM prompt and output locally", async () => {
+  const path = `dist/test-psm-trace-${Date.now()}.jsonl`;
+  const runtime = new TraceModelRuntime({
+    path,
+    source: "test",
+    runtime: {
+      async generateJson(): Promise<string> {
+        return JSON.stringify({ ok: true });
+      }
+    }
+  });
+  const output = await runtime.generateJson('{"operation":"context_plan","prompt":"hello"}', { maxTokens: 12 });
+  assert.equal(output, JSON.stringify({ ok: true }));
+  const { readFileSync } = await import("node:fs");
+  const entry = JSON.parse(readFileSync(path, "utf8").trim()) as Record<string, unknown>;
+  assert.equal(entry.source, "test");
+  assert.equal(entry.operation, "context_plan");
+  assert.equal(entry.prompt, '{"operation":"context_plan","prompt":"hello"}');
+  assert.equal(entry.output, JSON.stringify({ ok: true }));
 });
 
 test("ranking returns relevant memories first", () => {

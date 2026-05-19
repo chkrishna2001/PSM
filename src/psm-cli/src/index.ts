@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TraceModelRuntime, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
 import { callDaemon, startDaemon } from "./daemon.js";
 import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
@@ -278,12 +278,17 @@ export async function run(argv: string[]): Promise<number> {
 function createRuntime(options: Record<string, string | boolean>): ModelRuntime {
   const modelPath = resolveModelPath();
   const config = readPsmConfig();
-  return new NodeLlamaRuntime({
+  const runtime = new NodeLlamaRuntime({
     modelPath,
     contextSize: intOption(options, "context-size", config.runtime.contextSize),
     gpu: stringOption(options, "gpu", config.runtime.gpu) as "auto",
     gpuLayers: stringOption(options, "gpu-layers", config.runtime.gpuLayers) as "auto"
   });
+  return traceEnabled(options, config) ? new TraceModelRuntime({
+    runtime,
+    path: tracePath(options, config),
+    source: "psm-cli"
+  }) : runtime;
 }
 
 function createService(store: MemoryStore, runtime: ModelRuntime, options: Record<string, string | boolean>): PsmService {
@@ -303,6 +308,16 @@ function createEmbeddingRuntime(options: Record<string, string | boolean>): { mo
 
 function modelCacheBaseDir(): string {
   return process.env.PSM_MEMORY_HOME ?? join(dirname(defaultModelPath()));
+}
+
+function traceEnabled(options: Record<string, string | boolean>, config = readPsmConfig()): boolean {
+  if (boolOption(options, "trace-psm")) return true;
+  if (process.env.PSM_MEMORY_TRACE === "1" || process.env.PSM_MEMORY_TRACE === "true") return true;
+  return config.trace.enabled;
+}
+
+function tracePath(options: Record<string, string | boolean>, config = readPsmConfig()): string {
+  return stringOption(options, "trace-path", process.env.PSM_MEMORY_TRACE_PATH ?? config.trace.path);
 }
 
 async function runHookRecall(options: Record<string, string | boolean>, pretty: boolean): Promise<void> {
@@ -1146,6 +1161,11 @@ async function resolveSetupConfig(options: Record<string, string | boolean>, set
       autostart: boolOption(options, "daemon") || current.daemon.autostart,
       idleTimeoutMs: intOption(options, "daemon-idle-ms", current.daemon.idleTimeoutMs),
       startupTimeoutMs: intOption(options, "daemon-startup-ms", current.daemon.startupTimeoutMs)
+    },
+    trace: {
+      ...current.trace,
+      enabled: boolOption(options, "trace-psm") || current.trace.enabled,
+      path: stringOption(options, "trace-path", current.trace.path)
     }
   };
 
@@ -1162,6 +1182,10 @@ async function resolveSetupConfig(options: Record<string, string | boolean>, set
     daemon: {
       ...base.daemon,
       ...(answers.daemon ?? {})
+    },
+    trace: {
+      ...base.trace,
+      ...(answers.trace ?? {})
     }
   };
 }
@@ -1190,6 +1214,10 @@ async function promptForConfig(current: PsmConfig, defaults: PsmConfig): Promise
     const startupTimeoutMs = daemonEnabled
       ? Number(await ask(rl, "Daemon startup timeout ms", String(current.daemon.startupTimeoutMs || defaults.daemon.startupTimeoutMs)))
       : current.daemon.startupTimeoutMs;
+    const traceEnabled = yesNo(await ask(rl, "Enable full local PSM model I/O trace", current.trace.enabled ? "yes" : "no"), current.trace.enabled);
+    const tracePath = traceEnabled
+      ? await ask(rl, "PSM trace JSONL path", current.trace.path || defaults.trace.path)
+      : current.trace.path;
 
     return {
       memoryDir,
@@ -1205,6 +1233,10 @@ async function promptForConfig(current: PsmConfig, defaults: PsmConfig): Promise
         autostart: daemonAutostart,
         idleTimeoutMs: Number.isInteger(idleTimeoutMs) && idleTimeoutMs > 0 ? idleTimeoutMs : current.daemon.idleTimeoutMs,
         startupTimeoutMs: Number.isInteger(startupTimeoutMs) && startupTimeoutMs > 0 ? startupTimeoutMs : current.daemon.startupTimeoutMs
+      },
+      trace: {
+        enabled: traceEnabled,
+        path: tracePath
       }
     };
   } finally {
@@ -1306,6 +1338,8 @@ function advancedHelpText(): string {
   --daemon                Enable daemon autostart config during setup.
   --daemon-idle-ms <n>    Persist daemon idle shutdown timeout during setup.
   --daemon-startup-ms <n> Persist daemon startup wait timeout during setup.
+  --trace-psm             Enable full local PSM model I/O JSONL tracing.
+  --trace-path <path>     Write PSM model I/O traces to this JSONL file.
   setup --yes             Accept defaults without prompting.
   setup --skip-model      Skip PSM model download during setup.
   setup --skip-embeddings Skip embedding model preparation during setup.

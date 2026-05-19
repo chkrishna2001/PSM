@@ -22,6 +22,11 @@ export interface PsmEmbeddingConfig {
   model: string;
 }
 
+export interface PsmTraceConfig {
+  enabled: boolean;
+  path: string;
+}
+
 export interface PsmConfig {
   memoryDir: string;
   userId: string;
@@ -29,6 +34,7 @@ export interface PsmConfig {
   embeddings: PsmEmbeddingConfig;
   runtime: PsmRuntimeConfig;
   daemon: PsmDaemonConfig;
+  trace: PsmTraceConfig;
 }
 
 export function defaultPsmMemoryDir(): string {
@@ -73,6 +79,10 @@ export function defaultPsmConfig(): PsmConfig {
       autostart: false,
       idleTimeoutMs: 900_000,
       startupTimeoutMs: 60_000
+    },
+    trace: {
+      enabled: false,
+      path: join(defaultPsmMemoryDir(), "psm-model-io.jsonl")
     }
   };
 }
@@ -87,6 +97,7 @@ export function readPsmConfig(): PsmConfig {
     const embeddings = isRecord(parsed.embeddings) ? parsed.embeddings : {};
     const runtime = isRecord(parsed.runtime) ? parsed.runtime : {};
     const daemon = isRecord(parsed.daemon) ? parsed.daemon : {};
+    const trace = isRecord(parsed.trace) ? parsed.trace : {};
     return {
       memoryDir: stringValue(parsed.memoryDir, defaults.memoryDir),
       userId: stringValue(parsed.userId, defaults.userId),
@@ -106,6 +117,10 @@ export function readPsmConfig(): PsmConfig {
         autostart: booleanValue(daemon.autostart, defaults.daemon.autostart),
         idleTimeoutMs: positiveIntValue(daemon.idleTimeoutMs, defaults.daemon.idleTimeoutMs),
         startupTimeoutMs: positiveIntValue(daemon.startupTimeoutMs, defaults.daemon.startupTimeoutMs)
+      },
+      trace: {
+        enabled: booleanValue(trace.enabled, defaults.trace.enabled),
+        path: stringValue(trace.path, join(stringValue(parsed.memoryDir, defaults.memoryDir), "psm-model-io.jsonl"))
       }
     };
   } catch {
@@ -138,6 +153,10 @@ export function mergePsmConfig(config: Partial<PsmConfig>): PsmConfig {
     daemon: {
       ...current.daemon,
       ...(config.daemon ?? {})
+    },
+    trace: {
+      ...current.trace,
+      ...(config.trace ?? {})
     }
   };
 }

@@ -2,7 +2,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { defaultEmbeddingModel, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, TransformersEmbeddingRuntime, type EmbeddingRuntime } from "@psm-memory/sdk";
+import { defaultEmbeddingModel, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, TraceModelRuntime, TransformersEmbeddingRuntime, type EmbeddingRuntime, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { defaultModelPath, resolveModelPath } from "./model.js";
 
 export interface DaemonRequest {
@@ -26,12 +26,7 @@ export async function startDaemon(): Promise<void> {
   const store = new MemoryStore(dbPath);
   store.initializeSchema();
 
-  const runtime = new NodeLlamaRuntime({
-    modelPath: resolveModelPath(),
-    contextSize: config.runtime.contextSize,
-    gpu: config.runtime.gpu as "auto",
-    gpuLayers: config.runtime.gpuLayers as "auto"
-  });
+  const runtime = createRuntime(config);
   const service = new PsmService(store, runtime, config.embeddings.enabled ? createEmbeddingRuntime() : undefined);
   let lastRequestAt = Date.now();
 
@@ -166,6 +161,29 @@ function createEmbeddingRuntime(): { model: string; runtime: EmbeddingRuntime } 
       cacheDir: join(dirname(defaultModelPath()), "hf")
     })
   };
+}
+
+function createRuntime(config: PsmConfig): ModelRuntime {
+  const runtime = new NodeLlamaRuntime({
+    modelPath: resolveModelPath(),
+    contextSize: config.runtime.contextSize,
+    gpu: config.runtime.gpu as "auto",
+    gpuLayers: config.runtime.gpuLayers as "auto"
+  });
+  return traceEnabled(config) ? new TraceModelRuntime({
+    runtime,
+    path: tracePath(config),
+    source: "psm-daemon"
+  }) : runtime;
+}
+
+function traceEnabled(config: PsmConfig): boolean {
+  if (process.env.PSM_MEMORY_TRACE === "1" || process.env.PSM_MEMORY_TRACE === "true") return true;
+  return config.trace.enabled;
+}
+
+function tracePath(config: PsmConfig): string {
+  return process.env.PSM_MEMORY_TRACE_PATH ?? config.trace.path;
 }
 
 function daemonRequestRaw(state: DaemonState, method: "GET" | "POST", path: string, body?: unknown): Promise<Record<string, unknown>> {
