@@ -35,6 +35,8 @@ interface Options {
   baseUrl: string;
   resume: boolean;
   checkpointEvery: number;
+  requestDelayMs: number;
+  requestMaxRetries: number;
   debugOut: string;
 }
 
@@ -299,25 +301,58 @@ async function judgeAnswer(options: Options, question: string, goldAnswer: strin
 }
 
 async function chatCompletion(options: Options, model: string, messages: Array<{ role: string; content: string }>, maxTokens: number, temperature: number): Promise<string> {
-  const response = await fetch(`${options.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "authorization": `Bearer ${options.apiKey}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens
-    })
-  });
-  if (!response.ok) {
+  let lastError = "";
+  for (let attempt = 0; attempt <= options.requestMaxRetries; attempt++) {
+    if (options.requestDelayMs > 0) await sleep(options.requestDelayMs);
+    const response = await fetch(`${options.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${options.apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens
+      })
+    });
+    if (response.ok) {
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      return data.choices?.[0]?.message?.content ?? "";
+    }
     const body = await response.text();
-    throw new Error(`Chat completion failed ${response.status}: ${body}`);
+    lastError = `Chat completion failed ${response.status}: ${body}`;
+    if (response.status !== 429 || attempt >= options.requestMaxRetries) break;
+    const waitMs = rateLimitWaitMs(response, body, attempt);
+    process.stderr.write(`OpenRouter rate limited; retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${options.requestMaxRetries})\n`);
+    await sleep(waitMs);
   }
-  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content ?? "";
+  throw new Error(lastError);
+}
+
+function rateLimitWaitMs(response: any, body: string, attempt: number): number {
+  const retryAfter = Number(response.headers?.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return clamp(retryAfter * 1000, 1000, 120000);
+  try {
+    const parsed = JSON.parse(body) as { error?: { metadata?: { headers?: Record<string, string> } } };
+    const reset = Number(parsed.error?.metadata?.headers?.["X-RateLimit-Reset"]);
+    if (Number.isFinite(reset) && reset > 0) {
+      const wait = reset - Date.now() + 1000;
+      if (wait > 0) return clamp(wait, 1000, 120000);
+    }
+  } catch {
+    // Fall through to exponential backoff.
+  }
+  return clamp(3000 * 2 ** attempt, 3000, 120000);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseJudgeJson(value: string): { correct: boolean; reasoning: string } {
@@ -639,6 +674,8 @@ function parseOptions(argv: string[]): Options {
     baseUrl: stringOption(raw, "base-url", process.env.OPENROUTER_BASE_URL || process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1"),
     resume: raw.resume !== false && raw.resume !== "false",
     checkpointEvery: intOption(raw, "checkpoint-every", 10),
+    requestDelayMs: intOption(raw, "request-delay-ms", intOption(raw, "openrouter-delay-ms", Number(process.env.LOCOMO_REQUEST_DELAY_MS ?? 1500))),
+    requestMaxRetries: intOption(raw, "request-max-retries", Number(process.env.LOCOMO_REQUEST_MAX_RETRIES ?? 6)),
     debugOut: stringOption(raw, "debug-out", defaultDebugOut(stringOption(raw, "out", "benchmark/locomo/results/locomo-answer-results.json")))
   };
 }

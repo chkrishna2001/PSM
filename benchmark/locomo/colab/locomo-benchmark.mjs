@@ -211,6 +211,8 @@ async function answerEvaluate(options) {
   const answerContextK = intOption(options, "answer-context-k", Math.min(5, topK));
   const limit = intOption(options, "limit", 0);
   const checkpointEvery = intOption(options, "checkpoint-every", 10);
+  const requestDelayMs = intOption(options, "request-delay-ms", intOption(options, "openrouter-delay-ms", Number(process.env.LOCOMO_REQUEST_DELAY_MS ?? 1500)));
+  const requestMaxRetries = intOption(options, "request-max-retries", Number(process.env.LOCOMO_REQUEST_MAX_RETRIES ?? 6));
   const answerModel = stringOption(options, "answer-model", process.env.LOCOMO_ANSWER_MODEL || defaultOpenRouterModel);
   const judgeModel = stringOption(options, "judge-model", process.env.LOCOMO_JUDGE_MODEL || defaultOpenRouterModel);
   const baseUrl = stringOption(options, "base-url", process.env.OPENROUTER_BASE_URL || process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1");
@@ -247,13 +249,14 @@ async function answerEvaluate(options) {
         const selectedIds = contextItems.flatMap((item) => item.source_ids ?? []);
         const hitAt1 = hitAt(evidence, selectedIds, 1);
         const hitAtK = hitAt(evidence, selectedIds, topK);
-        const extraction = await extractEvidence({ apiKey, baseUrl, answerModel }, question, contextItems);
+        const client = { apiKey, baseUrl, answerModel, judgeModel, requestDelayMs, requestMaxRetries };
+        const extraction = await extractEvidence(client, question, contextItems);
         const answerContextItems = selectAnswerContextItems(contextItems, extraction.selectedIndexes, answerContextK);
         const answerContextSelectedIds = answerContextItems.flatMap((item) => item.source_ids ?? []);
         const answerContextMemoryIds = answerContextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
         const answerContextHitAtK = hitAt(evidence, answerContextSelectedIds, answerContextK);
-        const generatedAnswer = cleanAnswer(await answerQuestion({ apiKey, baseUrl, answerModel }, question, extraction.evidence, answerContextItems));
-        const judgment = await judgeAnswer({ apiKey, baseUrl, judgeModel }, question, String(qa.answer ?? ""), generatedAnswer);
+        const generatedAnswer = cleanAnswer(await answerQuestion(client, question, extraction.evidence, answerContextItems));
+        const judgment = await judgeAnswer(client, question, String(qa.answer ?? ""), generatedAnswer);
 
         records.push({
           sample_id: sampleId,
@@ -506,7 +509,7 @@ async function extractEvidence(client, question, contextItems) {
       role: "user",
       content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nJSON only:`
     }
-  ], 220, 0);
+  ], 220, 0, client.requestDelayMs, client.requestMaxRetries);
   return parseEvidenceExtraction(content);
 }
 
@@ -522,7 +525,7 @@ async function answerQuestion(client, question, extractedEvidence, contextItems)
       role: "user",
       content: `Extracted evidence:\n${evidence}\n\nRetrieved memories:\n${context}\n\nQuestion: ${question}\n\nFinal answer only:`
     }
-  ], 128, 0);
+  ], 128, 0, client.requestDelayMs, client.requestMaxRetries);
   return content.trim();
 }
 
@@ -614,7 +617,7 @@ async function judgeAnswer(client, question, goldAnswer, generatedAnswer) {
       role: "user",
       content: `Question: ${question}\nGold answer: ${goldAnswer}\nGenerated answer: ${generatedAnswer}`
     }
-  ], 160, 0);
+  ], 160, 0, client.requestDelayMs, client.requestMaxRetries);
   const parsed = parseJudgeJson(content);
   return {
     correct: parsed.correct,
@@ -622,20 +625,54 @@ async function judgeAnswer(client, question, goldAnswer, generatedAnswer) {
   };
 }
 
-async function chatCompletion(apiKey, baseUrl, model, messages, maxTokens, temperature) {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "authorization": `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens })
-  });
-  if (!response.ok) {
-    throw new Error(`Chat completion failed ${response.status}: ${await response.text()}`);
+async function chatCompletion(apiKey, baseUrl, model, messages, maxTokens, temperature, requestDelayMs = 1500, requestMaxRetries = 6) {
+  let lastError = "";
+  for (let attempt = 0; attempt <= requestMaxRetries; attempt++) {
+    if (requestDelayMs > 0) await sleep(requestDelayMs);
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content ?? "";
+    }
+    const body = await response.text();
+    lastError = `Chat completion failed ${response.status}: ${body}`;
+    if (response.status !== 429 || attempt >= requestMaxRetries) break;
+    const waitMs = rateLimitWaitMs(response, body, attempt);
+    console.error(`OpenRouter rate limited; retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${requestMaxRetries})`);
+    await sleep(waitMs);
   }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? "";
+  throw new Error(lastError);
+}
+
+function rateLimitWaitMs(response, body, attempt) {
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return clamp(retryAfter * 1000, 1000, 120000);
+  try {
+    const parsed = JSON.parse(body);
+    const reset = Number(parsed.error?.metadata?.headers?.["X-RateLimit-Reset"]);
+    if (Number.isFinite(reset) && reset > 0) {
+      const wait = reset - Date.now() + 1000;
+      if (wait > 0) return clamp(wait, 1000, 120000);
+    }
+  } catch {
+    // Fall through to exponential backoff.
+  }
+  return clamp(3000 * 2 ** attempt, 3000, 120000);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseJudgeJson(value) {
