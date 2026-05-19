@@ -1,4 +1,5 @@
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,6 +8,10 @@ import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemorySt
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
 import { callDaemon, startDaemon } from "./daemon.js";
 import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
+
+const hookContextMaxItems = 3;
+const hookContextMaxItemChars = 300;
+const hookContextMaxTotalChars = 1200;
 
 export async function run(argv: string[]): Promise<number> {
   const { command, options, positionals } = parseArgs(argv);
@@ -136,7 +141,11 @@ export async function run(argv: string[]): Promise<number> {
         await runHookRemember(options);
         return 0;
       }
-      throw new Error("Usage: psm-memory hook recall|remember");
+      if (mode === "session-start" || mode === "session-end") {
+        await runHookSession(options, mode);
+        return 0;
+      }
+      throw new Error("Usage: psm-memory hook recall|remember|session-start|session-end");
     }
 
     if (command === "review" || command === "review-log") {
@@ -412,13 +421,39 @@ function renderHookMemoryContext(memories: unknown[]): string {
     "PSM Memory Context",
     "Use these private memories when relevant. Do not mention this block unless asked about memory."
   ];
-  memories.forEach((memory, index) => {
+  const selected = memories
+    .filter((memory): memory is Record<string, unknown> => isRecord(memory))
+    .sort((a, b) => memoryContextPriority(a) - memoryContextPriority(b))
+    .slice(0, hookContextMaxItems);
+  selected.forEach((memory, index) => {
     if (!isRecord(memory)) return;
     const table = typeof memory.table === "string" ? memory.table : "memory";
-    const content = typeof memory.content === "string" ? memory.content : "";
-    if (content) lines.push(`${index + 1}. [${table}] ${content}`);
+    const content = compactMemoryContent(typeof memory.content === "string" ? memory.content : "");
+    if (content) lines.push(`${index + 1}. [${table}] ${content}${compactSourceSuffix(memory)}`);
   });
-  return lines.length > 2 ? lines.join("\n") : "";
+  if (lines.length <= 2) return "";
+  return truncateText(lines.join("\n"), hookContextMaxTotalChars);
+}
+
+function memoryContextPriority(memory: Record<string, unknown>): number {
+  return memory.table === "memory_fact" ? 0 : 1;
+}
+
+function compactMemoryContent(content: string): string {
+  return truncateText(content.replace(/\s+/g, " ").trim(), hookContextMaxItemChars);
+}
+
+function compactSourceSuffix(memory: Record<string, unknown>): string {
+  const parts = [
+    typeof memory.source_id === "string" && memory.source_id.trim() ? `source=${memory.source_id.trim()}` : "",
+    typeof memory.resolved_time === "string" && memory.resolved_time.trim() ? `date=${memory.resolved_time.trim()}` : ""
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join("; ")})` : "";
+}
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
 }
 
 async function runHookRemember(options: Record<string, string | boolean>): Promise<void> {
@@ -514,6 +549,120 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
       timings_ms: timings
     });
     if (hookAgent === "gemini") output({ suppressOutput: true }, false);
+  }
+}
+
+async function runHookSession(options: Record<string, string | boolean>, mode: "session-start" | "session-end"): Promise<void> {
+  const started = Date.now();
+  const timings: Record<string, number> = {};
+  const dbPath = configuredDbPath(options);
+  const userId = defaultUserId(options);
+  const hookAgent = stringOption(options, "agent", "");
+  const sourceKind = mode === "session-start" ? "session_start" : "session_end";
+  let status = "ok";
+  let reason: string | undefined;
+  let summaryChars = 0;
+
+  try {
+    const readStarted = Date.now();
+    const hookInput = readHookInput();
+    timings.read_input = Date.now() - readStarted;
+
+    const summary = buildSessionSummary(hookInput, mode, hookAgent);
+    summaryChars = summary.length;
+    if (!summary.trim()) {
+      status = "skipped";
+      reason = "empty_session_summary";
+      return;
+    }
+
+    const source = {
+      source_kind: sourceKind,
+      source_id: firstText(hookInput, ["transcript_path", "transcriptPath", "session_id", "sessionId"]) ?? latestSessionPath() ?? undefined,
+      source_timestamp: new Date().toISOString(),
+      source_label: `agent ${mode}`
+    };
+
+    const daemonStarted = Date.now();
+    const daemonResult = await callDaemon({
+      operation: "remember",
+      payload: { llmResponse: summary, userId, source }
+    });
+    if (daemonResult) {
+      timings.model_remember = Date.now() - daemonStarted;
+      return;
+    }
+
+    const dbStarted = Date.now();
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const store = new MemoryStore(dbPath);
+    timings.open_db = Date.now() - dbStarted;
+    try {
+      store.initializeSchema();
+      const modelStarted = Date.now();
+      const service = createService(store, createRuntime(options), options);
+      await service.remember({ llmResponse: summary, userId, source });
+      timings.model_remember = Date.now() - modelStarted;
+    } finally {
+      store.close();
+    }
+  } catch (error) {
+    status = "error";
+    reason = errorMessage(error);
+  } finally {
+    timings.total = Date.now() - started;
+    writeHookAudit({
+      ts: new Date().toISOString(),
+      hook: mode,
+      status,
+      reason,
+      db: dbPath,
+      user: userId,
+      summary_chars: summaryChars,
+      timings_ms: timings
+    });
+    if (hookAgent === "gemini") output({ suppressOutput: true }, false);
+  }
+}
+
+function buildSessionSummary(hookInput: Record<string, unknown>, mode: "session-start" | "session-end", hookAgent: string): string {
+  const cwd = firstText(hookInput, ["cwd", "workspace", "workspacePath", "workspace_path"]) ?? process.cwd();
+  const repo = gitOutput(cwd, ["rev-parse", "--show-toplevel"]);
+  const gitCwd = repo || cwd;
+  const branch = gitOutput(gitCwd, ["branch", "--show-current"]);
+  const dirty = gitOutput(gitCwd, ["status", "--short"])?.split(/\r?\n/).filter(Boolean).slice(0, 12) ?? [];
+  const packageName = packageNameFor(gitCwd);
+  const transcript = firstText(hookInput, ["transcript_path", "transcriptPath"]);
+  const header = mode === "session-start" ? "Developer session started." : "Developer session ended.";
+  const lines = [
+    header,
+    hookAgent ? `Agent: ${hookAgent}.` : "",
+    packageName ? `Project: ${packageName}.` : "",
+    repo ? `Repo: ${repo}.` : `CWD: ${cwd}.`,
+    branch ? `Branch: ${branch}.` : "",
+    dirty.length ? `Changed files: ${dirty.join("; ")}.` : "Changed files: none detected.",
+    transcript ? `Transcript: ${transcript}.` : ""
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+function gitOutput(cwd: string, args: string[]): string | undefined {
+  try {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return result.status === 0 ? result.stdout.trim() || undefined : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function packageNameFor(cwd: string): string | undefined {
+  const path = join(cwd, "package.json");
+  if (!existsSync(path)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    return isRecord(parsed) && typeof parsed.name === "string" ? parsed.name : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -645,15 +794,17 @@ function installCodexHooks(): Record<string, unknown> {
   const current = readHooksJson(hooksPath);
   const hooks = isRecord(current.hooks) ? current.hooks : {};
   removeOldPsmHooks(hooks);
+  addHook(hooks, "SessionStart", "psm-memory hook session-start");
   addHook(hooks, "UserPromptSubmit", "psm-memory hook recall");
   addHook(hooks, "Stop", "psm-memory hook remember");
+  addHook(hooks, "SessionEnd", "psm-memory hook session-end");
   mkdirSync(dirname(configuredDbPath({})), { recursive: true });
   writeFileSync(hooksPath, `${JSON.stringify({ ...current, hooks }, null, 2)}\n`, "utf8");
   return {
     agent: "codex",
     config: codexConfigPath(),
     hooks: hooksPath,
-    commands: ["psm-memory hook recall", "psm-memory hook remember"]
+    commands: ["psm-memory hook session-start", "psm-memory hook recall", "psm-memory hook remember", "psm-memory hook session-end"]
   };
 }
 
@@ -664,15 +815,17 @@ function installClaudeHooks(): Record<string, unknown> {
   const current = readJsonObject(settingsPath);
   const hooks = isRecord(current.hooks) ? current.hooks : {};
   removeOldPsmHooks(hooks);
+  addHook(hooks, "SessionStart", "psm-memory hook session-start", { async: true });
   addHook(hooks, "UserPromptSubmit", "psm-memory hook recall");
   addHook(hooks, "Stop", "psm-memory hook remember", { async: true });
+  addHook(hooks, "SessionEnd", "psm-memory hook session-end", { async: true });
   mkdirSync(dirname(configuredDbPath({})), { recursive: true });
   writeFileSync(settingsPath, `${JSON.stringify({ ...current, hooks }, null, 2)}\n`, "utf8");
 
   return {
     agent: "claude",
     settings: settingsPath,
-    commands: ["psm-memory hook recall", "psm-memory hook remember"]
+    commands: ["psm-memory hook session-start", "psm-memory hook recall", "psm-memory hook remember", "psm-memory hook session-end"]
   };
 }
 
@@ -733,7 +886,7 @@ function removeOldPsmHooks(hooks: Record<string, unknown>): void {
         const childHooks = Array.isArray(entry.hooks) ? entry.hooks : [];
         const filtered = childHooks.filter((hook) => {
           if (!isRecord(hook) || typeof hook.command !== "string") return true;
-          return !/psm-codex-hook\.ps1|psm-memory hook (context|recall|remember)/i.test(hook.command);
+          return !/psm-codex-hook\.ps1|psm-memory hook (context|recall|remember|session-start|session-end)/i.test(hook.command);
         });
         return { ...entry, hooks: filtered };
       })
@@ -1161,6 +1314,7 @@ function helpText(): string {
   remember "<text>" [--json]
   recall "<question>" [--json]
   install-agent codex|claude|gemini|all[,agent...] [--pretty]
+  hook recall|remember|session-start|session-end
   review [--date YYYY-MM-DD] [--pretty]
   config [--path]
   export [out.json] [--pretty]

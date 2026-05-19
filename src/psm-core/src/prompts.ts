@@ -34,7 +34,7 @@ export function buildStoragePrompt(llmResponse: string, existingMemories: Memory
       resolved_time: memory.resolved_time
     }))
   };
-  return `<|system|>\n${psmSystemPrompt}\n<|user|>\nAnalyze this LLM response and return JSON only with action, memory, reasoning, confidence, emotional_weight, and contradiction_score.\nWhen a durable memory contains relative time such as yesterday, last week, or next month, preserve that phrase as temporal_expression. If source.source_timestamp gives enough anchor context, also set resolved_time and resolved_time_confidence. Copy relevant source_kind, source_id, source_timestamp, and source_label into memory when provided.\n${JSON.stringify(payload)}\n<|assistant|>\n`;
+  return `<|system|>\n${psmSystemPrompt}\n<|user|>\nAnalyze this LLM response and return JSON only with action, memory, facts, reasoning, confidence, emotional_weight, and contradiction_score.\nWhen a durable memory contains relative time such as yesterday, last week, or next month, preserve that phrase as temporal_expression. If source.source_timestamp gives enough anchor context, also set resolved_time and resolved_time_confidence. Copy relevant source_kind, source_id, source_timestamp, and source_label into memory when provided.\nAlso extract searchable facts into facts[]. Use generic subject/predicate/value records instead of inventing schema-specific columns. Facts must be supported by evidence_text. Mark inference_kind as explicit when directly stated and inferred when implied, such as single parent implying relationship_status=single. Prefer stable predicates like relationship_status, parental_status, family_goal, career_interest, activity, location, event_date, preference, project, workflow, tool, constraint.\nExample facts: [{\"subject\":\"Caroline\",\"predicate\":\"relationship_status\",\"value\":\"single\",\"confidence\":0.75,\"inference_kind\":\"inferred\",\"evidence_text\":\"single parent\"},{\"subject\":\"Melanie\",\"predicate\":\"event_date\",\"value\":\"2022\",\"fact_type\":\"temporal_fact\",\"confidence\":0.95,\"inference_kind\":\"explicit\",\"evidence_text\":\"painting of a sunrise from 2022\"}].\n${JSON.stringify(payload)}\n<|assistant|>\n`;
 }
 
 export function buildStorageRepairPrompt(llmResponse: string, invalidOutput: string): string {
@@ -60,6 +60,21 @@ export function buildStorageRepairPrompt(llmResponse: string, invalidOutput: str
         resolved_time: "optional ISO-like resolved time/date when source_timestamp anchors a relative phrase",
         resolved_time_confidence: "optional number between 0 and 1"
       },
+      facts: [
+        {
+          subject: "person, project, event, tool, or entity the fact is about",
+          predicate: "stable snake_case relation such as relationship_status, activity, event_date, career_interest",
+          value: "short fact value",
+          value_text: "optional string value if value is not already a short string",
+          fact_type: "optional profile_fact | temporal_fact | preference_fact | project_fact | workflow_fact",
+          confidence: "number between 0 and 1",
+          inference_kind: "explicit | inferred | derived",
+          evidence_text: "short exact phrase supporting the fact",
+          temporal_expression: "optional original relative time phrase",
+          resolved_time: "optional resolved date/time when source timestamp anchors the fact",
+          resolved_time_confidence: "optional number between 0 and 1"
+        }
+      ],
       reasoning: "brief reason for the memory decision",
       confidence: "number between 0 and 1",
       emotional_weight: "number between 0 and 1",
@@ -69,7 +84,10 @@ export function buildStorageRepairPrompt(llmResponse: string, invalidOutput: str
       "Return exactly one valid JSON object and no markdown.",
       "If the response contains no durable memory, use action ignore and memory null.",
       "Do not copy the raw assistant response into memory.content.",
-      "memory.content must be a concise extracted fact, plan, decision, user preference, correction, or unresolved task."
+      "memory.content must be a concise extracted fact, plan, decision, user preference, correction, or unresolved task.",
+      "facts must be an array. Use [] when there are no searchable facts.",
+      "Every fact must include subject, predicate, value or value_text, confidence, inference_kind, and evidence_text.",
+      "Do not invent facts unsupported by evidence_text."
     ]
   };
   return `<|system|>\n${psmSystemPrompt}\n<|user|>\nRepair the invalid remember output into valid JSON only.\n${JSON.stringify(payload)}\n<|assistant|>\n`;

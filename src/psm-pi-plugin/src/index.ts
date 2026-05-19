@@ -2,6 +2,10 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, type ModelRuntime } from "@psm-memory/sdk";
 
+const hookContextMaxItems = 3;
+const hookContextMaxItemChars = 300;
+const hookContextMaxTotalChars = 1200;
+
 export interface PsmPluginOptions {
   dbPath?: string;
   userId?: string;
@@ -150,19 +154,49 @@ function renderMemoryContext(rawContext: Record<string, unknown>): string {
   const memories = Array.isArray(rawContext.context_items) ? rawContext.context_items : [];
   if (memories.length === 0) return "";
 
-  const lines = memories.map((memory, index) => {
-    const item = memory as Record<string, unknown>;
-    const content = typeof item.content === "string" ? item.content : "";
-    return `${index + 1}. ${content}`;
-  }).filter((line) => line.trim());
+  const lines = memories
+    .filter((memory): memory is Record<string, unknown> => isRecord(memory))
+    .sort((a, b) => memoryContextPriority(a) - memoryContextPriority(b))
+    .slice(0, hookContextMaxItems)
+    .map((memory, index) => {
+      const table = typeof memory.table === "string" ? memory.table : "memory";
+      const content = compactMemoryContent(typeof memory.content === "string" ? memory.content : "");
+      return content ? `${index + 1}. [${table}] ${content}${compactSourceSuffix(memory)}` : "";
+    })
+    .filter((line) => line.trim());
 
   if (lines.length === 0) return "";
-  return [
+  return truncateText([
     "PSM Memory Context",
     "Use these retrieved memories as private context. Do not mention this block unless the user asks about memory.",
     "",
     ...lines
-  ].join("\n");
+  ].join("\n"), hookContextMaxTotalChars);
+}
+
+function memoryContextPriority(memory: Record<string, unknown>): number {
+  return memory.table === "memory_fact" ? 0 : 1;
+}
+
+function compactMemoryContent(content: string): string {
+  return truncateText(content.replace(/\s+/g, " ").trim(), hookContextMaxItemChars);
+}
+
+function compactSourceSuffix(memory: Record<string, unknown>): string {
+  const parts = [
+    typeof memory.source_id === "string" && memory.source_id.trim() ? `source=${memory.source_id.trim()}` : "",
+    typeof memory.resolved_time === "string" && memory.resolved_time.trim() ? `date=${memory.resolved_time.trim()}` : ""
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join("; ")})` : "";
+}
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function renderResponseForStorage(input: PsmAfterResponseInput): string {

@@ -79,10 +79,10 @@ export function hybridRankMemories(query: string, memories: MemoryRecord[], opti
       }
     };
   });
-  return ranked
+  const sorted = ranked
     .filter((memory) => memory.score >= (options.minScore ?? 0))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, options.topK);
+    .sort((a, b) => b.score - a.score);
+  return suppressDuplicateContent(sorted).slice(0, options.topK);
 }
 
 export function tokenize(text: string): string[] {
@@ -152,4 +152,20 @@ function dedupe(memories: MemoryRecord[]): MemoryRecord[] {
     result.push(memory);
   }
   return result;
+}
+
+function suppressDuplicateContent(memories: RankedMemory[]): RankedMemory[] {
+  const seen = new Set<string>();
+  const result: RankedMemory[] = [];
+  for (const memory of memories) {
+    const key = duplicateContentKey(memory.content);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(memory);
+  }
+  return result;
+}
+
+function duplicateContentKey(content: string): string {
+  return tokenize(content).slice(0, 28).join(" ");
 }

@@ -70,6 +70,15 @@ declare module "node:child_process" {
   }): {
     unref(): void;
   };
+  export function spawnSync(command: string, args?: string[], options?: {
+    cwd?: string;
+    encoding?: BufferEncoding;
+    stdio?: Array<"ignore" | "pipe">;
+  }): {
+    status: number | null;
+    stdout: string;
+    stderr: string;
+  };
 }
 
 declare module "node:path" {
@@ -119,6 +128,7 @@ declare const process: {
   env: Record<string, string | undefined>;
   exitCode?: number;
   pid: number;
+  cwd(): string;
   stdin: { isTTY?: boolean };
   stdout: { write(data: string): void; isTTY?: boolean };
   stderr: { write(data: string): void };

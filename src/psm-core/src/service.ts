@@ -1,8 +1,9 @@
 import { buildContextPlanPrompt, buildRecallPlanPrompt, buildStoragePrompt, buildStorageRepairPrompt } from "./prompts.js";
 import { parseRecallPlan, parseStorageDecision } from "./json.js";
-import { hybridRankMemories } from "./ranking.js";
+import { hybridRankMemories, tokenize } from "./ranking.js";
 import { MemoryStore } from "./store.js";
-import type { ContextItem, ContextRequest, EmbeddingRuntime, MemoryRecord, ModelRuntime, RankedMemory, RecallRequest, RememberRequest, WrittenMemoryRef } from "./types.js";
+import { normalizeFactTemporalFields, normalizeMemoryTemporalFields } from "./temporal.js";
+import type { ContextItem, ContextRequest, EmbeddingRuntime, MemoryFactRecord, MemoryRecord, ModelRuntime, RankedMemory, RecallRequest, RememberRequest, WrittenMemoryRef } from "./types.js";
 
 export class PsmService {
   constructor(
@@ -24,8 +25,9 @@ export class PsmService {
       preferredTables: recallTables,
       minScore: 0.15
     });
+    const rankedFacts = rankFacts(searchQuery, candidates.facts, plan.top_k);
     this.store.updateAccess(ranked);
-    const contextItems = exactContextItems(ranked, plan.top_k, "Exact DB-backed memory context.");
+    const contextItems = exactContextItems(ranked, plan.top_k, "Exact DB-backed memory context.", rankedFacts);
     return {
       user_id: request.userId,
       prompt: request.prompt,
@@ -35,6 +37,7 @@ export class PsmService {
       context_parse_error: plan.parse_error,
       plan_fallback: plan.plan_fallback === true,
       memory_context: ranked.map(memoryContextRow),
+      fact_context: rankedFacts.map(factContextRow),
       grounding: {
         mode: "exact_db_rows",
         generated_text_allowed: false,
@@ -56,12 +59,14 @@ export class PsmService {
       preferredTables: recallTables,
       minScore: 0.15
     });
+    const rankedFacts = rankFacts(searchQuery, candidates.facts, plan.top_k);
     this.store.updateAccess(ranked);
     return {
       user_id: request.userId,
       question: request.question,
       recall_plan: plan,
       plan_fallback: plan.plan_fallback === true,
+      facts: rankedFacts.map(factContextRow),
       memories: ranked.map(memoryContextRow)
     };
   }
@@ -101,7 +106,20 @@ export class PsmService {
         }
       };
     }
-    const result = this.store.applyDecision(request.userId, request.source?.source_id ?? "llm-response", decision);
+    if (decision.memory) {
+      decision = {
+        ...decision,
+        memory: normalizeMemoryTemporalFields(decision.memory, decision.memory.source_timestamp ?? request.source?.source_timestamp)
+      };
+    }
+    if (decision.facts?.length) {
+      const sourceTimestamp = decision.memory?.source_timestamp ?? request.source?.source_timestamp;
+      decision = {
+        ...decision,
+        facts: decision.facts.map((fact) => normalizeFactTemporalFields(fact, sourceTimestamp))
+      };
+    }
+    const result = this.store.applyDecision(request.userId, request.source?.source_id ?? "llm-response", decision, request.extraTags);
     await this.embedWrittenMemories(request.userId, result.memory_refs);
     return {
       user_id: request.userId,
@@ -124,11 +142,12 @@ export class PsmService {
     }
   }
 
-  private async contextCandidates(userId: string, query: string, preferredTables: MemoryRecord["table"][], limit: number): Promise<{ memories: MemoryRecord[]; vectorScores: Map<string, number> }> {
+  private async contextCandidates(userId: string, query: string, preferredTables: MemoryRecord["table"][], limit: number): Promise<{ memories: MemoryRecord[]; facts: ScoredFact[]; vectorScores: Map<string, number> }> {
     const tables = allRecallTables();
     const lexicalCandidates = this.store.selectMemories(userId, tables, limit);
+    const factCandidates = rankFacts(query, this.store.selectMemoryFacts(userId, limit), limit);
     if (!this.embeddings) {
-      return { memories: lexicalCandidates, vectorScores: new Map() };
+      return { memories: lexicalCandidates, facts: factCandidates, vectorScores: new Map() };
     }
 
     const queryEmbedding = await this.embeddings.runtime.embed(query);
@@ -155,12 +174,17 @@ export class PsmService {
         return this.store.getMemory(row.table, row.id);
       })
       .filter((memory): memory is MemoryRecord => memory !== undefined);
-    return { memories: mergeMemories(lexicalCandidates, memories), vectorScores };
+    return { memories: mergeMemories(lexicalCandidates, memories), facts: factCandidates, vectorScores };
   }
 }
 
-function exactContextItems(ranked: RankedMemory[], topK: number, reason: string): ContextItem[] {
-  return ranked.slice(0, topK).map((memory) => ({
+interface ScoredFact extends MemoryFactRecord {
+  score: number;
+}
+
+function exactContextItems(ranked: RankedMemory[], topK: number, reason: string, facts: ScoredFact[] = []): ContextItem[] {
+  const factItems = facts.slice(0, topK).map(factContextItem);
+  const memoryItems = ranked.slice(0, Math.max(0, topK - factItems.length)).map((memory) => ({
     id: `${memory.table}:${memory.id}`,
     memory_id: memory.id,
     table: memory.table,
@@ -176,6 +200,7 @@ function exactContextItems(ranked: RankedMemory[], topK: number, reason: string)
     resolved_time_confidence: memory.resolved_time_confidence,
     score: memory.score
   }));
+  return [...factItems, ...memoryItems];
 }
 
 function metadataPrefix(memory: RankedMemory): string {
@@ -204,6 +229,88 @@ function memoryContextRow(memory: RankedMemory): Record<string, unknown> {
     resolved_time: memory.resolved_time,
     resolved_time_confidence: memory.resolved_time_confidence,
     metadata: memory.metadata
+  };
+}
+
+function rankFacts(query: string, facts: MemoryFactRecord[], topK: number): ScoredFact[] {
+  const qTokens = tokenize(query);
+  if (qTokens.length === 0) return [];
+  return facts
+    .map((fact) => ({ ...fact, score: factScore(qTokens, fact) }))
+    .filter((fact) => fact.score >= 0.2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+}
+
+function factScore(queryTokens: string[], fact: MemoryFactRecord): number {
+  const searchable = [
+    fact.subject,
+    fact.predicate,
+    fact.object ?? "",
+    fact.value_text,
+    fact.fact_type ?? "",
+    fact.evidence_text ?? "",
+    fact.temporal_expression ?? "",
+    fact.resolved_time ?? "",
+    fact.source_id ?? ""
+  ].join(" ");
+  const memoryTokens = new Set(tokenize(searchable));
+  const overlap = queryTokens.filter((token) => memoryTokens.has(token)).length;
+  const coverage = overlap / queryTokens.length;
+  const predicateHit = queryTokens.some((token) => tokenize(fact.predicate).includes(token)) ? 0.3 : 0;
+  const subjectHit = queryTokens.some((token) => tokenize(fact.subject).includes(token)) ? 0.25 : 0;
+  return Number((coverage + predicateHit + subjectHit + 0.1 * (fact.confidence ?? 0.75)).toFixed(6));
+}
+
+function factContextItem(fact: ScoredFact): ContextItem {
+  return {
+    id: `memory_fact:${fact.id}`,
+    memory_id: fact.source_memory_id ?? undefined,
+    table: "memory_fact",
+    content: factContextContent(fact),
+    reason: "Exact DB-backed extracted fact.",
+    source_id: fact.source_id ?? undefined,
+    source_timestamp: fact.source_timestamp ?? undefined,
+    temporal_expression: fact.temporal_expression ?? undefined,
+    resolved_time: fact.resolved_time ?? undefined,
+    resolved_time_confidence: fact.resolved_time_confidence,
+    score: fact.score
+  };
+}
+
+function factContextContent(fact: MemoryFactRecord): string {
+  const fields = [
+    "fact",
+    `predicate=${fact.predicate}`,
+    fact.fact_type ? `type=${fact.fact_type}` : "",
+    fact.inference_kind ? `inference=${fact.inference_kind}` : "",
+    fact.source_timestamp ? `source_time=${fact.source_timestamp}` : "",
+    fact.resolved_time ? `resolved_time=${fact.resolved_time}` : ""
+  ].filter(Boolean);
+  const evidence = fact.evidence_text ? ` Evidence: ${fact.evidence_text}.` : "";
+  const source = fact.source_memory_table && fact.source_memory_id ? ` Source memory: ${fact.source_memory_table}:${fact.source_memory_id}.` : "";
+  return `[${fields.join(" | ")}] Fact: ${fact.subject} ${fact.predicate} ${fact.value_text}.${evidence}${source}`;
+}
+
+function factContextRow(fact: ScoredFact): Record<string, unknown> {
+  return {
+    table: "memory_fact",
+    id: fact.id,
+    subject: fact.subject,
+    predicate: fact.predicate,
+    value_text: fact.value_text,
+    fact_type: fact.fact_type,
+    confidence: fact.confidence,
+    inference_kind: fact.inference_kind,
+    evidence_text: fact.evidence_text,
+    source_memory_table: fact.source_memory_table,
+    source_memory_id: fact.source_memory_id,
+    source_id: fact.source_id,
+    source_timestamp: fact.source_timestamp,
+    temporal_expression: fact.temporal_expression,
+    resolved_time: fact.resolved_time,
+    resolved_time_confidence: fact.resolved_time_confidence,
+    score: fact.score
   };
 }
 

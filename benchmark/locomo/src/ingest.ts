@@ -1,9 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { MemoryStore, parseStorageDecision } from "@psm-memory/sdk";
-import { flattenTurns, loadSamples, parseOptions } from "./common.js";
+import { MemoryStore, PsmService } from "@psm-memory/sdk";
+import { buildLocomoRememberText, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
 import { LlamaServerRuntime } from "./llama-server-runtime.js";
-import { buildLocomoMemoryPrompt } from "./storage-prompt.js";
 import type { LocomoSample, LocomoTurn } from "./types.js";
 
 interface IngestStats {
@@ -24,6 +23,7 @@ export async function main(argv: string[]): Promise<number> {
   const runtime = new LlamaServerRuntime(options.server);
   const store = new MemoryStore(options.db);
   store.initializeSchema();
+  const service = new PsmService(store, runtime);
 
   const stats: IngestStats = {
     db: options.db,
@@ -47,7 +47,7 @@ export async function main(argv: string[]): Promise<number> {
         if (options.limit > 0 && stats.seen + pending.length >= options.limit) break;
         const index = i + pending.length;
         const ordinal: number = stats.seen + pending.length;
-        pending.push(ingestTurn(runtime, store, stats, userId, sample, turns, index, windowSize, sampleId, turn, ordinal));
+        pending.push(ingestTurn(service, store, stats, userId, sample, turns, index, windowSize, sampleId, turn, ordinal));
       }
       stats.seen += pending.length;
       await Promise.all(pending);
@@ -60,7 +60,7 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 async function ingestTurn(
-  runtime: LlamaServerRuntime,
+  service: PsmService,
   store: MemoryStore,
   stats: IngestStats,
   userId: string,
@@ -74,17 +74,23 @@ async function ingestTurn(
 ): Promise<void> {
   const diaId = String(turn.dia_id ?? "");
   const source = `${sampleId}:${diaId || ordinal}`;
-  const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
   try {
-    const prompt = buildLocomoMemoryPrompt({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 });
-    const raw = await runtime.generateJson(prompt, { temperature: 0, maxTokens: 256 });
-    const decision = parseStorageDecision(raw, text, "store_episodic");
-    const result = store.applyDecision(userId, source, decision, [
-      `locomo_sample_id:${sampleId}`,
-      `locomo_dia_id:${diaId}`,
-      `locomo_speaker:${turn.speaker ?? ""}`,
-      `locomo_session:${turn.session ?? ""}`
-    ]);
+    const result = await service.remember({
+      userId,
+      llmResponse: buildLocomoRememberText({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 }),
+      source: {
+        source_kind: "locomo_turn",
+        source_id: source,
+        source_timestamp: locomoSourceTimestamp(sample, turn.session),
+        source_label: `LOCOMO ${sampleId} ${diaId || ordinal}`
+      },
+      extraTags: [
+        `locomo_sample_id:${sampleId}`,
+        `locomo_dia_id:${diaId}`,
+        `locomo_speaker:${turn.speaker ?? ""}`,
+        `locomo_session:${turn.session ?? ""}`
+      ]
+    });
     if (result.route === "ignore" || result.route === "recall_only") stats.ignored++;
     else stats.stored++;
   } catch (error) {

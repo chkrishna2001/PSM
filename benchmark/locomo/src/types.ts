@@ -17,7 +17,9 @@ export interface LocomoQa {
 
 export interface LocomoSample {
   sample_id?: string;
-  conversation?: Record<string, LocomoTurn[]>;
+  conversation?: Record<string, LocomoTurn[] | string>;
+  event_summary?: Record<string, { date?: string }>;
+  session_summary?: Record<string, string>;
   qa?: LocomoQa[];
 }
 

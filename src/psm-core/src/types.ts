@@ -1,4 +1,4 @@
-export const memoryTables = ["episodic", "semantic", "archival", "conflicts", "decisions", "decay_schedule"] as const;
+export const memoryTables = ["episodic", "semantic", "archival", "conflicts", "decisions", "decay_schedule", "memory_facts"] as const;
 
 export type MemoryTable = (typeof memoryTables)[number];
 
@@ -48,12 +48,52 @@ export interface MemoryPayload {
 export interface StorageDecision {
   action: MemoryAction;
   memory: MemoryPayload | null;
+  facts?: MemoryFactPayload[];
   reasoning: string;
   confidence?: number;
   emotional_weight?: number;
   contradiction_score?: number;
   raw_json: string;
   parse_error?: string;
+}
+
+export interface MemoryFactPayload {
+  subject?: string;
+  predicate?: string;
+  object?: string;
+  value?: unknown;
+  value_text?: string;
+  value_json?: unknown;
+  fact_type?: string;
+  confidence?: number;
+  inference_kind?: "explicit" | "inferred" | "derived" | string;
+  evidence_text?: string;
+  temporal_expression?: string;
+  resolved_time?: string;
+  resolved_time_confidence?: number;
+}
+
+export interface MemoryFactRecord {
+  id: string;
+  user_id: string;
+  subject: string;
+  predicate: string;
+  object?: string | null;
+  value_text: string;
+  value_json?: string | null;
+  fact_type?: string | null;
+  confidence?: number;
+  inference_kind?: string | null;
+  evidence_text?: string | null;
+  source_memory_table?: string | null;
+  source_memory_id?: string | null;
+  source_id?: string | null;
+  source_timestamp?: string | null;
+  temporal_expression?: string | null;
+  resolved_time?: string | null;
+  resolved_time_confidence?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface RecallPlan {
@@ -71,7 +111,7 @@ export interface RecallPlan {
 export interface ContextItem {
   id?: string;
   memory_id?: string;
-  table: "episodic" | "semantic" | "archival" | "memory";
+  table: "episodic" | "semantic" | "archival" | "memory" | "memory_fact";
   content: string;
   reason?: string;
   source_kind?: string;
@@ -157,6 +197,7 @@ export interface RememberRequest {
   llmResponse: string;
   userId: string;
   source?: MemorySourceMetadata;
+  extraTags?: string[];
 }
 
 export interface MemorySourceMetadata {

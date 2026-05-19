@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { MemoryStore, NodeLlamaRuntime, parseStorageDecision } from "@psm-memory/sdk";
-import { flattenTurns, loadSamples, parseOptions } from "./common.js";
-import { buildLocomoMemoryPrompt } from "./storage-prompt.js";
+import { MemoryStore, NodeLlamaRuntime, PsmService } from "@psm-memory/sdk";
+import { buildLocomoRememberText, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
 
 interface IngestStats {
   db: string;
@@ -32,6 +31,7 @@ export async function main(argv: string[]): Promise<number> {
     contextSize: Number.isInteger(contextSize) && contextSize > 0 ? contextSize : 4096,
     log: (message) => process.stderr.write(`${message}\n`)
   });
+  const service = new PsmService(store, runtime);
 
   const stats: IngestStats = {
     db: options.db,
@@ -53,18 +53,24 @@ export async function main(argv: string[]): Promise<number> {
       if (options.limit > 0 && stats.seen >= options.limit) return finish(store, stats);
       const diaId = String(turn.dia_id ?? "");
       const source = `${sampleId}:${diaId || stats.seen}`;
-      const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
       stats.seen++;
       try {
-        const prompt = buildLocomoMemoryPrompt({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 });
-        const raw = await runtime.generateJson(prompt, { temperature: 0, maxTokens: 256 });
-        const decision = parseStorageDecision(raw, text, "store_episodic");
-        const result = store.applyDecision(userId, source, decision, [
-          `locomo_sample_id:${sampleId}`,
-          `locomo_dia_id:${diaId}`,
-          `locomo_speaker:${turn.speaker ?? ""}`,
-          `locomo_session:${turn.session ?? ""}`
-        ]);
+        const result = await service.remember({
+          userId,
+          llmResponse: buildLocomoRememberText({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 }),
+          source: {
+            source_kind: "locomo_turn",
+            source_id: source,
+            source_timestamp: locomoSourceTimestamp(sample, turn.session),
+            source_label: `LOCOMO ${sampleId} ${diaId || stats.seen}`
+          },
+          extraTags: [
+            `locomo_sample_id:${sampleId}`,
+            `locomo_dia_id:${diaId}`,
+            `locomo_speaker:${turn.speaker ?? ""}`,
+            `locomo_session:${turn.session ?? ""}`
+          ]
+        });
         if (result.route === "ignore" || result.route === "recall_only") stats.ignored++;
         else stats.stored++;
       } catch (error) {

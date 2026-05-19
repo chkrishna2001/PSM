@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { routeForAction } from "./actions.js";
-import type { MemoryAction, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision, WrittenMemoryRef } from "./types.js";
+import type { MemoryAction, MemoryFactPayload, MemoryFactRecord, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision, WrittenMemoryRef } from "./types.js";
 import { memoryTables } from "./types.js";
 
 type DbRow = Record<string, unknown>;
@@ -108,11 +108,36 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (memory_table, memory_id, model)
 );
+CREATE TABLE IF NOT EXISTS memory_facts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  object TEXT,
+  value_text TEXT NOT NULL,
+  value_json TEXT,
+  fact_type TEXT,
+  confidence REAL,
+  inference_kind TEXT,
+  evidence_text TEXT,
+  source_memory_table TEXT,
+  source_memory_id TEXT,
+  source_id TEXT,
+  source_timestamp TEXT,
+  temporal_expression TEXT,
+  resolved_time TEXT,
+  resolved_time_confidence REAL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX IF NOT EXISTS idx_episodic_user_created ON episodic(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_semantic_user_created ON semantic(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conflicts_status_created ON conflicts(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_decisions_user_created ON decisions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings(user_id, model);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_user_predicate ON memory_facts(user_id, predicate);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_user_subject ON memory_facts(user_id, subject);
+CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source_memory_table, source_memory_id);
 `);
     this.ensureMemoryMetadataColumns();
   }
@@ -133,11 +158,13 @@ CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings
       case "update_with_supersede":
         memory_refs.push({ table: "semantic", id: this.insertSemantic(userId, content, memory, [source]), content });
         written.push("semantic");
+        this.insertDecisionFacts(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
       case "decay_existing_then_insert":
         this.insertDecaySchedule(userId, content, memory.decay_rate ?? 0.03);
         memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("decay_schedule", "episodic");
+        this.insertDecisionFacts(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
       case "conflict_log_and_hold":
         this.insertConflict(userId, content, decision.reasoning || "PSM flagged potential conflict");
@@ -145,11 +172,13 @@ CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings
         if (decision.action === "flag_and_store") {
           memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
           written.push("episodic");
+          this.insertDecisionFacts(userId, decision, memory_refs, memory);
         }
         return { action: decision.action, route, written, memory_refs };
       default:
         memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("episodic");
+        this.insertDecisionFacts(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
     }
   }
@@ -234,6 +263,47 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, userId, source, action, route, reasoning,
     return id;
   }
 
+  insertMemoryFact(userId: string, fact: MemoryFactPayload, sourceMemory?: WrittenMemoryRef, source?: MemoryPayload): string | null {
+    const subject = fact.subject?.trim();
+    const predicate = normalizePredicate(fact.predicate);
+    const valueText = fact.value_text?.trim() || valueToText(fact.value);
+    const confidence = fact.confidence ?? 0.75;
+    if (!subject || !predicate || !valueText || confidence < 0.35) return null;
+    const id = randomUUID();
+    const valueJson = fact.value_json !== undefined
+      ? JSON.stringify(fact.value_json)
+      : fact.value !== undefined
+        ? JSON.stringify(fact.value)
+        : null;
+    this.db.prepare(`
+INSERT INTO memory_facts (
+  id, user_id, subject, predicate, object, value_text, value_json, fact_type, confidence,
+  inference_kind, evidence_text, source_memory_table, source_memory_id, source_id, source_timestamp,
+  temporal_expression, resolved_time, resolved_time_confidence
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      id,
+      userId,
+      subject,
+      predicate,
+      fact.object ?? null,
+      valueText,
+      valueJson,
+      fact.fact_type ?? null,
+      confidence,
+      fact.inference_kind ?? null,
+      fact.evidence_text ?? null,
+      sourceMemory?.table ?? null,
+      sourceMemory?.id ?? null,
+      source?.source_id ?? null,
+      source?.source_timestamp ?? null,
+      fact.temporal_expression ?? source?.temporal_expression ?? null,
+      fact.resolved_time ?? source?.resolved_time ?? null,
+      fact.resolved_time_confidence ?? source?.resolved_time_confidence ?? null
+    );
+    return id;
+  }
+
   upsertMemoryEmbedding(ref: WrittenMemoryRef, userId: string, model: string, embedding: number[]): void {
     this.db.prepare(`
 INSERT INTO memory_embeddings (memory_table, memory_id, user_id, model, dimensions, embedding_json, content_hash, updated_at)
@@ -255,6 +325,10 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
 
   selectEmbeddingRows(userId: string, model: string): DbRow[] {
     return this.db.prepare("SELECT * FROM memory_embeddings WHERE user_id = ? AND model = ?").all(userId, model);
+  }
+
+  selectMemoryFacts(userId: string, limit = 100): MemoryFactRecord[] {
+    return this.db.prepare("SELECT * FROM memory_facts WHERE user_id = ? ORDER BY created_at DESC LIMIT ?").all(userId, limit).map(asMemoryFactRecord);
   }
 
   getMemory(table: "episodic" | "semantic" | "archival", id: string): MemoryRecord | undefined {
@@ -338,6 +412,14 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
       }
     }
   }
+
+  private insertDecisionFacts(userId: string, decision: StorageDecision, refs: WrittenMemoryRef[], memory: MemoryPayload): void {
+    const sourceMemory = refs[0];
+    if (!sourceMemory || !decision.facts?.length) return;
+    for (const fact of decision.facts) {
+      this.insertMemoryFact(userId, fact, sourceMemory, memory);
+    }
+  }
 }
 
 function hashContent(value: string): string {
@@ -377,6 +459,31 @@ function asNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
+function asMemoryFactRecord(row: DbRow): MemoryFactRecord {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    subject: String(row.subject),
+    predicate: String(row.predicate),
+    object: row.object == null ? null : String(row.object),
+    value_text: String(row.value_text),
+    value_json: row.value_json == null ? null : String(row.value_json),
+    fact_type: row.fact_type == null ? null : String(row.fact_type),
+    confidence: asNumber(row.confidence),
+    inference_kind: row.inference_kind == null ? null : String(row.inference_kind),
+    evidence_text: row.evidence_text == null ? null : String(row.evidence_text),
+    source_memory_table: row.source_memory_table == null ? null : String(row.source_memory_table),
+    source_memory_id: row.source_memory_id == null ? null : String(row.source_memory_id),
+    source_id: row.source_id == null ? null : String(row.source_id),
+    source_timestamp: row.source_timestamp == null ? null : String(row.source_timestamp),
+    temporal_expression: row.temporal_expression == null ? null : String(row.temporal_expression),
+    resolved_time: row.resolved_time == null ? null : String(row.resolved_time),
+    resolved_time_confidence: asNumber(row.resolved_time_confidence),
+    created_at: row.created_at == null ? undefined : String(row.created_at),
+    updated_at: row.updated_at == null ? undefined : String(row.updated_at)
+  };
+}
+
 function tableColumns(db: Database.Database, table: string): string[] {
   return db.prepare(`PRAGMA table_info(${table})`).all().map((row) => String((row as DbRow).name));
 }
@@ -392,4 +499,15 @@ function withExtraTags(memory: MemoryPayload, extraTags: string[]): MemoryPayloa
     ...memory,
     tags: [...(memory.tags ?? []), ...extraTags]
   };
+}
+
+function normalizePredicate(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || undefined;
+}
+
+function valueToText(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
 }

@@ -107,6 +107,42 @@ test("CLI installs Gemini hooks using Gemini JSON protocol", async () => {
   }
 });
 
+test("CLI installs Codex session hooks with recall and remember", async () => {
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  const originalPsmDir = process.env.PSM_MEMORY_DIR;
+  const root = `dist/test-codex-session-hooks-${Date.now()}`;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  process.env.LOCALAPPDATA = root;
+  process.env.PSM_MEMORY_DIR = `${root}/memory`;
+  try {
+    const result = await captureCli(["install-agent", "codex", "--pretty"]);
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout) as { agents: Array<{ agent: string; hooks: string; commands: string[] }> };
+    assert.equal(parsed.agents[0].agent, "codex");
+    assert.deepEqual(parsed.agents[0].commands, [
+      "psm-memory hook session-start",
+      "psm-memory hook recall",
+      "psm-memory hook remember",
+      "psm-memory hook session-end"
+    ]);
+    const hooksJson = JSON.parse((await import("node:fs")).readFileSync(parsed.agents[0].hooks, "utf8")) as {
+      hooks?: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    };
+    assert.equal(hooksJson.hooks?.SessionStart?.[0]?.hooks?.[0]?.command, "psm-memory hook session-start");
+    assert.equal(hooksJson.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command, "psm-memory hook recall");
+    assert.equal(hooksJson.hooks?.Stop?.[0]?.hooks?.[0]?.command, "psm-memory hook remember");
+    assert.equal(hooksJson.hooks?.SessionEnd?.[0]?.hooks?.[0]?.command, "psm-memory hook session-end");
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalUserProfile;
+    if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA; else process.env.LOCALAPPDATA = originalLocalAppData;
+    if (originalPsmDir === undefined) delete process.env.PSM_MEMORY_DIR; else process.env.PSM_MEMORY_DIR = originalPsmDir;
+  }
+});
+
 test("CLI exposes version output", async () => {
   const direct = await captureCli(["version"]);
   const flag = await captureCli(["--version"]);
@@ -204,6 +240,31 @@ test("storage decision parser accepts string memory payloads", () => {
   assert.equal(decision.memory?.content, "User prefers hook integrations to stay model-backed.");
 });
 
+test("storage decision parser accepts extracted facts", () => {
+  const decision = parseStorageDecision(JSON.stringify({
+    action: "store_episodic",
+    memory: {
+      content: "Caroline is a single parent creating a family.",
+      confidence: 0.86,
+      tags: ["family", "relationship_status"]
+    },
+    facts: [
+      {
+        subject: "Caroline",
+        predicate: "Relationship Status",
+        value: "single",
+        confidence: 0.75,
+        inference_kind: "inferred",
+        evidence_text: "single parent"
+      }
+    ],
+    reasoning: "Durable personal fact."
+  }), "fallback response");
+  assert.equal(decision.facts?.length, 1);
+  assert.equal(decision.facts?.[0]?.predicate, "relationship_status");
+  assert.equal(decision.facts?.[0]?.value_text, "single");
+});
+
 test("recall plan parser normalizes bad model output", () => {
   const plan = parseRecallPlan("{bad", "database preference", 3);
   assert.deepEqual(plan.target_tables, ["semantic", "episodic"]);
@@ -263,6 +324,28 @@ test("hybrid ranking boosts exact factual terms and numbers", () => {
   assert.equal(ranked[0].id, "right");
 });
 
+test("hybrid ranking suppresses duplicate memory content", () => {
+  const ranked = hybridRankMemories("What relationship status does Caroline have?", [
+    {
+      id: "one",
+      user_id: "u",
+      table: "episodic",
+      content: "Caroline is a single parent creating a family.",
+      confidence: 0.9,
+      strength: 0.9
+    },
+    {
+      id: "two",
+      user_id: "u",
+      table: "episodic",
+      content: "Caroline is a single parent creating a family.",
+      confidence: 0.8,
+      strength: 0.8
+    }
+  ], { topK: 5 });
+  assert.equal(ranked.length, 1);
+});
+
 test("SQLite store applies episodic decisions", () => {
   const store = new MemoryStore(`dist/test-core-${Date.now()}.db`);
   store.initializeSchema();
@@ -307,6 +390,43 @@ test("SQLite store persists source and temporal metadata", () => {
   assert.ok(rows[0].created_at);
 });
 
+test("SQLite store persists extracted memory facts linked to source memory", () => {
+  const store = new MemoryStore(`dist/test-memory-facts-${Date.now()}.db`);
+  store.initializeSchema();
+  const result = store.applyDecision("u1", "session-relationship", parseStorageDecision(JSON.stringify({
+    action: "store_episodic",
+    memory: {
+      content: "Caroline is a single parent creating a family.",
+      confidence: 0.86,
+      source_id: "session-relationship",
+      source_timestamp: "2026-05-16T12:00:00.000Z"
+    },
+    facts: [
+      {
+        subject: "Caroline",
+        predicate: "relationship_status",
+        value: "single",
+        fact_type: "profile_fact",
+        confidence: 0.75,
+        inference_kind: "inferred",
+        evidence_text: "single parent"
+      }
+    ],
+    reasoning: "Durable relationship context."
+  }), "fallback"));
+  const facts = store.selectMemoryFacts("u1", 10);
+  store.close();
+  assert.equal(result.route, "episodic_insert");
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].subject, "Caroline");
+  assert.equal(facts[0].predicate, "relationship_status");
+  assert.equal(facts[0].value_text, "single");
+  assert.equal(facts[0].source_memory_table, "episodic");
+  assert.equal(facts[0].source_memory_id, result.memory_refs[0].id);
+  assert.equal(facts[0].source_id, "session-relationship");
+  assert.equal(facts[0].source_timestamp, "2026-05-16T12:00:00.000Z");
+});
+
 test("PI hooks inject memory before prompt and store response asynchronously", async () => {
   const dbPath = `dist/test-pi-hooks-${Date.now()}.db`;
   const seedStore = new MemoryStore(dbPath);
@@ -329,6 +449,46 @@ test("PI hooks inject memory before prompt and store response asynchronously", a
   const rows = checkStore.selectTable("decisions", 10);
   checkStore.close();
   assert.equal(rows.length, 1);
+});
+
+test("PI hooks render lean memory context", async () => {
+  const dbPath = `dist/test-pi-lean-context-${Date.now()}.db`;
+  const seedStore = new MemoryStore(dbPath);
+  seedStore.initializeSchema();
+  const longText = `User prefers SQLite for local memory tools. ${"Detailed implementation note. ".repeat(40)}`;
+  const memoryId = seedStore.insertSemantic("demo", longText);
+  seedStore.insertMemoryFact("demo", {
+    subject: "User",
+    predicate: "database_preference",
+    value: "SQLite",
+    confidence: 0.9,
+    inference_kind: "explicit",
+    evidence_text: "prefers SQLite"
+  }, { table: "semantic", id: memoryId, content: longText });
+  seedStore.insertSemantic("demo", "User also discussed a less relevant logging detail.");
+  seedStore.insertSemantic("demo", "User also discussed a less relevant deployment detail.");
+  seedStore.insertSemantic("demo", "User also discussed a less relevant notebook detail.");
+  seedStore.close();
+
+  const runtime: ModelRuntime = {
+    async generateJson(): Promise<string> {
+      return JSON.stringify({
+        intent: "recall",
+        target_tables: ["semantic", "episodic"],
+        filters: {},
+        ranking_hints: ["SQLite database preference"],
+        top_k: 5
+      });
+    }
+  };
+  const hooks = createPsmHooks({ dbPath, userId: "demo", runtime, topK: 5 });
+  const prepared = await hooks.enrichPrompt({ prompt: "Which database should I use?", topK: 5 });
+  await hooks.close();
+
+  const memoryLines = prepared.memoryContext.split(/\r?\n/).filter((line) => /^\d+\./.test(line));
+  assert.ok(memoryLines.length <= 3);
+  assert.ok(prepared.memoryContext.length <= 1200);
+  assert.ok(prepared.memoryContext.includes("[memory_fact]"));
 });
 
 test("service remember repairs invalid model JSON before writing", async () => {
@@ -388,6 +548,95 @@ test("service remember applies source metadata when model omits it", async () =>
   assert.equal(rows[0].source_id, "session-2");
   assert.equal(rows[0].source_timestamp, "2026-05-16T12:00:00.000Z");
   assert.equal(rows[0].source_label, "Test session");
+});
+
+test("service remember stores model-extracted facts with product source metadata", async () => {
+  const dbPath = `dist/test-remember-facts-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  const runtime: ModelRuntime = {
+    async generateJson(): Promise<string> {
+      return JSON.stringify({
+        action: "store_episodic",
+        memory: { content: "Caroline is a single parent creating a family.", confidence: 0.86 },
+        facts: [
+          {
+            subject: "Caroline",
+            predicate: "relationship_status",
+            value: "single",
+            confidence: 0.75,
+            inference_kind: "inferred",
+            evidence_text: "single parent"
+          }
+        ],
+        reasoning: "Durable relationship status fact."
+      });
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.remember({
+    userId: "u1",
+    llmResponse: "Caroline is a single parent creating a family.",
+    source: {
+      source_kind: "transcript",
+      source_id: "session-facts",
+      source_timestamp: "2026-05-16T12:00:00.000Z",
+      source_label: "Test session"
+    }
+  });
+  const facts = store.selectMemoryFacts("u1", 10);
+  store.close();
+  assert.equal(result.route, "episodic_insert");
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].predicate, "relationship_status");
+  assert.equal(facts[0].source_memory_table, "episodic");
+  assert.equal(facts[0].source_id, "session-facts");
+  assert.equal(facts[0].source_timestamp, "2026-05-16T12:00:00.000Z");
+});
+
+test("service remember resolves relative temporal memories and facts from source timestamp", async () => {
+  const dbPath = `dist/test-remember-temporal-facts-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  const runtime: ModelRuntime = {
+    async generateJson(): Promise<string> {
+      return JSON.stringify({
+        action: "store_episodic",
+        memory: { content: "Caroline attended a LGBTQ support group yesterday.", confidence: 0.9 },
+        facts: [
+          {
+            subject: "Caroline LGBTQ support group attendance",
+            predicate: "event_date",
+            value: "yesterday",
+            fact_type: "temporal_fact",
+            confidence: 0.9,
+            inference_kind: "explicit",
+            evidence_text: "yesterday"
+          }
+        ],
+        reasoning: "Durable dated event."
+      });
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  await service.remember({
+    userId: "u1",
+    llmResponse: "Caroline attended a LGBTQ support group yesterday.",
+    source: {
+      source_kind: "transcript",
+      source_id: "conv-26:D1:3",
+      source_timestamp: "1:56 pm on 8 May, 2023"
+    }
+  });
+  const rows = store.selectMemories("u1", ["episodic"], 10);
+  const facts = store.selectMemoryFacts("u1", 10);
+  store.close();
+  assert.equal(rows[0].temporal_expression, "yesterday");
+  assert.equal(rows[0].resolved_time, "7 May 2023");
+  assert.equal(facts[0].temporal_expression, "yesterday");
+  assert.equal(facts[0].resolved_time, "7 May 2023");
 });
 
 test("service context uses exact DB rows instead of generated memory text", async () => {
@@ -462,6 +711,51 @@ test("service context treats recall plan tables as boosts instead of hard filter
   const rows = result.memory_context as Array<Record<string, unknown>>;
   assert.equal(rows[0].table, "episodic");
   assert.ok(String(rows[0].content).includes("2022"));
+});
+
+test("service context renders extracted facts before source memory prose", async () => {
+  const dbPath = `dist/test-context-facts-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  const memoryId = store.insertEpisodic("u1", "Caroline is a single parent creating a family.", {
+    source_id: "session-facts",
+    source_timestamp: "2026-05-16T12:00:00.000Z"
+  });
+  store.insertMemoryFact("u1", {
+    subject: "Caroline",
+    predicate: "relationship_status",
+    value: "single",
+    confidence: 0.8,
+    inference_kind: "inferred",
+    evidence_text: "single parent"
+  }, { table: "episodic", id: memoryId, content: "Caroline is a single parent creating a family." }, {
+    source_id: "session-facts",
+    source_timestamp: "2026-05-16T12:00:00.000Z"
+  });
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "profile_fact_recall",
+          target_tables: ["semantic", "episodic"],
+          filters: {},
+          ranking_hints: ["Caroline relationship status"],
+          top_k: 3
+        });
+      }
+      return "{}";
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "What is Caroline's relationship status?", topK: 3 });
+  store.close();
+  const items = result.context_items as Array<Record<string, unknown>>;
+  const facts = result.fact_context as Array<Record<string, unknown>>;
+  assert.equal(items[0].table, "memory_fact");
+  assert.ok(String(items[0].content).includes("Caroline relationship_status single"));
+  assert.ok(String(items[0].content).includes("Evidence: single parent"));
+  assert.equal(facts[0].predicate, "relationship_status");
 });
 
 test("service remember does not write if repair also returns invalid JSON", async () => {

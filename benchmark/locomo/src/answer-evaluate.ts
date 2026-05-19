@@ -54,23 +54,24 @@ interface AnswerRecord {
   evidence: string[];
   recall_plan?: Record<string, unknown>;
   candidate_memory_ids: string[];
-  selected_memory_ids: string[];
-  selected_ids: string[];
+  retrieved_memory_ids: string[];
+  retrieved_ids: string[];
   answer_context_memory_ids: string[];
-  answer_context_selected_ids: string[];
+  answer_context_ids: string[];
   hit_at_1: boolean;
   hit_at_k: boolean;
   answer_context_hit_at_k: boolean;
   psm_context_items: BenchmarkContextItem[];
   answer_context_items: BenchmarkContextItem[];
-  extracted_evidence: string;
-  evidence_extraction_raw?: string;
   gold_evidence_present_in_top_k: boolean;
   gold_evidence_used_in_answer_context: boolean;
   psm_context_parse_error?: string;
   psm_context_reasoning?: string;
   psm_context_raw_model_json?: string;
   generated_answer: string;
+  answer_evidence_ids: string[];
+  answer_raw_model_json?: string;
+  answer_json_parse_error?: string;
   judgment: "correct" | "incorrect";
   score: number;
   judge_reasoning: string;
@@ -122,18 +123,17 @@ export async function main(argv: string[]): Promise<number> {
         const psmContext = await service.context({ prompt: question, userId, topK: options.psmContextTopK });
         const contextItems = extractBenchmarkContextItems(psmContext).slice(0, options.topK);
         const candidateMemories = extractMemoryContext(psmContext);
-        const selectedIds = contextItems.flatMap((item) => item.source_ids ?? []);
-        const selectedMemoryIds = contextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
+        const retrievedIds = contextItems.flatMap((item) => item.source_ids ?? []);
+        const retrievedMemoryIds = contextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
         const candidateMemoryIds = candidateMemories.map((item) => `${item.table}:${item.id}`);
-        const hitAt1 = hitAt(evidence, selectedIds, 1);
-        const hitAtK = hitAt(evidence, selectedIds, options.topK);
-        const extraction = await extractEvidence(options, question, contextItems);
-        const answerContextItems = selectAnswerContextItems(contextItems, extraction.selectedIndexes, options.answerContextK);
-        const answerContextSelectedIds = answerContextItems.flatMap((item) => item.source_ids ?? []);
+        const hitAt1 = hitAt(evidence, retrievedIds, 1);
+        const hitAtK = hitAt(evidence, retrievedIds, options.topK);
+        const answerContextItems = contextItems.slice(0, options.answerContextK);
+        const answerContextIds = answerContextItems.flatMap((item) => item.source_ids ?? []);
         const answerContextMemoryIds = answerContextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
-        const answerContextHitAtK = hitAt(evidence, answerContextSelectedIds, options.answerContextK);
-        const generatedAnswer = cleanAnswer(await answerQuestion(options, question, extraction.evidence, answerContextItems));
-        const judgment = await judgeAnswer(options, question, goldAnswer, generatedAnswer);
+        const answerContextHitAtK = hitAt(evidence, answerContextIds, options.answerContextK);
+        const answer = await answerQuestion(options, question, answerContextItems);
+        const judgment = await judgeAnswer(options, question, goldAnswer, answer.answer);
         const evidenceInMemory = memories.some((memory) => memoryEvidenceIds(memory).some((id) => evidence.includes(id)));
 
         records.push({
@@ -144,23 +144,24 @@ export async function main(argv: string[]): Promise<number> {
           evidence,
           recall_plan: asRecord(psmContext.recall_plan),
           candidate_memory_ids: candidateMemoryIds,
-          selected_memory_ids: selectedMemoryIds,
-          selected_ids: selectedIds,
+          retrieved_memory_ids: retrievedMemoryIds,
+          retrieved_ids: retrievedIds,
           answer_context_memory_ids: answerContextMemoryIds,
-          answer_context_selected_ids: answerContextSelectedIds,
+          answer_context_ids: answerContextIds,
           hit_at_1: hitAt1,
           hit_at_k: hitAtK,
           answer_context_hit_at_k: answerContextHitAtK,
           psm_context_items: contextItems,
           answer_context_items: answerContextItems,
-          extracted_evidence: extraction.evidence,
-          evidence_extraction_raw: extraction.raw,
           gold_evidence_present_in_top_k: hitAtK,
           gold_evidence_used_in_answer_context: answerContextHitAtK,
           psm_context_parse_error: typeof psmContext.context_parse_error === "string" ? psmContext.context_parse_error : undefined,
           psm_context_reasoning: typeof psmContext.context_reasoning === "string" ? psmContext.context_reasoning : undefined,
           psm_context_raw_model_json: typeof psmContext.context_raw_model_json === "string" ? psmContext.context_raw_model_json : undefined,
-          generated_answer: generatedAnswer,
+          generated_answer: answer.answer,
+          answer_evidence_ids: answer.evidenceIds,
+          answer_raw_model_json: answer.raw,
+          answer_json_parse_error: answer.parseError,
           judgment: judgment.correct ? "correct" : "incorrect",
           score: judgment.correct ? 1 : 0,
           judge_reasoning: judgment.reasoning,
@@ -168,7 +169,7 @@ export async function main(argv: string[]): Promise<number> {
             correct: judgment.correct,
             question,
             goldAnswer,
-            generatedAnswer,
+            generatedAnswer: answer.answer,
             evidenceInMemory,
             hitAtK: answerContextHitAtK,
             contextItems,
@@ -198,41 +199,26 @@ export async function main(argv: string[]): Promise<number> {
   return records.length === 0 ? 1 : 0;
 }
 
-interface EvidenceExtraction {
-  evidence: string;
-  selectedIndexes: number[];
+interface GeneratedAnswer {
+  answer: string;
+  evidenceIds: string[];
   raw?: string;
+  parseError?: string;
 }
 
-async function extractEvidence(options: Options, question: string, contextItems: BenchmarkContextItem[]): Promise<EvidenceExtraction> {
+async function answerQuestion(options: Options, question: string, contextItems: BenchmarkContextItem[]): Promise<GeneratedAnswer> {
   const context = renderContextForPrompt(contextItems);
   const content = await chatCompletion(options, options.answerModel, [
     {
       role: "system",
-      content: "Extract evidence for a LOCOMO question from retrieved memories. Return JSON only: {\"evidence\":\"short exact fact or empty string\",\"selected_indices\":[1,2]}. Use only the provided memories. Prefer the exact date, place, relationship status, activity, name, or fact that directly answers the question. If no memory answers the question, use an empty evidence string and empty selected_indices."
+      content: "Answer a LOCOMO benchmark question using only the provided retrieved memories. Return JSON only with exactly this shape: {\"answer\":\"short final answer or I do not know.\",\"evidence_ids\":[\"D1:12\"]}. Do not include reasoning, markdown, citations outside JSON, or extra keys. For when/date questions, return the date or time phrase. For relationship/status questions, return the status. If the memories do not contain the answer, set answer to exactly \"I do not know.\" and evidence_ids to []. evidence_ids must only contain source IDs shown in the retrieved memories."
     },
     {
       role: "user",
-      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nJSON only:`
+      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nReturn JSON only:`
     }
-  ], 220, 0);
-  return parseEvidenceExtraction(content);
-}
-
-async function answerQuestion(options: Options, question: string, extractedEvidence: string, contextItems: BenchmarkContextItem[]): Promise<string> {
-  const context = renderContextForPrompt(contextItems);
-  const evidence = extractedEvidence.trim() || "No direct evidence extracted.";
-  const content = await chatCompletion(options, options.answerModel, [
-    {
-      role: "system",
-      content: "Answer the user's LOCOMO benchmark question using only the extracted evidence and retrieved memories. Return only the shortest final answer, not analysis, reasoning, citations, or explanations. For when/date questions, return the date or time phrase. For relationship/status questions, return the status. If the evidence does not contain the answer, return exactly: I do not know."
-    },
-    {
-      role: "user",
-      content: `Extracted evidence:\n${evidence}\n\nRetrieved memories:\n${context}\n\nQuestion: ${question}\n\nFinal answer only:`
-    }
-  ], 128, 0);
-  return content.trim();
+  ], 180, 0);
+  return parseAnswerJson(content);
 }
 
 function renderContextForPrompt(contextItems: BenchmarkContextItem[]): string {
@@ -246,40 +232,25 @@ function renderContextForPrompt(contextItems: BenchmarkContextItem[]): string {
   return context;
 }
 
-function parseEvidenceExtraction(value: string): EvidenceExtraction {
+function parseAnswerJson(value: string): GeneratedAnswer {
   const trimmed = value.trim();
   const json = trimmed.match(/\{[\s\S]*\}/)?.[0] ?? trimmed;
   try {
-    const parsed = JSON.parse(json) as { evidence?: unknown; selected_indices?: unknown };
-    const selectedIndexes = Array.isArray(parsed.selected_indices)
-      ? parsed.selected_indices.map((item) => Number(item) - 1).filter((item) => Number.isInteger(item) && item >= 0)
-      : [];
+    const parsed = JSON.parse(json) as { answer?: unknown; evidence_ids?: unknown };
+    const answer = typeof parsed.answer === "string" ? cleanAnswer(parsed.answer) : "";
     return {
-      evidence: typeof parsed.evidence === "string" ? parsed.evidence.trim() : "",
-      selectedIndexes,
+      answer: answer || "No final answer generated.",
+      evidenceIds: Array.isArray(parsed.evidence_ids) ? parsed.evidence_ids.map(String).filter(Boolean) : [],
       raw: trimmed
     };
-  } catch {
+  } catch (error) {
     return {
-      evidence: "",
-      selectedIndexes: [],
-      raw: trimmed
+      answer: "No final answer generated.",
+      evidenceIds: [],
+      raw: trimmed,
+      parseError: error instanceof Error ? error.message : String(error)
     };
   }
-}
-
-function selectAnswerContextItems(contextItems: BenchmarkContextItem[], selectedIndexes: number[], answerContextK: number): BenchmarkContextItem[] {
-  const selected = selectedIndexes
-    .map((index) => contextItems[index])
-    .filter((item): item is BenchmarkContextItem => Boolean(item));
-  const result: BenchmarkContextItem[] = [];
-  for (const item of [...selected, ...contextItems]) {
-    if (result.length >= answerContextK) break;
-    const key = `${item.table}:${item.memory_id ?? item.id ?? item.content}`;
-    if (result.some((existing) => `${existing.table}:${existing.memory_id ?? existing.id ?? existing.content}` === key)) continue;
-    result.push(item);
-  }
-  return result;
 }
 
 async function judgeAnswer(options: Options, question: string, goldAnswer: string, generatedAnswer: string): Promise<{ correct: boolean; reasoning: string }> {
@@ -438,8 +409,8 @@ function writeDebugReport(path: string, records: AnswerRecord[]): void {
   const lines = [
     "# LOCOMO Answer Evaluation Debug Report",
     "",
-    "| # | Sample | Category | Bucket | Hit@K | Answer Hit@K | Judgment | Question | Gold | Evidence Extracted | Answer | Evidence | Selected Sources | Answer Sources | Selected Memories | Context | Judge Reasoning |",
-    "| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| # | Sample | Category | Bucket | Hit@K | Answer Hit@K | Judgment | Question | Gold | Answer | Evidence | Retrieved Sources | Answer Context Sources | Answer Evidence | Retrieved Memories | Answer Context | Parse Error | Judge Reasoning |",
+    "| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...records.slice(0, 50).map((record, index) => [
       index + 1,
       escapeCell(record.sample_id),
@@ -450,13 +421,14 @@ function writeDebugReport(path: string, records: AnswerRecord[]): void {
       record.judgment,
       escapeCell(record.question),
       escapeCell(record.gold_answer),
-      escapeCell(record.extracted_evidence ?? ""),
       escapeCell(record.generated_answer),
       escapeCell(record.evidence.join(", ")),
-      escapeCell(unique(record.selected_ids ?? []).join(", ")),
-      escapeCell(unique(record.answer_context_selected_ids ?? []).join(", ")),
-      escapeCell((record.selected_memory_ids ?? []).join(", ")),
+      escapeCell(unique(record.retrieved_ids ?? []).join(", ")),
+      escapeCell(unique(record.answer_context_ids ?? []).join(", ")),
+      escapeCell(unique(record.answer_evidence_ids ?? []).join(", ")),
+      escapeCell((record.retrieved_memory_ids ?? []).join(", ")),
       escapeCell((record.answer_context_items ?? record.psm_context_items ?? []).map((item) => item.content).join(" / ")),
+      escapeCell(record.answer_json_parse_error ?? ""),
       escapeCell(record.judge_reasoning)
     ].join(" | ").replace(/^/, "| ").replace(/$/, " |"))
   ];
@@ -500,7 +472,7 @@ function extractBenchmarkContextItems(result: Record<string, unknown>): Benchmar
         content: typeof item.content === "string" ? item.content : "",
         reason: typeof item.reason === "string" ? item.reason : undefined,
         score: typeof item.score === "number" ? item.score : candidate?.score,
-        source_ids: candidate ? sourceIdsFromMetadata(candidate.metadata) : [],
+        source_ids: unique([...sourceIdsFromContextItem(item), ...(candidate ? sourceIdsFromMetadata(candidate.metadata) : [])]),
         source_timestamp: typeof item.source_timestamp === "string" ? item.source_timestamp : candidate?.source_timestamp,
         saved_at: typeof item.saved_at === "string" ? item.saved_at : candidate?.created_at,
         resolved_time: typeof item.resolved_time === "string" ? item.resolved_time : candidate?.resolved_time
@@ -548,6 +520,17 @@ function sourceIdsFromMetadata(metadata: Record<string, unknown> | undefined): s
   return evidenceIdsFromTags(tags);
 }
 
+function sourceIdsFromContextItem(item: Record<string, unknown>): string[] {
+  const ids = new Set<string>();
+  if (Array.isArray(item.source_ids)) {
+    for (const id of item.source_ids.map(String).filter(Boolean)) ids.add(id);
+  }
+  if (typeof item.source_id === "string") {
+    for (const id of evidenceIdsFromSourceId(item.source_id)) ids.add(id);
+  }
+  return [...ids];
+}
+
 function memoryEvidenceIds(memory: MemoryRecord): string[] {
   return evidenceIdsFromTags(parseTags(memory.tags));
 }
@@ -561,6 +544,11 @@ function evidenceIdsFromTags(tags: string[]): string[] {
     for (const id of value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean)) ids.add(id);
   }
   return [...ids];
+}
+
+function evidenceIdsFromSourceId(sourceId: string): string[] {
+  const match = sourceId.match(/(?:^|:)(D\d+:\d+)$/);
+  return match ? [match[1]] : [];
 }
 
 function hitAt(evidence: string[], selected: string[], k: number): boolean {

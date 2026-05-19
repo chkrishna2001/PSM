@@ -1,5 +1,5 @@
 import { normalizeAction } from "./actions.js";
-import { memoryTables, type ContextItem, type ContextRender, type MemoryPayload, type MemoryTable, type RecallPlan, type StorageDecision } from "./types.js";
+import { memoryTables, type ContextItem, type ContextRender, type MemoryFactPayload, type MemoryPayload, type MemoryTable, type RecallPlan, type StorageDecision } from "./types.js";
 
 export function extractJsonObject(text: string): string | null {
   const start = text.indexOf("{");
@@ -16,6 +16,7 @@ export function parseStorageDecision(rawText: string, fallbackContent: string, f
     return {
       action: normalizeAction(parsed.action ?? fallbackAction),
       memory,
+      facts: normalizeFacts(parsed.facts),
       reasoning: stringOr(parsed.reasoning, "Model output missing explicit reasoning; applied parser defaults."),
       confidence: numberOrUndefined(parsed.confidence ?? memory?.confidence),
       emotional_weight: numberOrUndefined(parsed.emotional_weight ?? memory?.emotional_weight),
@@ -39,6 +40,36 @@ export function parseStorageDecision(rawText: string, fallbackContent: string, f
       parse_error: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+function normalizeFacts(value: unknown): MemoryFactPayload[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeFact)
+    .filter((fact): fact is MemoryFactPayload => fact !== null);
+}
+
+function normalizeFact(value: unknown): MemoryFactPayload | null {
+  if (!isRecord(value)) return null;
+  const subject = stringOrUndefined(value.subject);
+  const predicate = normalizePredicate(stringOrUndefined(value.predicate));
+  const valueText = stringOrUndefined(value.value_text) ?? valueToText(value.value);
+  if (!subject || !predicate || !valueText) return null;
+  return {
+    subject,
+    predicate,
+    object: stringOrUndefined(value.object),
+    value: value.value,
+    value_text: valueText,
+    value_json: value.value_json ?? value.value,
+    fact_type: stringOrUndefined(value.fact_type),
+    confidence: numberOrUndefined(value.confidence),
+    inference_kind: stringOrUndefined(value.inference_kind),
+    evidence_text: stringOrUndefined(value.evidence_text),
+    temporal_expression: stringOrUndefined(value.temporal_expression),
+    resolved_time: stringOrUndefined(value.resolved_time),
+    resolved_time_confidence: numberOrUndefined(value.resolved_time_confidence)
+  };
 }
 
 export function parseRecallPlan(rawText: string, question: string, topK = 5): RecallPlan {
@@ -138,7 +169,7 @@ function normalizeContextItem(value: unknown): ContextItem | null {
   const table = stringOrUndefined(value.table);
   return {
     id: stringOrUndefined(value.id),
-    table: table === "episodic" || table === "semantic" || table === "archival" ? table : "memory",
+    table: table === "episodic" || table === "semantic" || table === "archival" || table === "memory_fact" ? table : "memory",
     content,
     reason: stringOrUndefined(value.reason)
   };
@@ -165,6 +196,17 @@ function stringOr(value: unknown, fallback: string): string {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function valueToText(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
+}
+
+function normalizePredicate(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || undefined;
 }
 
 function numberOrUndefined(value: unknown): number | undefined {

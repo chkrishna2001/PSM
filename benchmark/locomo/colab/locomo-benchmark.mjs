@@ -5,7 +5,6 @@ import {
   MemoryStore,
   NodeLlamaRuntime,
   PsmService,
-  parseStorageDecision,
   rankMemories,
   TransformersEmbeddingRuntime
 } from "@psm-memory/sdk";
@@ -83,6 +82,7 @@ async function ingest(options) {
     model: embeddingModel,
     cacheDir: "/content/psm-memory-cache/hf"
   });
+  const service = new PsmService(store, runtime, { model: embeddingModel, runtime: embeddings });
 
   const stats = {
     data: dataPath,
@@ -117,25 +117,28 @@ async function ingest(options) {
       const { sampleId, userId, sample, turns, turn, sampleOrdinal } = records[index];
       const diaId = String(turn.dia_id ?? "");
       const source = `${sampleId}:${diaId || sampleOrdinal}`;
-      const text = `${turn.speaker ?? "speaker"}: ${turn.text ?? ""}`;
       stats.seen++;
       try {
-        const raw = await runtime.generateJson(buildLocomoMemoryPrompt({ sample, turns, index: sampleOrdinal, windowSize }), { temperature: 0, maxTokens: 256 });
-        const decision = parseStorageDecision(raw, text, "store_episodic");
-        const result = store.applyDecision(userId, source, decision, [
-          `locomo_sample_id:${sampleId}`,
-          `locomo_dia_id:${diaId}`,
-          `locomo_speaker:${turn.speaker ?? ""}`,
-          `locomo_session:${turn.session ?? ""}`
-        ]);
+        const result = await service.remember({
+          userId,
+          llmResponse: buildLocomoRememberText({ sample, turns, index: sampleOrdinal, windowSize }),
+          source: {
+            source_kind: "locomo_turn",
+            source_id: source,
+            source_timestamp: locomoSourceTimestamp(sample, turn.session),
+            source_label: `LOCOMO ${sampleId} ${diaId || sampleOrdinal}`
+          },
+          extraTags: [
+            `locomo_sample_id:${sampleId}`,
+            `locomo_dia_id:${diaId}`,
+            `locomo_speaker:${turn.speaker ?? ""}`,
+            `locomo_session:${turn.session ?? ""}`
+          ]
+        });
         if (result.route === "ignore" || result.route === "recall_only") {
           stats.ignored++;
         } else {
           stats.stored++;
-        }
-        for (const ref of result.memory_refs) {
-          const embedding = await embeddings.embed(ref.content);
-          store.upsertMemoryEmbedding(ref, userId, embeddingModel, embedding);
         }
       } catch (error) {
         stats.failed++;
@@ -246,17 +249,17 @@ async function answerEvaluate(options) {
 
         const ranked = rankMemories(question, memories, topK);
         const contextItems = renderRankedContextItems(ranked);
-        const selectedIds = contextItems.flatMap((item) => item.source_ids ?? []);
-        const hitAt1 = hitAt(evidence, selectedIds, 1);
-        const hitAtK = hitAt(evidence, selectedIds, topK);
+        const retrievedIds = contextItems.flatMap((item) => item.source_ids ?? []);
+        const retrievedMemoryIds = contextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
+        const hitAt1 = hitAt(evidence, retrievedIds, 1);
+        const hitAtK = hitAt(evidence, retrievedIds, topK);
         const client = { apiKey, baseUrl, answerModel, judgeModel, requestDelayMs, requestMaxRetries };
-        const extraction = await extractEvidence(client, question, contextItems);
-        const answerContextItems = selectAnswerContextItems(contextItems, extraction.selectedIndexes, answerContextK);
-        const answerContextSelectedIds = answerContextItems.flatMap((item) => item.source_ids ?? []);
+        const answerContextItems = contextItems.slice(0, answerContextK);
+        const answerContextIds = answerContextItems.flatMap((item) => item.source_ids ?? []);
         const answerContextMemoryIds = answerContextItems.map((item) => `${item.table}:${item.memory_id ?? item.id ?? ""}`).filter((id) => !id.endsWith(":"));
-        const answerContextHitAtK = hitAt(evidence, answerContextSelectedIds, answerContextK);
-        const generatedAnswer = cleanAnswer(await answerQuestion(client, question, extraction.evidence, answerContextItems));
-        const judgment = await judgeAnswer(client, question, String(qa.answer ?? ""), generatedAnswer);
+        const answerContextHitAtK = hitAt(evidence, answerContextIds, answerContextK);
+        const answer = await answerQuestion(client, question, answerContextItems);
+        const judgment = await judgeAnswer(client, question, String(qa.answer ?? ""), answer.answer);
 
         records.push({
           sample_id: sampleId,
@@ -264,19 +267,21 @@ async function answerEvaluate(options) {
           question,
           gold_answer: String(qa.answer ?? ""),
           evidence,
-          selected_ids: selectedIds,
+          retrieved_memory_ids: retrievedMemoryIds,
+          retrieved_ids: retrievedIds,
           answer_context_memory_ids: answerContextMemoryIds,
-          answer_context_selected_ids: answerContextSelectedIds,
+          answer_context_ids: answerContextIds,
           hit_at_1: hitAt1,
           hit_at_k: hitAtK,
           answer_context_hit_at_k: answerContextHitAtK,
           psm_context_items: contextItems,
           answer_context_items: answerContextItems,
-          extracted_evidence: extraction.evidence,
-          evidence_extraction_raw: extraction.raw,
           gold_evidence_present_in_top_k: hitAtK,
           gold_evidence_used_in_answer_context: answerContextHitAtK,
-          generated_answer: generatedAnswer,
+          generated_answer: answer.answer,
+          answer_evidence_ids: answer.evidenceIds,
+          answer_raw_model_json: answer.raw,
+          answer_json_parse_error: answer.parseError,
           judgment: judgment.correct ? "correct" : "incorrect",
           score: judgment.correct ? 1 : 0,
           judge_reasoning: judgment.reasoning,
@@ -373,7 +378,17 @@ function flattenTurns(sample) {
   return Object.keys(conversation)
     .filter((key) => /^session_\d+$/.test(key))
     .sort((a, b) => Number(a.split("_")[1]) - Number(b.split("_")[1]))
-    .flatMap((key) => (conversation[key] ?? []).map((turn) => ({ ...turn, session: key })));
+    .flatMap((key) => Array.isArray(conversation[key]) ? conversation[key].map((turn) => ({ ...turn, session: key })) : []);
+}
+
+function locomoSourceTimestamp(sample, session) {
+  if (!session) return undefined;
+  const dateTime = sample.conversation?.[`${session}_date_time`];
+  if (typeof dateTime === "string" && dateTime.trim()) return dateTime.trim();
+  const sessionNumber = String(session).match(/^session_(\d+)$/)?.[1];
+  if (!sessionNumber) return undefined;
+  const date = sample.event_summary?.[`events_session_${sessionNumber}`]?.date;
+  return typeof date === "string" && date.trim() ? date.trim() : undefined;
 }
 
 function locomoDiaId(memory) {
@@ -385,7 +400,7 @@ function locomoDiaId(memory) {
 function renderRankedContextItems(memories) {
   return memories.map((memory) => {
     const table = typeof memory.table === "string" ? memory.table : "memory";
-    const sourceIds = evidenceIdsFromTags(parseTags(memory.tags));
+    const sourceIds = unique([...evidenceIdsFromTags(parseTags(memory.tags)), ...evidenceIdsFromSourceId(memory.source_id ?? "")]);
     return {
       id: `${table}:${memory.id}`,
       memory_id: memory.id,
@@ -393,6 +408,7 @@ function renderRankedContextItems(memories) {
       content: memory.content,
       score: typeof memory.score === "number" ? memory.score : undefined,
       source_ids: sourceIds,
+      source_id: memory.source_id,
       saved_at: memory.created_at,
       reason: "Selected by exact DB retrieval ranking."
     };
@@ -425,6 +441,11 @@ function evidenceIdsFromTags(tags) {
   return [...ids];
 }
 
+function evidenceIdsFromSourceId(sourceId) {
+  const match = String(sourceId).match(/(?:^|:)(D\d+:\d+)$/);
+  return match ? [match[1]] : [];
+}
+
 function hitAt(evidence, selected, k) {
   return evidence.some((id) => selected.slice(0, k).includes(id));
 }
@@ -440,10 +461,11 @@ function summarize(records, topK) {
   };
 }
 
-function buildLocomoMemoryPrompt({ sample, turns, index, windowSize }) {
+function buildLocomoRememberText({ sample, turns, index, windowSize }) {
   const turn = turns[index];
   const sampleId = String(sample.sample_id ?? "unknown");
   const diaId = String(turn.dia_id ?? "");
+  const sourceTimestamp = locomoSourceTimestamp(sample, turn.session);
   const windowStart = Math.max(0, index - windowSize);
   const windowEnd = Math.min(turns.length, index + windowSize + 1);
   const nearbyTurns = turns.slice(windowStart, windowEnd).map((item) => ({
@@ -464,8 +486,10 @@ function buildLocomoMemoryPrompt({ sample, turns, index, windowSize }) {
     }));
   const payload = {
     operation: "locomo_remember_turn",
+    instruction: "Store this LOCOMO turn through the normal PSM memory product path. Preserve source ids, session timestamp, durable facts, and answerable facts. Extract facts[] for people, activities, relationship status, career interests, locations, and temporal facts.",
     sample_id: sampleId,
     session: turn.session ?? "",
+    session_timestamp: sourceTimestamp,
     current_turn: {
       dia_id: diaId,
       speaker: turn.speaker ?? "",
@@ -477,56 +501,22 @@ function buildLocomoMemoryPrompt({ sample, turns, index, windowSize }) {
     nearby_turns: nearbyTurns,
     qa_hints_for_this_turn: qaHints
   };
-
-  return `<|system|>
-You are PSM, a memory-management model. Return JSON only.
-Your job is to convert LOCOMO conversation turns into durable, answerable memories for future question answering.
-Choose action: ignore, store_episodic, promote_semantic, update_existing, flag_conflict.
-JSON shape: {"action":"store_episodic","memory":{"content":"...","type":"episodic","strength":0.75,"decay_rate":0.02,"emotional_weight":0.2,"confidence":0.8,"tags":[]},"reasoning":"..."}
-Rules:
-- Store the normalized memory, not just the raw utterance.
-- Use nearby_turns to resolve pronouns, image references, follow-up answers, and split facts.
-- Preserve relative time phrases when no absolute session date is available.
-- If a relative phrase can be inferred from explicit local context, write the resolved fact and mention the source phrase.
-- Include source dia ids in memory.tags, especially locomo_dia_id and related_dia_ids.
-- Include image_query and image_caption facts when they identify what a shared image depicts.
-- Prefer concise memories that can directly answer who/what/when/where questions later.
-- Do not return merge_duplicates or memory-maintenance actions for this operation.
-<|user|>
-${JSON.stringify(payload)}
-<|assistant|>
-`;
+  return JSON.stringify(payload);
 }
 
-async function extractEvidence(client, question, contextItems) {
+async function answerQuestion(client, question, contextItems) {
   const context = renderContextForPrompt(contextItems);
   const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
     {
       role: "system",
-      content: "Extract evidence for a LOCOMO question from retrieved memories. Return JSON only: {\"evidence\":\"short exact fact or empty string\",\"selected_indices\":[1,2]}. Use only the provided memories. Prefer the exact date, place, relationship status, activity, name, or fact that directly answers the question. If no memory answers the question, use an empty evidence string and empty selected_indices."
+      content: "Answer a LOCOMO benchmark question using only the provided retrieved memories. Return JSON only with exactly this shape: {\"answer\":\"short final answer or I do not know.\",\"evidence_ids\":[\"D1:12\"]}. Do not include reasoning, markdown, citations outside JSON, or extra keys. For when/date questions, return the date or time phrase. For relationship/status questions, return the status. If the memories do not contain the answer, set answer to exactly \"I do not know.\" and evidence_ids to []. evidence_ids must only contain source IDs shown in the retrieved memories."
     },
     {
       role: "user",
-      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nJSON only:`
+      content: `Retrieved memories:\n${context}\n\nQuestion: ${question}\n\nReturn JSON only:`
     }
-  ], 220, 0, client.requestDelayMs, client.requestMaxRetries);
-  return parseEvidenceExtraction(content);
-}
-
-async function answerQuestion(client, question, extractedEvidence, contextItems) {
-  const context = renderContextForPrompt(contextItems);
-  const evidence = extractedEvidence.trim() || "No direct evidence extracted.";
-  const content = await chatCompletion(client.apiKey, client.baseUrl, client.answerModel, [
-    {
-      role: "system",
-      content: "Answer the LOCOMO benchmark question using only the extracted evidence and retrieved memories. Return only the shortest final answer, not analysis, reasoning, citations, or explanations. For when/date questions, return the date or time phrase. For relationship/status questions, return the status. If the evidence does not contain the answer, return exactly: I do not know."
-    },
-    {
-      role: "user",
-      content: `Extracted evidence:\n${evidence}\n\nRetrieved memories:\n${context}\n\nQuestion: ${question}\n\nFinal answer only:`
-    }
-  ], 128, 0, client.requestDelayMs, client.requestMaxRetries);
-  return content.trim();
+  ], 180, 0, client.requestDelayMs, client.requestMaxRetries);
+  return parseAnswerJson(content);
 }
 
 function renderContextForPrompt(contextItems) {
@@ -540,37 +530,25 @@ function renderContextForPrompt(contextItems) {
   return context;
 }
 
-function parseEvidenceExtraction(value) {
+function parseAnswerJson(value) {
   const trimmed = value.trim();
   const json = trimmed.match(/\{[\s\S]*\}/)?.[0] ?? trimmed;
   try {
     const parsed = JSON.parse(json);
+    const answer = typeof parsed.answer === "string" ? cleanAnswer(parsed.answer) : "";
     return {
-      evidence: typeof parsed.evidence === "string" ? parsed.evidence.trim() : "",
-      selectedIndexes: Array.isArray(parsed.selected_indices)
-        ? parsed.selected_indices.map((item) => Number(item) - 1).filter((item) => Number.isInteger(item) && item >= 0)
-        : [],
+      answer: answer || "No final answer generated.",
+      evidenceIds: Array.isArray(parsed.evidence_ids) ? parsed.evidence_ids.map(String).filter(Boolean) : [],
       raw: trimmed
     };
-  } catch {
+  } catch (error) {
     return {
-      evidence: "",
-      selectedIndexes: [],
-      raw: trimmed
+      answer: "No final answer generated.",
+      evidenceIds: [],
+      raw: trimmed,
+      parseError: error instanceof Error ? error.message : String(error)
     };
   }
-}
-
-function selectAnswerContextItems(contextItems, selectedIndexes, answerContextK) {
-  const selected = selectedIndexes.map((index) => contextItems[index]).filter(Boolean);
-  const result = [];
-  for (const item of [...selected, ...contextItems]) {
-    if (result.length >= answerContextK) break;
-    const key = `${item.table}:${item.memory_id ?? item.id ?? item.content}`;
-    if (result.some((existing) => `${existing.table}:${existing.memory_id ?? existing.id ?? existing.content}` === key)) continue;
-    result.push(item);
-  }
-  return result;
 }
 
 function contextPrompt(question, memories) {
@@ -591,20 +569,39 @@ function extractContextItems(result) {
       id: typeof item.id === "string" ? item.id : undefined,
       table: typeof item.table === "string" ? item.table : "memory",
       content: typeof item.content === "string" ? item.content : "",
-      reason: typeof item.reason === "string" ? item.reason : undefined
+      reason: typeof item.reason === "string" ? item.reason : undefined,
+      source_ids: sourceIdsFromContextItem(item),
+      source_id: typeof item.source_id === "string" ? item.source_id : undefined
     }))
     .filter((item) => item.content.trim().length > 0);
 }
 
 function extractSelectedIds(result) {
   const memoryContext = Array.isArray(result.memory_context) ? result.memory_context : [];
-  return memoryContext
+  const factContext = Array.isArray(result.fact_context) ? result.fact_context : [];
+  return unique([
+    ...memoryContext
     .filter((item) => typeof item === "object" && item !== null)
     .map((item) => {
       const tags = Array.isArray(item.metadata?.tags) ? item.metadata.tags.map(String) : [];
-      return tagValue(tags, "locomo_dia_id");
+      return tagValue(tags, "locomo_dia_id") || evidenceIdsFromSourceId(item.source_id ?? "")[0] || "";
     })
-    .filter(Boolean);
+    .filter(Boolean),
+    ...factContext
+      .filter((item) => typeof item === "object" && item !== null)
+      .flatMap((item) => evidenceIdsFromSourceId(item.source_id ?? ""))
+  ]);
+}
+
+function sourceIdsFromContextItem(item) {
+  const ids = new Set();
+  if (Array.isArray(item.source_ids)) {
+    for (const id of item.source_ids.map(String).filter(Boolean)) ids.add(id);
+  }
+  if (typeof item.source_id === "string") {
+    for (const id of evidenceIdsFromSourceId(item.source_id)) ids.add(id);
+  }
+  return [...ids];
 }
 
 async function judgeAnswer(client, question, goldAnswer, generatedAnswer) {
