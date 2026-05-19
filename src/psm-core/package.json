@@ -1,6 +1,6 @@
 {
   "name": "@psm-memory/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Local-first SDK for PSM Memory storage, grounded recall, embeddings, config, and model-backed memory decisions.",
   "keywords": [

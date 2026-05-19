@@ -1,5 +1,6 @@
-import { buildContextPlanPrompt, buildRecallPlanPrompt, buildStoragePrompt, buildStorageRepairPrompt } from "./prompts.js";
-import { parseRecallPlan, parseStorageDecision } from "./json.js";
+import { fallbackAgentContextItems, renderAgentMemoryContext } from "./context.js";
+import { buildContextPlanPrompt, buildContextRenderPrompt, buildRecallPlanPrompt, buildStoragePrompt, buildStorageRepairPrompt } from "./prompts.js";
+import { parseContextRender, parseRecallPlan, parseStorageDecision } from "./json.js";
 import { hybridRankMemories, tokenize } from "./ranking.js";
 import { MemoryStore } from "./store.js";
 import { normalizeFactTemporalFields, normalizeMemoryTemporalFields } from "./temporal.js";
@@ -28,19 +29,24 @@ export class PsmService {
     const rankedFacts = rankFacts(searchQuery, candidates.facts, plan.top_k);
     this.store.updateAccess(ranked);
     const contextItems = exactContextItems(ranked, plan.top_k, "Exact DB-backed memory context.", rankedFacts);
+    const rendered = await this.renderContext(request.prompt, contextItems, plan.top_k);
     return {
       user_id: request.userId,
       prompt: request.prompt,
       recall_plan: plan,
       context_items: contextItems,
-      context_reasoning: "Rendered from exact DB-backed memory rows. PSM may plan retrieval, but injected memory text is never free-form generated.",
+      agent_context_items: rendered.items,
+      agent_context: rendered.context,
+      agent_context_reasoning: rendered.reasoning,
+      agent_context_parse_error: rendered.parse_error,
+      context_reasoning: "Context is retrieved from exact DB-backed memory rows. Agent context may be model-shaped, but only from selected grounded rows.",
       context_parse_error: plan.parse_error,
       plan_fallback: plan.plan_fallback === true,
       memory_context: ranked.map(memoryContextRow),
       fact_context: rankedFacts.map(factContextRow),
       grounding: {
-        mode: "exact_db_rows",
-        generated_text_allowed: false,
+        mode: "grounded_db_rows",
+        generated_text_allowed: true,
         item_count: contextItems.length
       }
     };
@@ -142,6 +148,36 @@ export class PsmService {
     }
   }
 
+  private async renderContext(prompt: string, contextItems: ContextItem[], topK: number): Promise<{ items: ContextItem[]; context: string; reasoning: string; parse_error?: string }> {
+    if (contextItems.length === 0) {
+      return { items: [], context: "", reasoning: "No relevant memory context." };
+    }
+
+    const candidateById = new Map(contextItems.map((item) => [item.id, item]));
+    const raw = await this.runtime.generateJson(buildContextRenderPrompt(prompt, contextItems, topK), { temperature: 0, maxTokens: 512 });
+    const render = parseContextRender(raw, topK);
+    const renderedItems: ContextItem[] = render.context_items
+      .flatMap((item) => {
+        const source = item.id ? candidateById.get(item.id) : undefined;
+        if (!source) return [];
+        if (!isGroundedContextContent(item.content, source)) return [];
+        return [{
+          ...source,
+          table: item.table,
+          content: item.content,
+          reason: item.reason ?? source.reason
+        }];
+      });
+
+    const items = renderedItems.length > 0 ? renderedItems : fallbackAgentContextItems(contextItems);
+    return {
+      items,
+      context: renderAgentMemoryContext(items),
+      reasoning: renderedItems.length > 0 ? render.reasoning : `Used deterministic grounded context fallback. ${render.reasoning}`,
+      parse_error: render.parse_error
+    };
+  }
+
   private async contextCandidates(userId: string, query: string, preferredTables: MemoryRecord["table"][], limit: number): Promise<{ memories: MemoryRecord[]; facts: ScoredFact[]; vectorScores: Map<string, number> }> {
     const tables = allRecallTables();
     const lexicalCandidates = this.store.selectMemories(userId, tables, limit);
@@ -180,6 +216,21 @@ export class PsmService {
 
 interface ScoredFact extends MemoryFactRecord {
   score: number;
+}
+
+function isGroundedContextContent(content: string, source: ContextItem): boolean {
+  const renderedTokens = tokenize(content);
+  if (renderedTokens.length === 0) return false;
+  const sourceText = [
+    source.content,
+    source.source_id ?? "",
+    source.source_timestamp ?? "",
+    source.resolved_time ?? "",
+    source.temporal_expression ?? ""
+  ].join(" ");
+  const sourceTokens = new Set(tokenize(sourceText));
+  const overlap = renderedTokens.filter((token) => sourceTokens.has(token)).length;
+  return overlap >= Math.min(2, renderedTokens.length);
 }
 
 function exactContextItems(ranked: RankedMemory[], topK: number, reason: string, facts: ScoredFact[] = []): ContextItem[] {

@@ -1,6 +1,6 @@
 {
   "name": "@psm-memory/pi-plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Agent runtime hooks for shared local PSM Memory recall and response remembering.",
   "keywords": [
@@ -36,7 +36,7 @@
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "@psm-memory/sdk": "0.1.1"
+    "@psm-memory/sdk": "0.1.2"
   },
   "publishConfig": {
     "access": "public"

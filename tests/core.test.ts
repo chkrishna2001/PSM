@@ -150,9 +150,9 @@ test("CLI exposes version output", async () => {
   assert.equal(direct.code, 0);
   assert.equal(flag.code, 0);
   assert.equal(shortFlag.code, 0);
-  assert.equal(direct.stdout.trim(), "0.1.1");
-  assert.equal(flag.stdout.trim(), "0.1.1");
-  assert.equal(shortFlag.stdout.trim(), "0.1.1");
+  assert.equal(direct.stdout.trim(), "0.1.2");
+  assert.equal(flag.stdout.trim(), "0.1.2");
+  assert.equal(shortFlag.stdout.trim(), "0.1.2");
 });
 
 test("CLI init uses PSM-owned app data by default", async () => {
@@ -486,9 +486,10 @@ test("PI hooks render lean memory context", async () => {
   await hooks.close();
 
   const memoryLines = prepared.memoryContext.split(/\r?\n/).filter((line) => /^\d+\./.test(line));
-  assert.ok(memoryLines.length <= 3);
-  assert.ok(prepared.memoryContext.length <= 1200);
+  assert.ok(memoryLines.length <= 5);
   assert.ok(prepared.memoryContext.includes("[memory_fact]"));
+  assert.ok(!prepared.memoryContext.includes("..."));
+  assert.ok(!prepared.memoryContext.includes("…"));
 });
 
 test("service remember repairs invalid model JSON before writing", async () => {
@@ -679,7 +680,9 @@ test("service context uses exact DB rows instead of generated memory text", asyn
   assert.equal(items[0].resolved_time, "2026-05-15");
   assert.ok(/resolved_time=2026-05-15/.test(String(items[0].content)));
   assert.ok(!/Terraform/.test(String(items[0].content)));
-  assert.equal((result.grounding as Record<string, unknown>).generated_text_allowed, false);
+  assert.ok(!/Terraform/.test(String(result.agent_context)));
+  assert.equal((result.grounding as Record<string, unknown>).mode, "grounded_db_rows");
+  assert.equal((result.grounding as Record<string, unknown>).generated_text_allowed, true);
 });
 
 test("service context treats recall plan tables as boosts instead of hard filters", async () => {
@@ -756,6 +759,78 @@ test("service context renders extracted facts before source memory prose", async
   assert.ok(String(items[0].content).includes("Caroline relationship_status single"));
   assert.ok(String(items[0].content).includes("Evidence: single parent"));
   assert.equal(facts[0].predicate, "relationship_status");
+});
+
+test("service context lets PSM render grounded agent context from selected rows", async () => {
+  const dbPath = `dist/test-agent-context-render-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  const memoryId = store.insertSemantic("u1", "Installing the CLI should pull the SDK transitively. Installing both was only needed for local tarball testing.");
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "recall",
+          target_tables: ["semantic"],
+          filters: {},
+          ranking_hints: ["cli sdk install transitively"],
+          top_k: 3
+        });
+      }
+      assert.ok(prompt.includes("render_context"));
+      return JSON.stringify({
+        context_items: [
+          {
+            id: `semantic:${memoryId}`,
+            table: "semantic",
+            content: "CLI install should pull the SDK transitively; installing both was a local tarball testing workaround.",
+            reason: "Directly answers the install dependency question."
+          }
+        ],
+        selected_ids: [`semantic:${memoryId}`],
+        reasoning: "Rendered the relevant dependency context."
+      });
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "Why install sdk and cli both?", topK: 3 });
+  store.close();
+  const agentContext = String(result.agent_context);
+  assert.ok(agentContext.includes("CLI install should pull the SDK transitively"));
+  assert.ok(!agentContext.includes("Installing both was only needed for local tarball testing."));
+  assert.equal(result.agent_context_parse_error, undefined);
+});
+
+test("service context fallback uses complete statements without hard ellipsis truncation", async () => {
+  const dbPath = `dist/test-agent-context-fallback-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  store.insertSemantic("u1", `User prefers SQLite for local memory tools. ${"Implementation detail. ".repeat(80)}`);
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "recall",
+          target_tables: ["semantic"],
+          filters: {},
+          ranking_hints: ["SQLite local memory"],
+          top_k: 3
+        });
+      }
+      return "not valid json";
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "Which database should I use?", topK: 3 });
+  store.close();
+  const agentContext = String(result.agent_context);
+  assert.ok(agentContext.includes("User prefers SQLite for local memory tools."));
+  assert.ok(!agentContext.includes("..."));
+  assert.ok(!agentContext.includes("…"));
+  assert.ok(!agentContext.includes("Implementation detail."));
+  assert.ok(result.agent_context_parse_error);
 });
 
 test("service remember does not write if repair also returns invalid JSON", async () => {

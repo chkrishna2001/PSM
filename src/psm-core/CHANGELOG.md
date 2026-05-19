@@ -1,5 +1,11 @@
 # @psm-memory/sdk
 
+## 0.1.2
+
+### Patch Changes
+
+- 55f245a: Add generic extracted memory facts, fact-aware context retrieval, and deterministic relative-time normalization in the product remember path.
+
 ## 0.1.1
 
 ### Patch Changes

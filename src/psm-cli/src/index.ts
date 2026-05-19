@@ -4,14 +4,10 @@ import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, resolvePsmMemoryDir, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
 import { callDaemon, startDaemon } from "./daemon.js";
 import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
-
-const hookContextMaxItems = 3;
-const hookContextMaxItemChars = 300;
-const hookContextMaxTotalChars = 1200;
 
 export async function run(argv: string[]): Promise<number> {
   const { command, options, positionals } = parseArgs(argv);
@@ -397,7 +393,7 @@ function renderHookRecallResult(result: Record<string, unknown>, pretty: boolean
   }
 
   if (hookAgent === "gemini") {
-    const memoryContext = renderHookMemoryContext(memories);
+    const memoryContext = hookMemoryContext(result);
     output(memoryContext ? {
       hookSpecificOutput: {
         hookEventName: "BeforeAgent",
@@ -410,50 +406,23 @@ function renderHookRecallResult(result: Record<string, unknown>, pretty: boolean
 
   if (memories.length === 0) return 0;
 
-  write(renderHookMemoryContext(memories));
+  write(hookMemoryContext(result));
   write("\n");
   return memories.length;
 }
 
-function renderHookMemoryContext(memories: unknown[]): string {
-  if (memories.length === 0) return "";
-  const lines = [
-    "PSM Memory Context",
-    "Use these private memories when relevant. Do not mention this block unless asked about memory."
-  ];
-  const selected = memories
-    .filter((memory): memory is Record<string, unknown> => isRecord(memory))
-    .sort((a, b) => memoryContextPriority(a) - memoryContextPriority(b))
-    .slice(0, hookContextMaxItems);
-  selected.forEach((memory, index) => {
-    if (!isRecord(memory)) return;
-    const table = typeof memory.table === "string" ? memory.table : "memory";
-    const content = compactMemoryContent(typeof memory.content === "string" ? memory.content : "");
-    if (content) lines.push(`${index + 1}. [${table}] ${content}${compactSourceSuffix(memory)}`);
-  });
-  if (lines.length <= 2) return "";
-  return truncateText(lines.join("\n"), hookContextMaxTotalChars);
+function hookMemoryContext(result: Record<string, unknown>): string {
+  if (typeof result.agent_context === "string" && result.agent_context.trim()) return result.agent_context;
+  const items = Array.isArray(result.agent_context_items)
+    ? result.agent_context_items
+    : Array.isArray(result.context_items)
+      ? result.context_items
+      : [];
+  return renderAgentMemoryContext(items.filter(isContextItem));
 }
 
-function memoryContextPriority(memory: Record<string, unknown>): number {
-  return memory.table === "memory_fact" ? 0 : 1;
-}
-
-function compactMemoryContent(content: string): string {
-  return truncateText(content.replace(/\s+/g, " ").trim(), hookContextMaxItemChars);
-}
-
-function compactSourceSuffix(memory: Record<string, unknown>): string {
-  const parts = [
-    typeof memory.source_id === "string" && memory.source_id.trim() ? `source=${memory.source_id.trim()}` : "",
-    typeof memory.resolved_time === "string" && memory.resolved_time.trim() ? `date=${memory.resolved_time.trim()}` : ""
-  ].filter(Boolean);
-  return parts.length ? ` (${parts.join("; ")})` : "";
-}
-
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+function isContextItem(value: unknown): value is ContextItem {
+  return isRecord(value) && typeof value.content === "string" && typeof value.table === "string";
 }
 
 async function runHookRemember(options: Record<string, string | boolean>): Promise<void> {

@@ -1,5 +1,13 @@
 # @psm-memory/cli
 
+## 0.1.2
+
+### Patch Changes
+
+- 55f245a: Add compact session start/end hook commands and cap normal hook context injection to concise high-signal memory items.
+- Updated dependencies [55f245a]
+  - @psm-memory/sdk@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes

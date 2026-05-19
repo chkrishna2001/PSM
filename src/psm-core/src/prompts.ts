@@ -1,4 +1,4 @@
-import type { MemoryRecord, MemorySourceMetadata } from "./types.js";
+import type { ContextItem, MemoryRecord, MemorySourceMetadata } from "./types.js";
 
 export const psmSystemPrompt = `You are the Personal Small Model (PSM), a specialized AI trained exclusively to perform memory management operations for LLM agents.
 
@@ -113,39 +113,55 @@ export function buildContextPlanPrompt(prompt: string, topK: number): string {
   return `<|system|>\n${psmSystemPrompt}\n<|user|>\nCreate a memory context recall plan as JSON only with intent, target_tables, filters, ranking_hints, temporal_intent, and top_k. PSM owns memory planning: choose the memory tiers that should be searched, but do not answer the user.\n${JSON.stringify(payload)}\n<|assistant|>\n`;
 }
 
-export function buildContextRenderPrompt(prompt: string, memories: MemoryRecord[], topK: number): string {
+export function buildContextRenderPrompt(prompt: string, memories: ContextItem[], topK: number): string {
   const payload = {
     operation: "render_context",
     user_prompt: prompt,
     max_items: topK,
     required_schema: {
-      selected_ids: ["exact candidate memory id"],
-      reasoning: "brief explanation of why these context items were selected"
+      context_items: [
+        {
+          id: "exact candidate context item id",
+          table: "memory_fact | semantic | episodic | archival",
+          content: "complete context note grounded only in the candidate item",
+          reason: "brief explanation of why this note helps the current prompt"
+        }
+      ],
+      selected_ids: ["exact candidate context item id"],
+      reasoning: "brief explanation of why these context notes were selected"
     },
     instructions: [
-      "This is a context selection operation only.",
+      "This is a grounded context rendering operation only.",
       "Do not perform memory maintenance actions.",
       "Do not merge, update, delete, rewrite, deduplicate, promote, or create memory records.",
-      "Use only candidate_memories provided in this payload.",
-      "Every selected_ids entry must exactly match one candidate memory id.",
-      "Do not invent ids, people, projects, technical skills, or facts.",
-      "If no candidate memory is relevant, return {\"selected_ids\":[],\"reasoning\":\"No relevant memory.\"}.",
+      "Use only candidate_context_items provided in this payload.",
+      "Every returned context item id must exactly match one candidate context item id.",
+      "Write complete, high-signal context notes for the downstream agent.",
+      "Extract only the part of a candidate that is useful for the current prompt.",
+      "Prefer memory_fact items when they directly answer the prompt.",
+      "Do not copy noisy metadata unless it is needed for recency, provenance, or disambiguation.",
+      "Do not hard truncate text. If a candidate is too broad, extract the relevant complete fact or event.",
+      "Do not invent ids, people, projects, technical skills, dates, or facts.",
+      "If no candidate memory is relevant, return {\"context_items\":[],\"selected_ids\":[],\"reasoning\":\"No relevant memory.\"}.",
       "Do not return action, affected_records, affected_entries, modified_fields, merge_id, target_id, or tags as the top-level schema.",
-      "Return exactly one JSON object with top-level keys selected_ids and reasoning.",
+      "Return exactly one JSON object with top-level keys context_items, selected_ids, and reasoning.",
       "Select only memories that are directly useful for the current user prompt.",
       "Do not answer the user prompt."
     ],
-    candidate_memories: memories.slice(0, Math.max(topK, 10)).map((memory) => ({
+    candidate_context_items: memories.slice(0, Math.max(topK, 10)).map((memory) => ({
       id: memory.id,
       table: memory.table,
       content: memory.content,
-      strength: memory.strength,
-      confidence: memory.confidence,
-      tags: parseTags(memory.tags)
+      source_id: memory.source_id,
+      source_timestamp: memory.source_timestamp,
+      saved_at: memory.saved_at,
+      temporal_expression: memory.temporal_expression,
+      resolved_time: memory.resolved_time,
+      score: memory.score
     }))
   };
-  return `<|system|>\n${psmSystemPrompt}\n<|user|>\nReturn JSON only for operation render_context. The only valid top-level shape is {"selected_ids":["EXACT_CANDIDATE_ID"],"reasoning":"..."}.
-Use only candidate_memories. Do not invent ids or context. Do not return merge/update actions.
+  return `<|system|>\n${psmSystemPrompt}\n<|user|>\nReturn JSON only for operation render_context. The only valid top-level shape is {"context_items":[{"id":"EXACT_CANDIDATE_ID","table":"semantic","content":"complete grounded context note","reason":"..."}],"selected_ids":["EXACT_CANDIDATE_ID"],"reasoning":"..."}.
+Use only candidate_context_items. Do not invent ids or context. Do not return merge/update actions.
 ${JSON.stringify(payload)}\n<|assistant|>\n`;
 }
 
