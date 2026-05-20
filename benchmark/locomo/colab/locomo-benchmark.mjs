@@ -1,12 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
-  defaultEmbeddingModel,
   MemoryStore,
   NodeLlamaRuntime,
   PsmService,
-  rankMemories,
-  TransformersEmbeddingRuntime
+  rankMemories
 } from "@psm-memory/sdk";
 
 const defaultOpenRouterModel = "nvidia/nemotron-3-super-120b-a12b:free";
@@ -43,7 +41,6 @@ async function ingest(options) {
   const contextSize = intOption(options, "context-size", 4096);
   const windowSize = intOption(options, "window-size", 2);
   const userPrefix = stringOption(options, "user-prefix", "locomo");
-  const embeddingModel = stringOption(options, "embedding-model", defaultEmbeddingModel);
   const records = loadSamples(dataPath).flatMap((sample) => {
     const sampleId = String(sample.sample_id ?? "unknown");
     const userId = `${userPrefix}-${sampleId}`;
@@ -71,24 +68,19 @@ async function ingest(options) {
 
   const store = new MemoryStore(dbPath);
   store.initializeSchema();
-  const runtime = new NodeLlamaRuntime({
+  const runtime = createLocomoIngestRuntime(new NodeLlamaRuntime({
     modelPath,
     contextSize,
     gpu: "auto",
     gpuLayers: "auto",
     log: (message) => console.error(message)
-  });
-  const embeddings = new TransformersEmbeddingRuntime({
-    model: embeddingModel,
-    cacheDir: "/content/psm-memory-cache/hf"
-  });
-  const service = new PsmService(store, runtime, { model: embeddingModel, runtime: embeddings });
+  }));
+  const service = new PsmService(store, runtime);
 
   const stats = {
     data: dataPath,
     db: dbPath,
     model: modelPath,
-    embedding_model: embeddingModel,
     limit,
     batch_size: batchSize,
     offset,
@@ -135,11 +127,7 @@ async function ingest(options) {
             `locomo_session:${turn.session ?? ""}`
           ]
         });
-        if (result.route === "ignore" || result.route === "recall_only") {
-          stats.ignored++;
-        } else {
-          stats.stored++;
-        }
+        recordRememberResult(stats, source, result);
       } catch (error) {
         stats.failed++;
         const message = error instanceof Error ? error.message : String(error);
@@ -397,6 +385,57 @@ function locomoDiaId(memory) {
   return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? "";
 }
 
+function createLocomoIngestRuntime(runtime) {
+  return {
+    async generateJson(prompt, options) {
+      const raw = await runtime.generateJson(prompt, options);
+      return hasInvalidLocomoMemoryContent(raw) ? "invalid locomo memory content" : raw;
+    }
+  };
+}
+
+function hasInvalidLocomoMemoryContent(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const memory = parsed.memory;
+    if (typeof memory === "string") return isLocomoWrapperContent(memory.trim());
+    if (!memory || typeof memory !== "object" || Array.isArray(memory)) return false;
+    const content = typeof memory.content === "string" ? memory.content.trim() : "";
+    return content ? isLocomoWrapperContent(content) : false;
+  } catch {
+    return false;
+  }
+}
+
+function isLocomoWrapperContent(content) {
+  const lower = content.toLowerCase();
+  return content.startsWith("{")
+    || lower.includes("locomo benchmark conversation turn")
+    || lower.includes("current turn to remember:")
+    || lower.includes("extraction guidance:")
+    || lower.startsWith("user ")
+    || lower.includes(" user ")
+    || lower.includes("\"operation\":\"locomo_remember_turn\"")
+    || lower.includes("\"operation\": \"locomo_remember_turn\"");
+}
+
+function recordRememberResult(stats, source, result) {
+  const route = typeof result.route === "string" ? result.route : "";
+  const parseError = typeof result.parse_error === "string" ? result.parse_error : "";
+  const written = Array.isArray(result.written) ? result.written : [];
+  if (parseError) {
+    stats.failed++;
+    stats.errors.push({ source, error: parseError });
+  } else if (route === "ignore" || route === "recall_only") {
+    stats.ignored++;
+  } else if (written.length > 0) {
+    stats.stored++;
+  } else {
+    stats.ignored++;
+  }
+}
+
 function renderRankedContextItems(memories) {
   return memories.map((memory) => {
     const table = typeof memory.table === "string" ? memory.table : "memory";
@@ -467,41 +506,57 @@ function buildLocomoRememberText({ sample, turns, index, windowSize }) {
   const diaId = String(turn.dia_id ?? "");
   const sourceTimestamp = locomoSourceTimestamp(sample, turn.session);
   const windowStart = Math.max(0, index - windowSize);
-  const windowEnd = Math.min(turns.length, index + windowSize + 1);
-  const nearbyTurns = turns.slice(windowStart, windowEnd).map((item) => ({
-    dia_id: item.dia_id ?? "",
-    session: item.session ?? "",
-    speaker: item.speaker ?? "",
-    text: item.text ?? "",
-    image_query: item.query ?? "",
-    image_caption: item.blip_caption ?? ""
-  }));
-  const qaHints = (sample.qa ?? [])
-    .filter((qa) => (qa.evidence ?? []).map(String).includes(diaId))
-    .slice(0, 5)
-    .map((qa) => ({
-      question: qa.question ?? "",
-      gold_answer: qa.answer ?? "",
-      evidence: qa.evidence ?? []
-    }));
-  const payload = {
-    operation: "locomo_remember_turn",
-    instruction: "Store this LOCOMO turn through the normal PSM memory product path. Preserve source ids, session timestamp, durable facts, and answerable facts. Extract facts[] for people, activities, relationship status, career interests, locations, and temporal facts.",
-    sample_id: sampleId,
-    session: turn.session ?? "",
-    session_timestamp: sourceTimestamp,
-    current_turn: {
-      dia_id: diaId,
-      speaker: turn.speaker ?? "",
-      text: turn.text ?? "",
-      image_query: turn.query ?? "",
-      image_caption: turn.blip_caption ?? "",
-      image_urls: turn.img_url ?? []
-    },
-    nearby_turns: nearbyTurns,
-    qa_hints_for_this_turn: qaHints
-  };
-  return JSON.stringify(payload);
+  const nearbyTurns = turns.slice(windowStart, index).map((item) => renderTurnLine(item));
+  const imageLines = renderImageLines(turn);
+  return [
+    "LOCOMO benchmark conversation turn.",
+    "This is a normal conversation-memory input rendered from the benchmark dataset. Store only durable memories and facts supported by the conversation text.",
+    "",
+    `Source id: ${sampleId}:${diaId}`,
+    `Sample id: ${sampleId}`,
+    `Session: ${turn.session || "unknown"}`,
+    `Session time: ${sourceTimestamp ?? "unknown"}`,
+    `Speaker: ${turn.speaker ?? "unknown"}`,
+    "",
+    "Current turn to remember:",
+    `${turn.speaker ?? "Unknown"} said: ${quoteText(turn.text)}`,
+    ...imageLines,
+    "",
+    "Prior conversation context:",
+    ...(nearbyTurns.length > 0 ? nearbyTurns : ["- none"]),
+    "",
+    "Extraction guidance:",
+    "- Treat the current turn as the only turn being remembered.",
+    "- Use prior context only to resolve pronouns or missing context.",
+    "- Do not copy prior speaker facts onto the current speaker.",
+    "- Preserve the real speaker names from the conversation.",
+    "- Preserve source ids and session time from the metadata above.",
+    "- If the turn contains relative time such as yesterday, last week, or last year, preserve that phrase and resolve it from the session time when possible.",
+    "- Extract durable facts for people, activities, relationships, careers, locations, preferences, projects, workflows, and visual context when directly supported.",
+    "- Do not store this benchmark wrapper text as memory content."
+  ].join("\n");
+}
+
+function renderTurnLine(turn) {
+  const fields = [
+    `${turn.speaker ?? "Unknown"} said: ${quoteText(turn.text)}`,
+    turn.query ? `image query: ${turn.query}` : "",
+    turn.blip_caption ? `image caption: ${turn.blip_caption}` : ""
+  ].filter(Boolean);
+  return `- [prior ${turn.session ?? "unknown"} ${turn.dia_id ?? "unknown"}] ${fields.join("; ")}`;
+}
+
+function renderImageLines(turn) {
+  const lines = [];
+  if (turn.query) lines.push(`Image query: ${turn.query}`);
+  if (turn.blip_caption) lines.push(`Image caption: ${turn.blip_caption}`);
+  if (turn.img_url?.length) lines.push(`Image URLs: ${turn.img_url.join(", ")}`);
+  return lines;
+}
+
+function quoteText(value) {
+  const text = String(value ?? "").trim();
+  return text ? `"${text}"` : "\"\"";
 }
 
 async function answerQuestion(client, question, contextItems) {

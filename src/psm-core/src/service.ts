@@ -79,11 +79,11 @@ export class PsmService {
 
   async remember(request: RememberRequest): Promise<Record<string, unknown>> {
     const existing = this.store.selectMemories(request.userId, ["semantic", "episodic"], 50);
-    const raw = await this.runtime.generateJson(buildStoragePrompt(request.llmResponse, existing, request.source), { temperature: 0, maxTokens: 256 });
+    const raw = await this.runtime.generateJson(buildStoragePrompt(request.llmResponse, existing, request.source), { temperature: 0, maxTokens: 1024 });
     let decision = parseStorageDecision(raw, request.llmResponse, "store_episodic");
     let repairedRaw: string | undefined;
     if (decision.parse_error) {
-      repairedRaw = await this.runtime.generateJson(buildStorageRepairPrompt(request.llmResponse, decision.raw_json), { temperature: 0, maxTokens: 384 });
+      repairedRaw = await this.runtime.generateJson(buildStorageRepairPrompt(request.llmResponse, decision.raw_json), { temperature: 0, maxTokens: 1024 });
       decision = parseStorageDecision(repairedRaw, request.llmResponse, "store_episodic");
     }
     if (decision.parse_error) {
@@ -103,12 +103,11 @@ export class PsmService {
       decision = {
         ...decision,
         memory: {
-          ...request.source,
           ...decision.memory,
-          source_kind: decision.memory.source_kind ?? request.source.source_kind,
-          source_id: decision.memory.source_id ?? request.source.source_id,
-          source_timestamp: decision.memory.source_timestamp ?? request.source.source_timestamp,
-          source_label: decision.memory.source_label ?? request.source.source_label
+          source_kind: request.source.source_kind ?? decision.memory.source_kind,
+          source_id: request.source.source_id ?? decision.memory.source_id,
+          source_timestamp: request.source.source_timestamp ?? decision.memory.source_timestamp,
+          source_label: request.source.source_label ?? decision.memory.source_label
         }
       };
     }

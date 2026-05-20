@@ -257,7 +257,7 @@ test("storage decision parser accepts extracted facts", () => {
         predicate: "Relationship Status",
         value: "single",
         confidence: 0.75,
-        inference_kind: "inferred",
+        inference_kind: "explicit",
         evidence_text: "single parent"
       }
     ],
@@ -432,7 +432,7 @@ test("SQLite store persists extracted memory facts linked to source memory", () 
         value: "single",
         fact_type: "profile_fact",
         confidence: 0.75,
-        inference_kind: "inferred",
+        inference_kind: "explicit",
         evidence_text: "single parent"
       }
     ],
@@ -590,7 +590,7 @@ test("service remember stores model-extracted facts with product source metadata
             predicate: "relationship_status",
             value: "single",
             confidence: 0.75,
-            inference_kind: "inferred",
+            inference_kind: "explicit",
             evidence_text: "single parent"
           }
         ],
@@ -753,7 +753,7 @@ test("service context renders extracted facts before source memory prose", async
     predicate: "relationship_status",
     value: "single",
     confidence: 0.8,
-    inference_kind: "inferred",
+    inference_kind: "explicit",
     evidence_text: "single parent"
   }, { table: "episodic", id: memoryId, content: "Caroline is a single parent creating a family." }, {
     source_id: "session-facts",

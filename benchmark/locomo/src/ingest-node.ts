@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { MemoryStore, NodeLlamaRuntime, PsmService } from "@psm-memory/sdk";
-import { buildLocomoRememberText, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
+import { buildLocomoRememberText, createLocomoIngestRuntime, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
 
 interface IngestStats {
   db: string;
@@ -24,13 +24,13 @@ export async function main(argv: string[]): Promise<number> {
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
   store.initializeSchema();
-  const runtime = new NodeLlamaRuntime({
+  const runtime = createLocomoIngestRuntime(new NodeLlamaRuntime({
     modelPath: model,
     gpu,
     gpuLayers,
     contextSize: Number.isInteger(contextSize) && contextSize > 0 ? contextSize : 4096,
     log: (message) => process.stderr.write(`${message}\n`)
-  });
+  }));
   const service = new PsmService(store, runtime);
 
   const stats: IngestStats = {
@@ -71,8 +71,7 @@ export async function main(argv: string[]): Promise<number> {
             `locomo_session:${turn.session ?? ""}`
           ]
         });
-        if (result.route === "ignore" || result.route === "recall_only") stats.ignored++;
-        else stats.stored++;
+        recordRememberResult(stats, source, result);
       } catch (error) {
         stats.failed++;
         const message = error instanceof Error ? error.message : String(error);
@@ -86,6 +85,22 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   return finish(store, stats);
+}
+
+function recordRememberResult(stats: IngestStats, source: string, result: Record<string, unknown>): void {
+  const route = typeof result.route === "string" ? result.route : "";
+  const parseError = typeof result.parse_error === "string" ? result.parse_error : "";
+  const written = Array.isArray(result.written) ? result.written : [];
+  if (parseError) {
+    stats.failed++;
+    stats.errors.push({ source, error: parseError });
+  } else if (route === "ignore" || route === "recall_only") {
+    stats.ignored++;
+  } else if (written.length > 0) {
+    stats.stored++;
+  } else {
+    stats.ignored++;
+  }
 }
 
 function finish(store: MemoryStore, stats: IngestStats): number {

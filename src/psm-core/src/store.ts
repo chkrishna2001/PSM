@@ -145,8 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
   applyDecision(userId: string, source: string, decision: StorageDecision, extraTags: string[] = []): { action: MemoryAction; route: string; written: string[]; memory_refs: WrittenMemoryRef[] } {
     const route = routeForAction(decision.action);
     this.insertDecision(userId, source, decision.action, route, decision.reasoning, decision.raw_json);
-    const memory = withExtraTags(decision.memory ?? { content: source }, extraTags);
-    const content = memory.content?.trim() || source;
+    const memory = decision.memory ? withExtraTags(decision.memory, extraTags) : undefined;
+    const content = memory?.content?.trim();
     const written: string[] = [];
     const memory_refs: WrittenMemoryRef[] = [];
 
@@ -156,17 +156,20 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
         return { action: decision.action, route, written, memory_refs };
       case "semantic_upsert":
       case "update_with_supersede":
+        if (!memory || !content) return { action: "ignore", route: "ignore", written, memory_refs };
         memory_refs.push({ table: "semantic", id: this.insertSemantic(userId, content, memory, [source]), content });
         written.push("semantic");
         this.insertDecisionFacts(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
       case "decay_existing_then_insert":
+        if (!memory || !content) return { action: "ignore", route: "ignore", written, memory_refs };
         this.insertDecaySchedule(userId, content, memory.decay_rate ?? 0.03);
         memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("decay_schedule", "episodic");
         this.insertDecisionFacts(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
       case "conflict_log_and_hold":
+        if (!memory || !content) return { action: "ignore", route: "ignore", written, memory_refs };
         this.insertConflict(userId, content, decision.reasoning || "PSM flagged potential conflict");
         written.push("conflicts");
         if (decision.action === "flag_and_store") {
@@ -176,6 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
         }
         return { action: decision.action, route, written, memory_refs };
       default:
+        if (!memory || !content) return { action: "ignore", route: "ignore", written, memory_refs };
         memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("episodic");
         this.insertDecisionFacts(userId, decision, memory_refs, memory);

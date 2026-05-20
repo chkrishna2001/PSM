@@ -34,7 +34,7 @@ export function buildStoragePrompt(llmResponse: string, existingMemories: Memory
       resolved_time: memory.resolved_time
     }))
   };
-  return `<|system|>\n${psmSystemPrompt}\n<|user|>\nAnalyze this LLM response and return JSON only with action, memory, facts, reasoning, confidence, emotional_weight, and contradiction_score.\nWhen a durable memory contains relative time such as yesterday, last week, or next month, preserve that phrase as temporal_expression. If source.source_timestamp gives enough anchor context, also set resolved_time and resolved_time_confidence. Copy relevant source_kind, source_id, source_timestamp, and source_label into memory when provided.\nAlso extract searchable facts into facts[]. Use generic subject/predicate/value records instead of inventing schema-specific columns. Facts must be supported by evidence_text. Mark inference_kind as explicit when directly stated and inferred when implied, such as single parent implying relationship_status=single. Prefer stable predicates like relationship_status, parental_status, family_goal, career_interest, activity, location, event_date, preference, project, workflow, tool, constraint.\nExample facts: [{\"subject\":\"Caroline\",\"predicate\":\"relationship_status\",\"value\":\"single\",\"confidence\":0.75,\"inference_kind\":\"inferred\",\"evidence_text\":\"single parent\"},{\"subject\":\"Melanie\",\"predicate\":\"event_date\",\"value\":\"2022\",\"fact_type\":\"temporal_fact\",\"confidence\":0.95,\"inference_kind\":\"explicit\",\"evidence_text\":\"painting of a sunrise from 2022\"}].\n${JSON.stringify(payload)}\n<|assistant|>\n`;
+  return `<|system|>\n${psmSystemPrompt}\n<|user|>\nAnalyze the conversation and determine if a new episodic or semantic memory should be stored. Return JSON only.\nUse this top-level shape: {"action":"ignore | store_episodic | promote_semantic | update_existing | flag_conflict | flag_and_store","memory":null or {"content":"concise durable memory","type":"episodic | semantic","strength":0.0,"decay_rate":0.0,"emotional_weight":0.0,"confidence":0.0,"tags":["short strings"],"temporal_expression":"optional original relative time phrase","resolved_time":"optional resolved date"},"facts":[],"reasoning":"brief reason"}.\nKeep memory.content concise and natural. Do not copy the raw input, metadata wrapper, schema, source block, or prior context wholesale.\nUse the real person or entity names from the conversation. Do not write generic \"User\" when a speaker name is available.\nIf a durable memory contains relative time such as yesterday, last week, or next month, preserve that phrase as temporal_expression. If source.source_timestamp gives enough anchor context, set resolved_time.\nFacts are optional enrichment. Return facts: [] unless a fact is directly stated in the current conversation text. Do not infer profile facts from weak context. Do not create facts from prior memories, metadata, source ids, tags, or general world knowledge. Every fact must be directly supported by evidence_text copied or closely paraphrased from the current conversation text.\nAllowed fact shape: {"subject":"direct subject","predicate":"stable snake_case relation","value":"short value","confidence":0.0,"inference_kind":"explicit","evidence_text":"supporting phrase from current conversation","temporal_expression":"optional","resolved_time":"optional"}.\n${JSON.stringify(payload)}\n<|assistant|>\n`;
 }
 
 export function buildStorageRepairPrompt(llmResponse: string, invalidOutput: string): string {
@@ -68,7 +68,7 @@ export function buildStorageRepairPrompt(llmResponse: string, invalidOutput: str
           value_text: "optional string value if value is not already a short string",
           fact_type: "optional profile_fact | temporal_fact | preference_fact | project_fact | workflow_fact",
           confidence: "number between 0 and 1",
-          inference_kind: "explicit | inferred | derived",
+          inference_kind: "explicit",
           evidence_text: "short exact phrase supporting the fact",
           temporal_expression: "optional original relative time phrase",
           resolved_time: "optional resolved date/time when source timestamp anchors the fact",
@@ -87,6 +87,8 @@ export function buildStorageRepairPrompt(llmResponse: string, invalidOutput: str
       "memory.content must be a concise extracted fact, plan, decision, user preference, correction, or unresolved task.",
       "facts must be an array. Use [] when there are no searchable facts.",
       "Every fact must include subject, predicate, value or value_text, confidence, inference_kind, and evidence_text.",
+      "Use inference_kind explicit for facts.",
+      "Do not infer profile facts from weak context.",
       "Do not invent facts unsupported by evidence_text."
     ]
   };

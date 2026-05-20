@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { MemoryStore, PsmService } from "@psm-memory/sdk";
-import { buildLocomoRememberText, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
+import { buildLocomoRememberText, createLocomoIngestRuntime, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
 import { LlamaServerRuntime } from "./llama-server-runtime.js";
 import type { LocomoSample, LocomoTurn } from "./types.js";
 
@@ -20,7 +20,7 @@ export async function main(argv: string[]): Promise<number> {
   const options = parseOptions(argv);
   const windowSize = Number(getOption(argv, "window-size", "2"));
   const samples = loadSamples(options.data);
-  const runtime = new LlamaServerRuntime(options.server);
+  const runtime = createLocomoIngestRuntime(new LlamaServerRuntime(options.server));
   const store = new MemoryStore(options.db);
   store.initializeSchema();
   const service = new PsmService(store, runtime);
@@ -91,13 +91,28 @@ async function ingestTurn(
         `locomo_session:${turn.session ?? ""}`
       ]
     });
-    if (result.route === "ignore" || result.route === "recall_only") stats.ignored++;
-    else stats.stored++;
+    recordRememberResult(stats, source, result);
   } catch (error) {
     stats.failed++;
     const message = error instanceof Error ? error.message : String(error);
     stats.errors.push({ source, error: message });
     store.insertDecision(userId, source, "error", "error", message, JSON.stringify({ error: message }));
+  }
+}
+
+function recordRememberResult(stats: IngestStats, source: string, result: Record<string, unknown>): void {
+  const route = typeof result.route === "string" ? result.route : "";
+  const parseError = typeof result.parse_error === "string" ? result.parse_error : "";
+  const written = Array.isArray(result.written) ? result.written : [];
+  if (parseError) {
+    stats.failed++;
+    stats.errors.push({ source, error: parseError });
+  } else if (route === "ignore" || route === "recall_only") {
+    stats.ignored++;
+  } else if (written.length > 0) {
+    stats.stored++;
+  } else {
+    stats.ignored++;
   }
 }
 

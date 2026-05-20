@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { ModelRuntime } from "@psm-memory/sdk";
 import type { CliOptions, LocomoSample, LocomoTurn } from "./types.js";
 
 export function parseOptions(argv: string[]): CliOptions {
@@ -59,40 +60,60 @@ export function buildLocomoRememberText(input: { sample: LocomoSample; turns: Lo
   const diaId = String(turn.dia_id ?? "");
   const sourceTimestamp = locomoSourceTimestamp(input.sample, session);
   const windowStart = Math.max(0, input.index - input.windowSize);
-  const windowEnd = Math.min(input.turns.length, input.index + input.windowSize + 1);
-  const nearbyTurns = input.turns.slice(windowStart, windowEnd).map((item) => ({
-    dia_id: item.dia_id ?? "",
-    session: item.session ?? "",
-    speaker: item.speaker ?? "",
-    text: item.text ?? "",
-    image_query: item.query ?? "",
-    image_caption: item.blip_caption ?? ""
-  }));
-  const qaHints = (input.sample.qa ?? [])
-    .filter((qa) => (qa.evidence ?? []).map(String).includes(diaId))
-    .slice(0, 5)
-    .map((qa) => ({
-      question: qa.question ?? "",
-      gold_answer: qa.answer ?? "",
-      evidence: qa.evidence ?? []
-    }));
-  return JSON.stringify({
-    operation: "locomo_remember_turn",
-    instruction: "Store this LOCOMO turn through the normal PSM memory product path. Preserve source ids, session timestamp, durable facts, and answerable facts. Extract facts[] for people, activities, relationship status, career interests, locations, and temporal facts.",
-    sample_id: sampleId,
-    session,
-    session_timestamp: sourceTimestamp,
-    current_turn: {
-      dia_id: diaId,
-      speaker: turn.speaker ?? "",
-      text: turn.text ?? "",
-      image_query: turn.query ?? "",
-      image_caption: turn.blip_caption ?? "",
-      image_urls: turn.img_url ?? []
-    },
-    nearby_turns: nearbyTurns,
-    qa_hints_for_this_turn: qaHints
-  });
+  const windowEnd = input.index;
+  const nearbyTurns = input.turns
+    .slice(windowStart, windowEnd)
+    .map((item) => renderTurnLine(item));
+  const imageLines = renderImageLines(turn);
+  return [
+    "LOCOMO benchmark conversation turn.",
+    "This is a normal conversation-memory input rendered from the benchmark dataset. Store only durable memories and facts supported by the conversation text.",
+    "",
+    `Source id: ${sampleId}:${diaId}`,
+    `Sample id: ${sampleId}`,
+    `Session: ${session || "unknown"}`,
+    `Session time: ${sourceTimestamp ?? "unknown"}`,
+    `Speaker: ${turn.speaker ?? "unknown"}`,
+    "",
+    "Current turn to remember:",
+    `${turn.speaker ?? "Unknown"} said: ${quoteText(turn.text)}`,
+    ...imageLines,
+    "",
+    "Prior conversation context:",
+    ...(nearbyTurns.length > 0 ? nearbyTurns : ["- none"]),
+    "",
+    "Extraction guidance:",
+    "- Treat the current turn as the only turn being remembered.",
+    "- Use prior context only to resolve pronouns or missing context.",
+    "- Do not copy prior speaker facts onto the current speaker.",
+    "- Preserve the real speaker names from the conversation.",
+    "- Preserve source ids and session time from the metadata above.",
+    "- If the turn contains relative time such as yesterday, last week, or last year, preserve that phrase and resolve it from the session time when possible.",
+    "- Extract durable facts for people, activities, relationships, careers, locations, preferences, projects, workflows, and visual context when directly supported.",
+    "- Do not store this benchmark wrapper text as memory content."
+  ].join("\n");
+}
+
+function renderTurnLine(turn: LocomoTurn): string {
+  const fields = [
+    `${turn.speaker ?? "Unknown"} said: ${quoteText(turn.text)}`,
+    turn.query ? `image query: ${turn.query}` : "",
+    turn.blip_caption ? `image caption: ${turn.blip_caption}` : ""
+  ].filter(Boolean);
+  return `- [prior ${turn.session ?? "unknown"} ${turn.dia_id ?? "unknown"}] ${fields.join("; ")}`;
+}
+
+function renderImageLines(turn: LocomoTurn): string[] {
+  const lines: string[] = [];
+  if (turn.query) lines.push(`Image query: ${turn.query}`);
+  if (turn.blip_caption) lines.push(`Image caption: ${turn.blip_caption}`);
+  if (turn.img_url?.length) lines.push(`Image URLs: ${turn.img_url.join(", ")}`);
+  return lines;
+}
+
+function quoteText(value: string | undefined): string {
+  const text = value?.trim();
+  return text ? `"${text}"` : "\"\"";
 }
 
 export function parseTags(value: string | null | undefined): string[] {
@@ -108,6 +129,46 @@ export function parseTags(value: string | null | undefined): string[] {
 export function tagValue(tags: string[], key: string): string {
   const prefix = `${key}:`;
   return tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length) ?? "";
+}
+
+export function createLocomoIngestRuntime(runtime: ModelRuntime): ModelRuntime {
+  return {
+    async generateJson(prompt, options) {
+      const raw = await runtime.generateJson(prompt, options);
+      return hasInvalidLocomoMemoryContent(raw) ? "invalid locomo memory content" : raw;
+    }
+  };
+}
+
+function hasInvalidLocomoMemoryContent(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed)) return false;
+    const memory = parsed.memory;
+    if (typeof memory === "string") return isLocomoWrapperContent(memory.trim());
+    if (!isRecord(memory)) return false;
+    const content = typeof memory.content === "string" ? memory.content.trim() : "";
+    if (!content) return false;
+    return isLocomoWrapperContent(content);
+  } catch {
+    return false;
+  }
+}
+
+function isLocomoWrapperContent(content: string): boolean {
+  const lower = content.toLowerCase();
+  return content.startsWith("{")
+    || lower.includes("locomo benchmark conversation turn")
+    || lower.includes("current turn to remember:")
+    || lower.includes("extraction guidance:")
+    || lower.startsWith("user ")
+    || lower.includes(" user ")
+    || lower.includes("\"operation\":\"locomo_remember_turn\"")
+    || lower.includes("\"operation\": \"locomo_remember_turn\"");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringOption(options: Record<string, string | boolean>, key: string, fallback: string): string {

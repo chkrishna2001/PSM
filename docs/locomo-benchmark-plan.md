@@ -42,6 +42,66 @@ The later answer-evaluation work exposed these issues:
 4. Retrieval/context selection still misses key memories for some questions.
    - Example: counseling/certification memory exists in DB but was not surfaced for the education-fields question.
 
+## Current Status On 2026-05-20
+
+Do not run a full LOCOMO ingestion yet.
+
+The latest local smoke was run against the repo-built entrypoint, not a globally installed CLI:
+
+```powershell
+npm run build
+
+node .\dist\benchmark\locomo\src\ingest-node.js `
+  --db .\benchmark\locomo\results\locomo-readiness-smoke-2.db `
+  --model "$env:LOCALAPPDATA\psm-memory\models\psm-memory-qwen-1.5b-q4_k_m.gguf" `
+  --limit 5 `
+  --batch-size 5 `
+  --window-size 2 `
+  --context-size 4096
+```
+
+Corrected smoke result:
+
+```json
+{
+  "seen": 5,
+  "stored": 2,
+  "ignored": 0,
+  "failed": 3
+}
+```
+
+The three failures were malformed JSON from the local 1.5B model. The two actual writes showed mixed quality:
+
+- One row had source and temporal metadata, but it was a broad summary rather than a benchmark-critical factual memory.
+- One row resolved `yesterday` from source timestamp `1:56 pm on 8 May, 2023` to `7 May 2023`, but stored the raw LOCOMO JSON payload as memory content.
+- `memory_facts` had `0` rows.
+
+The ingestion stats were also fixed after this finding. `benchmark/locomo/src/ingest-node.ts` and `benchmark/locomo/src/ingest.ts` now count parse errors as `failed`, count ignored/recall-only routes as `ignored`, and count `stored` only when `PsmService.remember()` reports written rows. This makes future smoke summaries meaningful.
+
+Conclusion: the temporal/factual database plumbing exists, but the current LOCOMO ingestion path is not reliable enough because the benchmark was feeding structured JSON to a model trained for natural-language memory extraction. Full ingestion should wait until the benchmark-only natural-language adapter below is implemented and smoke-tested. This adapter must not leak into product code.
+
+Follow-up implementation moved the adapter to product-shaped natural language:
+
+- LOCOMO JSON rows are rendered as natural conversation text plus source metadata.
+- QA/gold answers/evidence labels are not rendered during ingestion.
+- Future turns are not rendered; only prior context is included.
+- Benchmark-only runtime validation rejects raw JSON payloads, wrapper text, and generic `User` memories.
+- Product SDK/service code was not changed.
+
+Post-adapter 5-turn smoke still failed quality gates:
+
+```json
+{
+  "seen": 5,
+  "stored": 2,
+  "ignored": 0,
+  "failed": 3
+}
+```
+
+The stored rows no longer copied raw JSON, but the local 1.5B model still produced malformed storage JSON on most turns and did not extract `memory_facts`. Full ingestion remains no-go until a 20-turn smoke passes the Phase 1 criteria below.
+
 ## Product Architecture For Benchmark V1
 
 For a marketable benchmark, do not rely on unconstrained PSM prose generation until that behavior is fine-tuned.
@@ -71,18 +131,18 @@ but it should not block the benchmark v1.
 
 ### Phase 1: Stabilize Ingestion
 
-Status: partially implemented.
+Status: blocked on ingestion quality.
 
-Use windowed LOCOMO ingestion:
+Use product-shaped LOCOMO ingestion:
 
 - current turn
-- previous/next `2` turns
+- previous `N` turns as context only
 - `sample_id`
 - `session`
 - `dia_id`
 - speaker
 - image query/caption
-- QA hints when the current turn is gold evidence
+- no QA hints, gold answers, or benchmark labels during ingestion
 
 Expected memory behavior:
 
@@ -91,6 +151,63 @@ Expected memory behavior:
 - Normalize answerable facts when local context permits.
 - Preserve relative time phrases if absolute date is unavailable.
 - Do not merge speakers incorrectly.
+- Never store raw LOCOMO JSON payloads as memory content.
+- Write extracted `memory_facts` for benchmark-critical facts.
+- Treat malformed model JSON as a failed ingest item, not as a successful store.
+
+Required adapter changes before full ingest:
+
+1. Parse LOCOMO input deterministically.
+   - Read `sample_id`, `session`, `dia_id`, `speaker`, `text`, `query`, `blip_caption`, `img_url`, session timestamp, and nearby turns from the dataset.
+   - Do not read or render `qa`, gold answers, evidence labels, categories, or benchmark questions during ingestion.
+   - Keep the current turn as the only turn being remembered.
+   - Render previous turns only as context for pronoun and continuity resolution.
+   - Do not render future turns during ingestion; that is not the normal online product flow and can cause speaker leakage.
+   - Preserve the original source id as `<sample_id>:<dia_id>`, for example `conv-26:D1:3`.
+
+2. Build clean memory candidates before calling the store path.
+   - Render the benchmark row as natural conversation text plus source metadata, not as raw JSON.
+   - Use concise natural-language memory content, not the raw JSON payload.
+   - Include source metadata on every candidate:
+     - `source_kind = locomo_turn`
+     - `source_id`
+     - `source_timestamp`
+     - `source_label`
+     - `locomo_sample_id`
+     - `locomo_dia_id`
+     - `locomo_speaker`
+     - `locomo_session`
+
+3. Add deterministic temporal normalization for obvious relative dates.
+   - Resolve `yesterday`, `today`, `tomorrow`, `last week`, `last month`, and `last year` when `source_timestamp` is available.
+   - Preserve the original phrase in `temporal_expression`.
+   - Store the resolved value in `resolved_time`.
+   - Example: `session_timestamp = 1:56 pm on 8 May, 2023` and text contains `yesterday` -> `resolved_time = 7 May 2023`.
+
+4. Add deterministic benchmark-only rendering, not benchmark-answer extraction.
+   - Convert structured LOCOMO rows into natural-language turns that resemble product input.
+   - Do not create facts from gold answers.
+   - Do not use QA evidence links to decide what to store.
+   - Explicit event/activity facts:
+     - Let PSM extract these from natural conversation text when the speaker explicitly states an activity/event.
+     - Speaker location, preference, career interest, relationship/status, family detail, project, and workflow facts when explicitly stated.
+   - Image facts:
+     - Render image query and caption as natural context fields so PSM can extract visual memories when directly supported.
+   - All facts must carry evidence text and source metadata.
+
+5. Harden model-output validation.
+   - Reject memory content that starts with `{`, contains `"operation":"locomo_remember_turn"`, or otherwise looks like the raw payload.
+   - Reject memory content that copies the benchmark natural-language wrapper, such as `LOCOMO benchmark conversation turn`, `Current turn to remember:`, or `Extraction guidance:`.
+   - Reject generic LOCOMO memories using `User` instead of the real speaker name.
+   - Reject missing or empty `memory.content`.
+   - Reject rows without `source_id`, `source_timestamp`, and `locomo_dia_id` in LOCOMO ingestion.
+   - If repair fails, increment `failed` and record the parse error.
+   - Keep this validation inside `benchmark/locomo`; do not add LOCOMO-specific checks to product code.
+
+6. Keep PSM ownership where it is useful.
+   - PSM still owns normal storage tables, source metadata persistence, recall planning, ranking, and grounded context rendering.
+   - The benchmark adapter only translates LOCOMO dataset structure into natural-language product-like input.
+   - The final benchmark should be described as `PSM Memory + LOCOMO natural-language ingestion adapter + answer model + judge model`.
 
 Smoke command:
 
@@ -98,10 +215,10 @@ Smoke command:
 npm run build
 
 node .\dist\benchmark\locomo\src\ingest-node.js `
-  --db .\benchmark\locomo\results\locomo-window-smoke.db `
+  --db .\benchmark\locomo\results\locomo-ingest-quality-smoke.db `
   --model "$env:LOCALAPPDATA\psm-memory\models\psm-memory-qwen-1.5b-q4_k_m.gguf" `
-  --limit 100 `
-  --batch-size 20 `
+  --limit 20 `
+  --batch-size 5 `
   --window-size 2 `
   --context-size 4096
 ```
@@ -114,10 +231,26 @@ node -e "import('@psm-memory/sdk').then(({MemoryStore})=>{ const s=new MemorySto
 
 Success criteria:
 
+- `failed=0`, or every failure has a clear non-data reason worth accepting.
+- No raw JSON payloads stored as memory content.
+- `memory_facts` has rows.
 - Q1 support-group memory contains `7 May 2023`.
+- D1:3 resolves `yesterday` to `7 May 2023`.
 - Sunrise memory contains `2022` or enough date-resolved context.
 - Counseling/certification memory exists and is tagged with `D1:11`.
 - No generic `User is...` memories for LOCOMO people.
+
+After the 20-turn smoke passes, run a 100-turn smoke with the same checks:
+
+```powershell
+node .\dist\benchmark\locomo\src\ingest-node.js `
+  --db .\benchmark\locomo\results\locomo-window-smoke-v2.db `
+  --model "$env:LOCALAPPDATA\psm-memory\models\psm-memory-qwen-1.5b-q4_k_m.gguf" `
+  --limit 100 `
+  --batch-size 20 `
+  --window-size 2 `
+  --context-size 4096
+```
 
 ### Phase 2: Stabilize Recall And Context
 

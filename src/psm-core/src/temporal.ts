@@ -10,8 +10,8 @@ export function normalizeMemoryTemporalFields(memory: MemoryPayload, sourceTimes
   return {
     ...memory,
     temporal_expression: memory.temporal_expression ?? temporalExpression,
-    resolved_time: memory.resolved_time ?? resolved,
-    resolved_time_confidence: memory.resolved_time_confidence ?? 0.9
+    resolved_time: resolved,
+    resolved_time_confidence: Math.max(memory.resolved_time_confidence ?? 0, 0.9)
   };
 }
 
@@ -23,8 +23,8 @@ export function normalizeFactTemporalFields(fact: MemoryFactPayload, sourceTimes
   return {
     ...fact,
     temporal_expression: fact.temporal_expression ?? temporalExpression,
-    resolved_time: fact.resolved_time ?? resolved,
-    resolved_time_confidence: fact.resolved_time_confidence ?? 0.9
+    resolved_time: resolved,
+    resolved_time_confidence: Math.max(fact.resolved_time_confidence ?? 0, 0.9)
   };
 }
 

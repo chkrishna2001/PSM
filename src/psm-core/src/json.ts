@@ -54,7 +54,11 @@ function normalizeFact(value: unknown): MemoryFactPayload | null {
   const subject = stringOrUndefined(value.subject);
   const predicate = normalizePredicate(stringOrUndefined(value.predicate));
   const valueText = stringOrUndefined(value.value_text) ?? valueToText(value.value);
+  const inferenceKind = stringOrUndefined(value.inference_kind);
+  const evidenceText = stringOrUndefined(value.evidence_text);
   if (!subject || !predicate || !valueText) return null;
+  if (inferenceKind && inferenceKind !== "explicit") return null;
+  if (!evidenceText) return null;
   return {
     subject,
     predicate,
@@ -64,8 +68,8 @@ function normalizeFact(value: unknown): MemoryFactPayload | null {
     value_json: value.value_json ?? value.value,
     fact_type: stringOrUndefined(value.fact_type),
     confidence: numberOrUndefined(value.confidence),
-    inference_kind: stringOrUndefined(value.inference_kind),
-    evidence_text: stringOrUndefined(value.evidence_text),
+    inference_kind: inferenceKind ?? "explicit",
+    evidence_text: evidenceText,
     temporal_expression: stringOrUndefined(value.temporal_expression),
     resolved_time: stringOrUndefined(value.resolved_time),
     resolved_time_confidence: numberOrUndefined(value.resolved_time_confidence)
@@ -133,15 +137,15 @@ export function parseContextRender(rawText: string, topK = 5): ContextRender {
 }
 
 function normalizeMemory(value: unknown, fallbackContent: string): MemoryPayload | null {
-  if (value === null) return null;
+  if (value === null || value === undefined) return null;
   if (typeof value === "string" && value.trim()) {
     return { content: value };
   }
-  if (!isRecord(value)) {
-    return { content: fallbackContent };
-  }
+  if (!isRecord(value)) return null;
+  const content = stringOrUndefined(value.content);
+  if (!content) return null;
   return {
-    content: stringOr(value.content, fallbackContent),
+    content,
     type: stringOrUndefined(value.type),
     strength: numberOrUndefined(value.strength),
     decay_rate: numberOrUndefined(value.decay_rate),
