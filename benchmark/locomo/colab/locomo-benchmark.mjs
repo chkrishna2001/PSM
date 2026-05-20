@@ -37,6 +37,7 @@ async function ingest(options) {
   const batchSize = intOption(options, "batch-size", 10);
   const offset = intOption(options, "offset", 0);
   const progressPath = stringOption(options, "progress", "");
+  const summaryPath = stringOption(options, "summary", "/content/locomo/results/ingest-summary.json");
   const checkpointDir = stringOption(options, "checkpoint-dir", "");
   const contextSize = intOption(options, "context-size", 4096);
   const windowSize = intOption(options, "window-size", 2);
@@ -85,6 +86,7 @@ async function ingest(options) {
     batch_size: batchSize,
     offset,
     progress: progressPath || null,
+    summary: summaryPath,
     checkpoint_dir: checkpointDir || null,
     total_records: records.length,
     start_index: startIndex,
@@ -102,7 +104,7 @@ async function ingest(options) {
   try {
     if (startIndex >= records.length) {
       checkpoint(dbPath, checkpointDir, progressPath, stats, startIndex);
-      return finish(store, stats);
+      return finish(store, stats, summaryPath);
     }
 
     for (let index = startIndex; index < endIndex; index++) {
@@ -120,6 +122,7 @@ async function ingest(options) {
             source_timestamp: locomoSourceTimestamp(sample, turn.session),
             source_label: `LOCOMO ${sampleId} ${diaId || sampleOrdinal}`
           },
+          includeExistingMemories: false,
           extraTags: [
             `locomo_sample_id:${sampleId}`,
             `locomo_dia_id:${diaId}`,
@@ -141,7 +144,7 @@ async function ingest(options) {
       }
     }
     checkpoint(dbPath, checkpointDir, progressPath, stats, stats.next_index);
-    return finish(store, stats);
+    return finish(store, stats, summaryPath);
   } finally {
     store.close();
   }
@@ -311,9 +314,9 @@ function report(options) {
   return 0;
 }
 
-function finish(store, stats) {
+function finish(store, stats, summaryPath = "/content/locomo/results/ingest-summary.json") {
   stats.ended_at = new Date().toISOString();
-  const outPath = "/content/locomo/results/ingest-summary.json";
+  const outPath = summaryPath;
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(stats, null, 2), "utf8");
   console.log(JSON.stringify(stats, null, 2));

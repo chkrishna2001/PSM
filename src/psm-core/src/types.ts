@@ -198,6 +198,7 @@ export interface RememberRequest {
   userId: string;
   source?: MemorySourceMetadata;
   extraTags?: string[];
+  includeExistingMemories?: boolean;
 }
 
 export interface MemorySourceMetadata {

@@ -84,6 +84,7 @@ async function ingestTurn(
         source_timestamp: locomoSourceTimestamp(sample, turn.session),
         source_label: `LOCOMO ${sampleId} ${diaId || ordinal}`
       },
+      includeExistingMemories: false,
       extraTags: [
         `locomo_sample_id:${sampleId}`,
         `locomo_dia_id:${diaId}`,

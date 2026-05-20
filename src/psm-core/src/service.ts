@@ -78,7 +78,7 @@ export class PsmService {
   }
 
   async remember(request: RememberRequest): Promise<Record<string, unknown>> {
-    const existing = this.store.selectMemories(request.userId, ["semantic", "episodic"], 50);
+    const existing = request.includeExistingMemories === false ? [] : this.store.selectMemories(request.userId, ["semantic", "episodic"], 50);
     const raw = await this.runtime.generateJson(buildStoragePrompt(request.llmResponse, existing, request.source), { temperature: 0, maxTokens: 1024 });
     let decision = parseStorageDecision(raw, request.llmResponse, "store_episodic");
     let repairedRaw: string | undefined;

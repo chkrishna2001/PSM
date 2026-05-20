@@ -64,6 +64,7 @@ export async function main(argv: string[]): Promise<number> {
             source_timestamp: locomoSourceTimestamp(sample, turn.session),
             source_label: `LOCOMO ${sampleId} ${diaId || stats.seen}`
           },
+          includeExistingMemories: false,
           extraTags: [
             `locomo_sample_id:${sampleId}`,
             `locomo_dia_id:${diaId}`,
