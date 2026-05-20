@@ -57,8 +57,10 @@ function normalizeFact(value: unknown): MemoryFactPayload | null {
   const inferenceKind = stringOrUndefined(value.inference_kind);
   const evidenceText = stringOrUndefined(value.evidence_text);
   if (!subject || !predicate || !valueText) return null;
+  if (isGenericFactSubject(subject)) return null;
   if (inferenceKind && inferenceKind !== "explicit") return null;
   if (!evidenceText) return null;
+  if (isInvalidEvidenceText(evidenceText)) return null;
   return {
     subject,
     predicate,
@@ -74,6 +76,25 @@ function normalizeFact(value: unknown): MemoryFactPayload | null {
     resolved_time: stringOrUndefined(value.resolved_time),
     resolved_time_confidence: numberOrUndefined(value.resolved_time_confidence)
   };
+}
+
+function isGenericFactSubject(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "person"
+    || normalized === "conversation context"
+    || normalized === "context"
+    || normalized === "current conversation"
+    || normalized === "current turn";
+}
+
+function isInvalidEvidenceText(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return normalized.includes("benchmark dataset")
+    || normalized.includes("conversation-memory input")
+    || normalized.includes("extraction guidance")
+    || normalized.includes("current turn to remember")
+    || normalized.includes("previous context")
+    || normalized.includes("source id:");
 }
 
 export function parseRecallPlan(rawText: string, question: string, topK = 5): RecallPlan {

@@ -6,7 +6,16 @@ const monthNames = ["January", "February", "March", "April", "May", "June", "Jul
 export function normalizeMemoryTemporalFields(memory: MemoryPayload, sourceTimestamp?: string): MemoryPayload {
   const temporalExpression = memory.temporal_expression ?? detectRelativeExpression(memory.content);
   const resolved = temporalExpression && sourceTimestamp ? resolveRelativeTime(temporalExpression, sourceTimestamp) : undefined;
-  if (!temporalExpression || !resolved) return memory;
+  if (!temporalExpression) return memory;
+  if (!isSupportedTemporalExpression(temporalExpression)) {
+    return {
+      ...memory,
+      temporal_expression: undefined,
+      resolved_time: undefined,
+      resolved_time_confidence: undefined
+    };
+  }
+  if (!resolved) return memory;
   return {
     ...memory,
     temporal_expression: memory.temporal_expression ?? temporalExpression,
@@ -19,13 +28,29 @@ export function normalizeFactTemporalFields(fact: MemoryFactPayload, sourceTimes
   const text = [fact.evidence_text, fact.value_text, typeof fact.value === "string" ? fact.value : ""].filter(Boolean).join(" ");
   const temporalExpression = fact.temporal_expression ?? detectRelativeExpression(text);
   const resolved = temporalExpression && sourceTimestamp ? resolveRelativeTime(temporalExpression, sourceTimestamp) : undefined;
-  if (!temporalExpression || !resolved) return fact;
+  if (!temporalExpression) return fact;
+  if (!isSupportedTemporalExpression(temporalExpression)) {
+    return {
+      ...fact,
+      temporal_expression: undefined,
+      resolved_time: undefined,
+      resolved_time_confidence: undefined
+    };
+  }
+  if (!resolved) return fact;
   return {
     ...fact,
     temporal_expression: fact.temporal_expression ?? temporalExpression,
     resolved_time: resolved,
     resolved_time_confidence: Math.max(fact.resolved_time_confidence ?? 0, 0.9)
   };
+}
+
+function isSupportedTemporalExpression(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return relativePattern.test(normalized)
+    || /\b\d{4}\b/.test(normalized)
+    || /\b\d{1,2}\s+(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b/i.test(normalized);
 }
 
 export function detectRelativeExpression(text: string | undefined): string | undefined {

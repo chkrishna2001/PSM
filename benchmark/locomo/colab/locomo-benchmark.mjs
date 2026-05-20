@@ -412,8 +412,15 @@ function isLocomoWrapperContent(content) {
   const lower = content.toLowerCase();
   return content.startsWith("{")
     || lower.includes("locomo benchmark conversation turn")
+    || lower.includes("normal conversation-memory input")
+    || lower.includes("rendered from the benchmark dataset")
+    || lower.includes("store only durable memories")
     || lower.includes("current turn to remember:")
+    || lower.includes("current utterance:")
+    || lower.includes("previous context:")
     || lower.includes("extraction guidance:")
+    || lower.includes("do not store")
+    || lower.includes("preserve source ids")
     || lower.startsWith("user ")
     || lower.includes(" user ")
     || lower.includes("\"operation\":\"locomo_remember_turn\"")
@@ -509,31 +516,15 @@ function buildLocomoRememberText({ sample, turns, index, windowSize }) {
   const nearbyTurns = turns.slice(windowStart, index).map((item) => renderTurnLine(item));
   const imageLines = renderImageLines(turn);
   return [
-    "LOCOMO benchmark conversation turn.",
-    "This is a normal conversation-memory input rendered from the benchmark dataset. Store only durable memories and facts supported by the conversation text.",
-    "",
     `Source id: ${sampleId}:${diaId}`,
     `Sample id: ${sampleId}`,
     `Session: ${turn.session || "unknown"}`,
     `Session time: ${sourceTimestamp ?? "unknown"}`,
-    `Speaker: ${turn.speaker ?? "unknown"}`,
-    "",
-    "Current turn to remember:",
-    `${turn.speaker ?? "Unknown"} said: ${quoteText(turn.text)}`,
+    `Current speaker: ${turn.speaker ?? "unknown"}`,
+    `Current utterance: ${quoteText(turn.text)}`,
     ...imageLines,
-    "",
-    "Prior conversation context:",
+    "Previous context:",
     ...(nearbyTurns.length > 0 ? nearbyTurns : ["- none"]),
-    "",
-    "Extraction guidance:",
-    "- Treat the current turn as the only turn being remembered.",
-    "- Use prior context only to resolve pronouns or missing context.",
-    "- Do not copy prior speaker facts onto the current speaker.",
-    "- Preserve the real speaker names from the conversation.",
-    "- Preserve source ids and session time from the metadata above.",
-    "- If the turn contains relative time such as yesterday, last week, or last year, preserve that phrase and resolve it from the session time when possible.",
-    "- Extract durable facts for people, activities, relationships, careers, locations, preferences, projects, workflows, and visual context when directly supported.",
-    "- Do not store this benchmark wrapper text as memory content."
   ].join("\n");
 }
 
