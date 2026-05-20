@@ -119,24 +119,60 @@ export function createLocomoIngestRuntime(runtime: ModelRuntime): ModelRuntime {
   return {
     async generateJson(prompt, options) {
       const raw = await runtime.generateJson(prompt, options);
-      return hasInvalidLocomoMemoryContent(raw) ? "invalid locomo memory content" : raw;
+      return hasInvalidLocomoMemoryContent(raw, prompt) ? "invalid locomo memory content" : raw;
     }
   };
 }
 
-function hasInvalidLocomoMemoryContent(raw: string): boolean {
+function hasInvalidLocomoMemoryContent(raw: string, prompt: string): boolean {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return false;
     const memory = parsed.memory;
-    if (typeof memory === "string") return isLocomoWrapperContent(memory.trim());
-    if (!isRecord(memory)) return false;
-    const content = typeof memory.content === "string" ? memory.content.trim() : "";
+    const content = typeof memory === "string"
+      ? memory.trim()
+      : isRecord(memory) && typeof memory.content === "string"
+        ? memory.content.trim()
+        : "";
     if (!content) return false;
-    return isLocomoWrapperContent(content);
+    if (isLocomoWrapperContent(content)) return true;
+    const currentUtterance = extractCurrentUtterance(prompt);
+    if (!currentUtterance) return false;
+    return !isGroundedInCurrentUtterance(content, currentUtterance);
   } catch {
     return false;
   }
+}
+
+function extractCurrentUtterance(prompt: string): string {
+  const match = prompt.match(/^Current utterance:\s*"([\s\S]*?)"$/m);
+  if (match?.[1]?.trim()) return match[1].trim();
+
+  const encodedContent = prompt.match(/"conversation":\[\{"role":"assistant","content":"((?:\\.|[^"\\])*)"\}\]/)?.[1];
+  if (!encodedContent) return "";
+  try {
+    const decodedContent = JSON.parse(`"${encodedContent}"`) as unknown;
+    if (typeof decodedContent !== "string") return "";
+    return decodedContent.match(/^Current utterance:\s*"([\s\S]*?)"$/m)?.[1]?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function isGroundedInCurrentUtterance(content: string, currentUtterance: string): boolean {
+  const currentTokens = meaningfulTokens(currentUtterance);
+  const contentTokens = meaningfulTokens(content);
+  if (currentTokens.length === 0 || contentTokens.length === 0) return false;
+  const contentSet = new Set(contentTokens);
+  const overlap = currentTokens.filter((token) => contentSet.has(token));
+  if (overlap.length >= Math.min(2, currentTokens.length)) return true;
+  const quoted = content.match(/"([^"]{4,})"/g)?.some((quote) => currentUtterance.includes(quote.slice(1, -1))) ?? false;
+  return quoted;
+}
+
+function meaningfulTokens(text: string): string[] {
+  const stop = new Set(["the", "and", "but", "you", "your", "for", "with", "that", "this", "what", "have", "been", "said", "asked", "mentioned", "about", "from", "into", "they", "them", "their", "good", "really"]);
+  return text.toLowerCase().match(/[a-z0-9+]{3,}/g)?.filter((token) => !stop.has(token)) ?? [];
 }
 
 function isLocomoWrapperContent(content: string): boolean {
