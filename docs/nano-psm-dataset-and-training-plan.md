@@ -830,7 +830,7 @@ HF_CHECKPOINT_REPO=chkrishna2001/nano-psm-checkpoints
 ### Colab Bootstrap Cell
 
 ```python
-!pip install -U huggingface_hub datasets torch tokenizers safetensors onnx onnxruntime
+!pip install -U huggingface_hub datasets torch tokenizers==0.23.0 safetensors onnx onnxruntime
 
 from huggingface_hub import login, snapshot_download
 login()
