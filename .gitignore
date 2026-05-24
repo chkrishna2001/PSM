@@ -25,9 +25,14 @@ pnpm-debug.log*
 *.jsonl
 results/
 benchmark/**/results/
+nano-psm/data-pipeline/reports/
 
 # Local datasets and model artifacts
 data/
+nano-psm/data/*
+!nano-psm/data/README.md
+nano-psm/checkpoints/*
+!nano-psm/checkpoints/.gitkeep
 models/
 *.onnx
 *.onnx_adapter
@@ -43,6 +48,8 @@ psm_merged_fp16/
 # Python and .NET local artifacts from earlier experiments
 __pycache__/
 *.pyc
+.venv/
+nano-psm/.venv/
 .dotnet/
 .nuget/
 bin/

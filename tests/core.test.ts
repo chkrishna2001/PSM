@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hybridRankMemories, MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, TraceModelRuntime, type ModelRuntime } from "@psm-memory/sdk";
+import { buildStoragePrompt, hybridRankMemories, MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, TraceModelRuntime, type ModelRuntime } from "@psm-memory/sdk";
 import { run as runCli } from "@psm-memory/cli";
 import { createPsmHooks } from "@psm-memory/pi-plugin";
 
@@ -266,6 +266,13 @@ test("storage decision parser accepts extracted facts", () => {
   assert.equal(decision.facts?.length, 1);
   assert.equal(decision.facts?.[0]?.predicate, "relationship_status");
   assert.equal(decision.facts?.[0]?.value_text, "single");
+});
+
+test("storage prompt includes optional user message before assistant response", () => {
+  const prompt = buildStoragePrompt("Assistant acknowledged the date.", [], {}, "Melanie painted the sunrise in 2022.");
+  assert.ok(prompt.includes("\"role\":\"user\",\"content\":\"Melanie painted the sunrise in 2022.\""));
+  assert.ok(prompt.includes("\"role\":\"assistant\",\"content\":\"Assistant acknowledged the date.\""));
+  assert.ok(prompt.indexOf("\"role\":\"user\"") < prompt.indexOf("\"role\":\"assistant\""));
 });
 
 test("recall plan parser normalizes bad model output", () => {
@@ -783,6 +790,87 @@ test("service context renders extracted facts before source memory prose", async
   assert.ok(String(items[0].content).includes("Caroline relationship_status single"));
   assert.ok(String(items[0].content).includes("Evidence: single parent"));
   assert.equal(facts[0].predicate, "relationship_status");
+});
+
+test("service context gives temporal facts a boost for when questions", async () => {
+  const dbPath = `dist/test-context-temporal-fact-boost-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  const memoryId = store.insertEpisodic("u1", "Melanie painted a sunrise in 2022.");
+  store.insertMemoryFact("u1", {
+    subject: "Melanie",
+    predicate: "activity",
+    value: "painted a sunrise",
+    fact_type: "profile_fact",
+    confidence: 0.95,
+    inference_kind: "explicit",
+    evidence_text: "painted a sunrise"
+  }, { table: "episodic", id: memoryId, content: "Melanie painted a sunrise in 2022." });
+  store.insertMemoryFact("u1", {
+    subject: "Melanie sunrise painting",
+    predicate: "event_date",
+    value: "2022",
+    fact_type: "temporal_fact",
+    confidence: 0.8,
+    inference_kind: "explicit",
+    evidence_text: "in 2022"
+  }, { table: "episodic", id: memoryId, content: "Melanie painted a sunrise in 2022." });
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "temporal_fact_recall",
+          target_tables: ["semantic", "episodic"],
+          filters: {},
+          ranking_hints: ["Melanie sunrise painting"],
+          top_k: 3
+        });
+      }
+      return "{}";
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "When did Melanie paint a sunrise?", topK: 3 });
+  store.close();
+  const facts = result.fact_context as Array<Record<string, unknown>>;
+  assert.equal(facts[0].fact_type, "temporal_fact");
+  assert.equal(facts[0].value_text, "2022");
+});
+
+test("service context render prompt receives a wider candidate pool", async () => {
+  const dbPath = `dist/test-context-render-wide-candidates-${Date.now()}.db`;
+  const store = new MemoryStore(dbPath);
+  store.initializeSchema();
+  for (let i = 1; i <= 12; i++) {
+    store.insertSemantic("u1", `SQLite candidate alpha${i} for local memory tools.`);
+  }
+  const runtime: ModelRuntime = {
+    async generateJson(prompt: string): Promise<string> {
+      if (prompt.includes("context_plan")) {
+        return JSON.stringify({
+          intent: "recall",
+          target_tables: ["semantic"],
+          filters: {},
+          ranking_hints: ["SQLite local memory tools"],
+          top_k: 3
+        });
+      }
+      const candidateMentions = prompt.match(/SQLite candidate alpha\d+ for local memory tools\./g) ?? [];
+      assert.ok(candidateMentions.length > 10);
+      return JSON.stringify({
+        context_items: [],
+        selected_ids: [],
+        reasoning: "No rendered selection."
+      });
+    }
+  };
+  const { PsmService } = await import("@psm-memory/sdk");
+  const service = new PsmService(store, runtime);
+  const result = await service.context({ userId: "u1", prompt: "Which SQLite memory notes matter?", topK: 3 });
+  store.close();
+  const items = result.agent_context_items as Array<Record<string, unknown>>;
+  assert.ok(items.length <= 3);
 });
 
 test("service context lets PSM render grounded agent context from selected rows", async () => {

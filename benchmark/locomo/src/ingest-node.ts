@@ -58,6 +58,7 @@ export async function main(argv: string[]): Promise<number> {
         const result = await service.remember({
           userId,
           llmResponse: buildLocomoRememberText({ sample, turns, index, windowSize: Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2 }),
+          userMessage: `${turn.speaker ?? "Unknown"} said: ${turn.text ?? ""}`.trim(),
           source: {
             source_kind: "locomo_turn",
             source_id: source,

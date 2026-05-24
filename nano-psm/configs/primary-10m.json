@@ -1,0 +1,22 @@
+{
+  "name": "nano-psm-primary-10m",
+  "model": {
+    "vocab_size": 24000,
+    "max_sequence_length": 1536,
+    "embedding_dim": 384,
+    "encoder_layers": 6,
+    "attention_heads": 6,
+    "feed_forward_dim": 1024,
+    "dropout": 0.1
+  },
+  "training": {
+    "batch_size": 16,
+    "gradient_accumulation_steps": 2,
+    "learning_rate": 0.0002,
+    "weight_decay": 0.01,
+    "max_steps": 20000,
+    "eval_every": 500,
+    "save_every": 500
+  }
+}
+

@@ -1,0 +1,131 @@
+Let me read all of them.Now I have a clear picture. Let me give you the real diagnosis.
+
+---
+
+## The Code is Actually Very Good
+
+Seriously — the architecture in `service.ts`, the hybrid ranking in `ranking.ts`, the grounding check in `isGroundedContextContent`, the fact extraction system, the repair loop — this is solid, well-thought-out code. Far beyond what most people build.
+
+---
+
+## The Real Problems Causing 20% LOCOMO
+
+**Problem 1 — `buildStoragePrompt` only receives `llmResponse`, not the user message**
+
+```typescript
+// service.ts line ~70
+async remember(request: RememberRequest): Promise<...> {
+  const raw = await this.runtime.generateJson(
+    buildStoragePrompt(request.llmResponse, existing, request.source)
+  )
+```
+
+PSM only sees the LLM's response — not what the user said. So when the user says "I ran a charity race on May 21st 2023", PSM never sees that. It only sees the LLM's reply about it. The specific date lives in the user message, not the assistant response. This is why dates and specific facts are being lost.
+
+**Fix in `prompts.ts`:**
+```typescript
+export function buildStoragePrompt(
+  llmResponse: string,
+  existingMemories: MemoryRecord[] = [],
+  source: MemorySourceMetadata = {},
+  userMessage?: string  // ADD THIS
+): string {
+  const conversation = userMessage
+    ? [
+        { role: "user", content: userMessage },
+        { role: "assistant", content: llmResponse }
+      ]
+    : [{ role: "assistant", content: llmResponse }];
+  // rest stays the same
+```
+
+And in `service.ts`:
+```typescript
+buildStoragePrompt(request.llmResponse, existing, request.source, request.userMessage)
+```
+
+And add `userMessage?: string` to `RememberRequest` type.
+
+---
+
+**Problem 2 — `minScore: 0.15` is too low, retrieves wrong memories**
+
+From `service.ts`:
+```typescript
+const ranked = hybridRankMemories(searchQuery, candidates.memories, {
+  topK: plan.top_k,
+  vectorScores: candidates.vectorScores,
+  preferredTables: recallTables,
+  minScore: 0.15   // ← too low
+});
+```
+
+0.15 means almost anything passes. In LOCOMO, this lets emotionally similar but factually irrelevant memories through. For "When did Melanie paint a sunrise?" — memories about Pride parades and meteor showers score above 0.15 because they share tokens like "Melanie" and emotional language.
+
+**Fix:** Raise to `0.35` for recall, keep lower for context. Or make it configurable per operation type.
+
+---
+
+**Problem 3 — `buildContextRenderPrompt` caps candidates at `Math.max(topK, 10)`**
+
+```typescript
+candidate_context_items: memories.slice(0, Math.max(topK, 10))
+```
+
+When topK is 5, you pass only 10 candidates to the render step. But `contextCandidates` fetches `Math.max(100, plan.top_k * 10)` candidates. The render step never sees most of them. The right painting memory might be candidate #15 but PSM only gets to see #1-10.
+
+**Fix:**
+```typescript
+candidate_context_items: memories.slice(0, Math.max(topK * 4, 20))
+```
+
+---
+
+**Problem 4 — Facts scoring in `factScore` doesn't weight temporal facts highly enough**
+
+```typescript
+const predicateHit = queryTokens.some(...) ? 0.3 : 0;
+const subjectHit = queryTokens.some(...) ? 0.25 : 0;
+```
+
+For "When did Melanie paint a sunrise?" — the fact should be `subject=Melanie, predicate=painted, value=2022`. But "2022" as a number gets `numberScore` weighting of 0.55 in memory ranking but facts use a completely different scoring path that doesn't benefit from `temporalSignal`. Temporal facts are being underweighted.
+
+**Fix in `factScore`:**
+```typescript
+function factScore(queryTokens: string[], fact: MemoryFactRecord): number {
+  // existing scoring...
+  const temporalQuestion = queryTokens.some(t => ["when","date","year","month","time"].includes(t));
+  const temporalBoost = temporalQuestion && fact.fact_type === "temporal_fact" ? 0.4 : 0;
+  return Number((coverage + predicateHit + subjectHit + 0.1 * (fact.confidence ?? 0.75) + temporalBoost).toFixed(6));
+}
+```
+
+---
+
+**Problem 5 — The LOCOMO benchmark probably isn't passing `userMessage` to `remember`**
+
+Check your benchmark runner. If it calls:
+```typescript
+await psm.remember({ userId, llmResponse: assistantTurn })
+```
+
+Instead of:
+```typescript
+await psm.remember({ userId, llmResponse: assistantTurn, userMessage: userTurn })
+```
+
+You're losing all facts from user turns before PSM even runs. This alone could account for most of the 20%.
+
+---
+
+## Priority Order of Fixes
+
+These are code changes — no retraining needed:
+
+1. **Pass `userMessage` to `remember`** — highest impact, user facts are invisible to PSM right now
+2. **Raise `minScore` to 0.35** — stops wrong memories drowning out right ones
+3. **Increase candidate window in `buildContextRenderPrompt`** — right memory may not be in top 10
+4. **Add temporal boost to `factScore`** — "when" questions should prioritize temporal facts
+5. **Check LOCOMO benchmark runner** — confirm it passes both user and assistant turns
+
+Fix these five things first and rerun LOCOMO. I'd expect 40-50% before any retraining. Want me to write the exact diffs?

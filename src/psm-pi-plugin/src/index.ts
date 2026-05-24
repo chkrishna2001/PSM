@@ -52,6 +52,7 @@ export function createPsmTools(options: PsmPluginOptions): Record<string, (input
   return {
     "psm.remember": async (input) => service.remember({
       llmResponse: requireString(input, "llm_response"),
+      userMessage: stringOr(input.user_message, ""),
       userId: stringOr(input.user, defaultUser)
     }),
     "psm.recall": async (input) => service.recall({

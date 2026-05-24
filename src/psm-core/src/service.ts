@@ -6,6 +6,9 @@ import { MemoryStore } from "./store.js";
 import { normalizeFactTemporalFields, normalizeMemoryTemporalFields } from "./temporal.js";
 import type { ContextItem, ContextRequest, EmbeddingRuntime, MemoryFactRecord, MemoryRecord, ModelRuntime, RankedMemory, RecallRequest, RememberRequest, WrittenMemoryRef } from "./types.js";
 
+const contextMinScore = 0.15;
+const recallMinScore = 0.35;
+
 export class PsmService {
   constructor(
     private readonly store: MemoryStore,
@@ -19,16 +22,17 @@ export class PsmService {
     const plan = parseRecallPlan(raw, request.prompt, topK);
     const recallTables = memoryTablesForRecall(plan.target_tables);
     const searchQuery = [...plan.ranking_hints, request.prompt].join(" ");
-    const candidates = await this.contextCandidates(request.userId, searchQuery, recallTables, Math.max(100, plan.top_k * 10));
+    const renderCandidateK = Math.max(plan.top_k * 4, 20);
+    const candidates = await this.contextCandidates(request.userId, searchQuery, recallTables, Math.max(100, renderCandidateK * 10));
     const ranked = hybridRankMemories(searchQuery, candidates.memories, {
-      topK: plan.top_k,
+      topK: renderCandidateK,
       vectorScores: candidates.vectorScores,
       preferredTables: recallTables,
-      minScore: 0.15
+      minScore: contextMinScore
     });
-    const rankedFacts = rankFacts(searchQuery, candidates.facts, plan.top_k);
+    const rankedFacts = rankFacts(searchQuery, candidates.facts, renderCandidateK);
     this.store.updateAccess(ranked);
-    const contextItems = exactContextItems(ranked, plan.top_k, "Exact DB-backed memory context.", rankedFacts);
+    const contextItems = exactContextItems(ranked, renderCandidateK, "Exact DB-backed memory context.", rankedFacts);
     const rendered = await this.renderContext(request.prompt, contextItems, plan.top_k);
     return {
       user_id: request.userId,
@@ -63,7 +67,7 @@ export class PsmService {
       topK: plan.top_k,
       vectorScores: candidates.vectorScores,
       preferredTables: recallTables,
-      minScore: 0.15
+      minScore: recallMinScore
     });
     const rankedFacts = rankFacts(searchQuery, candidates.facts, plan.top_k);
     this.store.updateAccess(ranked);
@@ -79,7 +83,7 @@ export class PsmService {
 
   async remember(request: RememberRequest): Promise<Record<string, unknown>> {
     const existing = request.includeExistingMemories === false ? [] : this.store.selectMemories(request.userId, ["semantic", "episodic"], 50);
-    const raw = await this.runtime.generateJson(buildStoragePrompt(request.llmResponse, existing, request.source), { temperature: 0, maxTokens: 1024 });
+    const raw = await this.runtime.generateJson(buildStoragePrompt(request.llmResponse, existing, request.source, request.userMessage), { temperature: 0, maxTokens: 1024 });
     let decision = parseStorageDecision(raw, request.llmResponse, "store_episodic");
     let repairedRaw: string | undefined;
     if (decision.parse_error) {
@@ -168,7 +172,7 @@ export class PsmService {
         }];
       });
 
-    const items = renderedItems.length > 0 ? renderedItems : fallbackAgentContextItems(contextItems);
+    const items = renderedItems.length > 0 ? renderedItems : fallbackAgentContextItems(contextItems).slice(0, topK);
     return {
       items,
       context: renderAgentMemoryContext(items),
@@ -309,7 +313,9 @@ function factScore(queryTokens: string[], fact: MemoryFactRecord): number {
   const coverage = overlap / queryTokens.length;
   const predicateHit = queryTokens.some((token) => tokenize(fact.predicate).includes(token)) ? 0.3 : 0;
   const subjectHit = queryTokens.some((token) => tokenize(fact.subject).includes(token)) ? 0.25 : 0;
-  return Number((coverage + predicateHit + subjectHit + 0.1 * (fact.confidence ?? 0.75)).toFixed(6));
+  const temporalQuestion = queryTokens.some((token) => ["when", "date", "year", "month", "time"].includes(token));
+  const temporalBoost = temporalQuestion && fact.fact_type === "temporal_fact" ? 0.4 : 0;
+  return Number((coverage + predicateHit + subjectHit + 0.1 * (fact.confidence ?? 0.75) + temporalBoost).toFixed(6));
 }
 
 function factContextItem(fact: ScoredFact): ContextItem {

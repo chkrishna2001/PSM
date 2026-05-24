@@ -116,6 +116,7 @@ async function ingest(options) {
         const result = await service.remember({
           userId,
           llmResponse: buildLocomoRememberText({ sample, turns, index: sampleOrdinal, windowSize }),
+          userMessage: `${turn.speaker ?? "Unknown"} said: ${turn.text ?? ""}`.trim(),
           source: {
             source_kind: "locomo_turn",
             source_id: source,
@@ -420,6 +421,10 @@ function hasInvalidLocomoMemoryContent(raw, prompt) {
 function extractCurrentUtterance(prompt) {
   const match = prompt.match(/^Current utterance:\s*"([\s\S]*?)"$/m);
   if (match?.[1]?.trim()) return match[1].trim();
+
+  const unescapedPrompt = prompt.replace(/\\n/g, "\n").replace(/\\"/g, "\"");
+  const unescapedMatch = unescapedPrompt.match(/^Current utterance:\s*"([\s\S]*?)"$/m);
+  if (unescapedMatch?.[1]?.trim()) return unescapedMatch[1].trim();
 
   const encodedContent = prompt.match(/"conversation":\[\{"role":"assistant","content":"((?:\\.|[^"\\])*)"\}\]/)?.[1];
   if (!encodedContent) return "";

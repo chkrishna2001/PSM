@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "key": "local_psm",
+      "name": "Local PSM Memories And Decisions",
+      "role": "real_product_memory_behavior",
+      "priority": 1,
+      "public_refs": [],
+      "expected_raw_dir": "user_memory.db",
+      "adapter": "local-psm",
+      "target_operations": ["promote_semantic", "store_episodic", "update_existing", "flag_conflict", "flag_and_store", "recall_context"],
+      "training_focus": [
+        "real PSM product decisions",
+        "stored user/project preferences",
+        "benchmark failure memories",
+        "mnemonic indexable concept grounding",
+        "runtime compatibility between training schema and current source"
+      ]
+    },
+    {
+      "key": "personamem",
+      "name": "PersonaMem",
+      "role": "preference_extraction_latent_identity",
+      "priority": 2,
+      "public_refs": [
+        "https://huggingface.co/datasets/bowen-upenn/PersonaMem",
+        "https://huggingface.co/datasets/bowen-upenn/PersonaMem-v2"
+      ],
+      "expected_raw_dir": "nano-psm/data-pipeline/data/raw/personamem",
+      "adapter": "personamem",
+      "target_operations": ["promote_semantic", "ignore", "recall_context"],
+      "training_focus": [
+        "explicit and implicit preference extraction",
+        "latent identity/profile memories",
+        "preference evidence grounding",
+        "avoid over-personalizing weak signals"
+      ]
+    },
+    {
+      "key": "locomo",
+      "name": "LoCoMo",
+      "role": "long_term_episodic_continuity",
+      "priority": 1,
+      "public_refs": [],
+      "expected_raw_dir": "benchmark/locomo/data",
+      "adapter": "locomo",
+      "target_operations": ["store_episodic", "promote_semantic", "recall_context", "ignore"],
+      "training_focus": [
+        "speaker-aware episodic memory",
+        "session-level temporal continuity",
+        "evidence-backed recall context",
+        "longitudinal event chains"
+      ]
+    },
+    {
+      "key": "longmemeval",
+      "name": "LongMemEval",
+      "role": "updates_contradiction_handling",
+      "priority": 1,
+      "public_refs": [
+        "https://huggingface.co/papers/2410.10813"
+      ],
+      "expected_raw_dir": "nano-psm/data-pipeline/data/raw/longmemeval",
+      "adapter": "longmemeval",
+      "target_operations": ["update_existing", "flag_conflict", "flag_and_store", "recall_context"],
+      "training_focus": [
+        "knowledge updates",
+        "contradiction vs supersession",
+        "temporal reasoning",
+        "abstention when memory evidence is insufficient"
+      ]
+    },
+    {
+      "key": "realtalk",
+      "name": "REALTALK",
+      "role": "noisy_real_world_conversation",
+      "priority": 3,
+      "public_refs": [
+        "https://huggingface.co/papers/2502.13270"
+      ],
+      "expected_raw_dir": "nano-psm/data-pipeline/data/raw/realtalk",
+      "adapter": "realtalk",
+      "target_operations": ["ignore", "store_episodic", "promote_semantic", "recall_context"],
+      "training_focus": [
+        "fragmented and messy dialogue",
+        "low-confidence partial memories",
+        "avoid hallucinating missing referents",
+        "memory probing over real multi-day interactions"
+      ]
+    },
+    {
+      "key": "perltqa",
+      "name": "PerLTQA",
+      "role": "typed_memory_organization",
+      "priority": 2,
+      "public_refs": [
+        "https://arxiv.org/abs/2402.16288"
+      ],
+      "expected_raw_dir": "nano-psm/data-pipeline/data/raw/perltqa",
+      "adapter": "perltqa",
+      "target_operations": ["promote_semantic", "store_episodic", "recall_context"],
+      "training_focus": [
+        "semantic vs episodic memory classification",
+        "profile/social relationship/event memory typing",
+        "memory retrieval and synthesis labels",
+        "typed indexable creation"
+      ]
+    },
+    {
+      "key": "user_preference_564k",
+      "name": "User Preference 564K",
+      "role": "preference_extraction_bootstrapping",
+      "priority": 2,
+      "public_refs": [
+        "https://huggingface.co/datasets/blackhao0426/user-preference-564k"
+      ],
+      "expected_raw_dir": "nano-psm/data-pipeline/data/raw/user-preference-564k",
+      "adapter": "user_preference_564k",
+      "target_operations": ["promote_semantic", "ignore"],
+      "training_focus": [
+        "large-scale preference extraction",
+        "condition-action preference rules",
+        "preference memory bootstrapping",
+        "convert preference rules into grounded semantic memories"
+      ]
+    }
+  ]
+}

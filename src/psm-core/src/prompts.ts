@@ -14,10 +14,16 @@ Your job is NOT to answer user questions. Your job is to:
 
 Always respond with a valid JSON object.`;
 
-export function buildStoragePrompt(llmResponse: string, existingMemories: MemoryRecord[] = [], source: MemorySourceMetadata = {}): string {
+export function buildStoragePrompt(llmResponse: string, existingMemories: MemoryRecord[] = [], source: MemorySourceMetadata = {}, userMessage?: string): string {
+  const conversation = userMessage?.trim()
+    ? [
+        { role: "user", content: userMessage },
+        { role: "assistant", content: llmResponse }
+      ]
+    : [{ role: "assistant", content: llmResponse }];
   const payload = {
     operation: "remember_llm_response",
-    conversation: [{ role: "assistant", content: llmResponse }],
+    conversation,
     source,
     memory_store: existingMemories.slice(0, 20).map((memory) => ({
       id: memory.id,
@@ -150,7 +156,7 @@ export function buildContextRenderPrompt(prompt: string, memories: ContextItem[]
       "Select only memories that are directly useful for the current user prompt.",
       "Do not answer the user prompt."
     ],
-    candidate_context_items: memories.slice(0, Math.max(topK, 10)).map((memory) => ({
+    candidate_context_items: memories.slice(0, Math.max(topK * 4, 20)).map((memory) => ({
       id: memory.id,
       table: memory.table,
       content: memory.content,

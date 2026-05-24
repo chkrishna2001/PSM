@@ -69,6 +69,7 @@ export async function startDaemon(): Promise<void> {
       if (operation === "remember") {
         writeJson(res, 200, await service.remember({
           llmResponse: stringValue(payload.llmResponse, "llmResponse"),
+          userMessage: optionalStringValue(payload.userMessage),
           userId: stringValue(payload.userId, config.userId),
           source: isRecord(payload.source) ? payload.source : undefined
         }));
@@ -317,6 +318,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function optionalStringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function numberValue(value: unknown, fallback: number): number {

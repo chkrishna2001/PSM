@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PSM memory fine-tuning example",
+  "type": "object",
+  "required": ["instruction", "input", "output"],
+  "additionalProperties": false,
+  "properties": {
+    "instruction": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input": {
+      "type": "object"
+    },
+    "output": {
+      "type": "object",
+      "required": ["action", "memory", "facts", "indexables", "updates", "conflicts", "reasoning"],
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["ignore", "store_episodic", "promote_semantic", "update_existing", "flag_conflict", "flag_and_store", "recall_context"]
+        },
+        "memory": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["content", "type", "strength", "decay_rate", "emotional_weight", "confidence", "tags"],
+              "additionalProperties": false,
+              "properties": {
+                "content": { "type": "string", "minLength": 1 },
+                "type": { "type": "string", "enum": ["episodic", "semantic"] },
+                "strength": { "type": "number", "minimum": 0, "maximum": 1 },
+                "decay_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+                "emotional_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "temporal_expression": { "type": "string" },
+                "resolved_time": { "type": "string" },
+                "resolved_time_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            }
+          ]
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["subject", "predicate", "value", "confidence", "inference_kind", "evidence_text"],
+            "additionalProperties": false,
+            "properties": {
+              "subject": { "type": "string", "minLength": 1 },
+              "predicate": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "value": { "type": "string" },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+              "inference_kind": { "type": "string", "enum": ["explicit"] },
+              "evidence_text": { "type": "string", "minLength": 1 },
+              "temporal_expression": { "type": "string" },
+              "resolved_time": { "type": "string" },
+              "resolved_time_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "indexables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "key", "target_type", "salience", "reconstructive_hint", "evidence_text", "tags"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "string", "enum": ["mnemonic", "fact_anchor", "temporal_anchor", "entity_anchor"] },
+              "key": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+              "target_type": { "type": "string" },
+              "target_id": { "type": "string" },
+              "salience": { "type": "number", "minimum": 0, "maximum": 1 },
+              "reconstructive_hint": { "type": "string", "minLength": 1 },
+              "evidence_text": { "type": "string", "minLength": 1 },
+              "tags": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "updates": { "type": "array" },
+        "conflicts": { "type": "array" },
+        "recall": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "query_intent": { "type": "string" },
+            "selected_memory_ids": { "type": "array", "items": { "type": "string" } },
+            "selected_indexable_keys": { "type": "array", "items": { "type": "string" } },
+            "max_items": { "type": "number", "minimum": 0 },
+            "reasoning": { "type": "string" }
+          }
+        },
+        "reasoning": { "type": "string" }
+      }
+    }
+  }
+}

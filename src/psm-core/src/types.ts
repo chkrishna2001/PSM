@@ -195,6 +195,7 @@ export interface RecallRequest {
 
 export interface RememberRequest {
   llmResponse: string;
+  userMessage?: string;
   userId: string;
   source?: MemorySourceMetadata;
   extraTags?: string[];
