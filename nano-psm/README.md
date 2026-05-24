@@ -110,7 +110,9 @@ chkrishna2001/nano-psm
 
 ## Colab
 
-Use `notebooks/nano-psm-data-and-train-colab.ipynb` for Hugging Face dataset sync, checkpoint resume, and Colab training.
+Use `notebooks/nano-psm-data-and-train-colab.ipynb` for Hugging Face dataset sync, checkpoint resume, and debug Colab training.
+
+Use `notebooks/nano-psm-primary-10m-colab.ipynb` for the first primary 10M run. It uses a separate checkpoint repo so it cannot accidentally resume from debug checkpoints.
 
 The first training pass should use:
 
@@ -121,7 +123,16 @@ config=nano-psm/configs/debug-4m.json
 max_steps=500
 ```
 
-Only increase `max_steps` or move to `configs/primary-10m.json` after validation metrics and checkpoint upload work.
+The primary 10M run uses:
+
+```text
+HF_DATASET_REPO=chkrishna2001/nano-psm
+HF_CHECKPOINT_REPO=chkrishna2001/nano-psm-primary-10m-checkpoints
+config=nano-psm/configs/primary-10m.json
+max_steps=2000
+```
+
+Only increase primary `max_steps` after validation metrics, prediction inspection, and checkpoint upload work.
 
 Inspect validation mistakes before scaling data or model size:
 
