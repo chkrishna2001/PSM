@@ -108,7 +108,6 @@ function generateLocomoRecallExamples(path, maxExamples) {
     const byDiaId = new Map(turns.map((turn) => [String(turn.dia_id ?? ""), turn]));
     const qaItems = Array.isArray(sample.qa) ? sample.qa : [];
     for (const qa of qaItems) {
-      if (examples.length >= maxExamples) break;
       const question = typeof qa.question === "string" ? qa.question.trim() : "";
       const evidenceIds = Array.isArray(qa.evidence) ? qa.evidence.map(String).filter(Boolean) : [];
       const evidenceTurns = evidenceIds.map((id) => byDiaId.get(id)).filter(Boolean);
@@ -153,9 +152,37 @@ function generateLocomoRecallExamples(path, maxExamples) {
         }
       });
     }
-    if (examples.length >= maxExamples) break;
   }
-  return examples;
+  return balancedRecallExamples(examples, maxExamples);
+}
+
+function balancedRecallExamples(examples, maxExamples) {
+  if (examples.length <= maxExamples) return examples;
+  const buckets = new Map();
+  for (const example of examples) {
+    const selectedCount = example.output.recall.selected_memory_ids.length;
+    const bucketKey = String(Math.min(selectedCount, 6));
+    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+    buckets.get(bucketKey).push(example);
+  }
+
+  const keys = [...buckets.keys()].sort((left, right) => Number(right) - Number(left));
+  const selected = [];
+  let cursor = 0;
+  while (selected.length < maxExamples) {
+    let added = false;
+    for (const key of keys) {
+      const bucket = buckets.get(key);
+      if (cursor < bucket.length) {
+        selected.push(bucket[cursor]);
+        added = true;
+        if (selected.length >= maxExamples) break;
+      }
+    }
+    if (!added) break;
+    cursor += 1;
+  }
+  return selected.slice(0, maxExamples);
 }
 
 function locomoMemoryStoreItem(sample, sampleId, turn) {

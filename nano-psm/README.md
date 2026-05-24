@@ -123,6 +123,17 @@ max_steps=500
 
 Only increase `max_steps` or move to `configs/primary-10m.json` after validation metrics and checkpoint upload work.
 
+Inspect validation mistakes before scaling data or model size:
+
+```powershell
+python nano-psm\src\nano_psm\inspect_predictions.py `
+  --config nano-psm\configs\debug-4m.json `
+  --validation hf-upload\nano-psm-merged-starter\validation.jsonl `
+  --checkpoint nano-psm\checkpoints\local-smoke\checkpoint-best.pt `
+  --device cpu `
+  --limit 30
+```
+
 ## Configs
 
 - `configs/debug-4m.json`: fast smoke-test model.

@@ -877,7 +877,14 @@ except Exception:
 Run after every save or at the end of a session:
 
 ```python
-from huggingface_hub import upload_folder
+from huggingface_hub import create_repo, upload_folder
+
+create_repo(
+    repo_id=HF_CHECKPOINT_REPO,
+    repo_type="model",
+    private=True,
+    exist_ok=True,
+)
 
 upload_folder(
     repo_id=HF_CHECKPOINT_REPO,
