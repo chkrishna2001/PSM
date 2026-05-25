@@ -4,6 +4,7 @@ import argparse
 import json
 import random
 import sys
+from collections import Counter
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -12,6 +13,7 @@ if __package__ in {None, ""}:
 from nano_psm.dataset import NanoPsmJsonlDataset, collate_batch, load_jsonl
 from nano_psm.evaluate import evaluate_model
 from nano_psm.model import NanoPsmConfig, build_model, require_torch
+from nano_psm.schema import ACTIONS, action_to_id, normalize_action
 from nano_psm.tokenizer import HashTokenizer
 
 
@@ -54,6 +56,7 @@ def main() -> None:
 
     train_examples = load_jsonl(args.train)
     validation_examples = load_jsonl(args.validation)
+    action_weights = compute_action_weights(torch, train_examples, device)
     train_dataset = NanoPsmJsonlDataset(train_examples, tokenizer)
     validation_dataset = NanoPsmJsonlDataset(validation_examples, tokenizer)
 
@@ -104,7 +107,7 @@ def main() -> None:
         for batch in train_loader:
             batch = move_batch(batch, device)
             output = model(batch["input_ids"], batch["attention_mask"])
-            losses = compute_losses(torch, output, batch)
+            losses = compute_losses(torch, output, batch, action_weights=action_weights)
             loss = losses["total"] / grad_accum
             loss.backward()
 
@@ -154,23 +157,39 @@ def main() -> None:
     }, indent=2))
 
 
-def compute_losses(torch, output, batch):
+def compute_action_weights(torch, examples, device):
+    counts = Counter(action_to_id(normalize_action(example.output.get("action"))) for example in examples)
+    total = sum(counts.values())
+    if total <= 0:
+        return None
+    weights = [
+        total / (len(ACTIONS) * counts[index]) if counts.get(index, 0) > 0 else 1.0
+        for index in range(len(ACTIONS))
+    ]
+    return torch.tensor(weights, dtype=torch.float32, device=device)
+
+
+def compute_losses(torch, output, batch, action_weights=None):
     ce = torch.nn.functional.cross_entropy
     bce = torch.nn.functional.binary_cross_entropy_with_logits
     mse = torch.nn.functional.mse_loss
-    action_loss = ce(output["action_logits"], batch["action"])
+    action_loss = ce(output["action_logits"], batch["action"], weight=action_weights)
     memory_type_loss = ce(output["memory_type_logits"], batch["memory_type"])
-    score_loss = mse(output["scores"], batch["scores"])
+    score_mask = batch["has_score_target"] > 0
+    if bool(score_mask.any().item()):
+        score_loss = mse(output["scores"][score_mask], batch["scores"][score_mask])
+    else:
+        score_loss = output["scores"].sum() * 0.0
     indexable_loss = bce(output["indexable_logits"], batch["has_indexables"])
     fact_count_loss = ce(output["fact_count_logits"], batch["fact_count"])
     recall_count_loss = ce(output["recall_count_logits"], batch["recall_count"])
     total = (
-        action_loss
-        + 0.5 * memory_type_loss
-        + 0.25 * score_loss
-        + 0.25 * indexable_loss
-        + 0.15 * fact_count_loss
-        + 0.2 * recall_count_loss
+        2.0 * action_loss
+        + 1.0 * memory_type_loss
+        + 1.5 * score_loss
+        + 0.5 * indexable_loss
+        + 0.3 * fact_count_loss
+        + 0.3 * recall_count_loss
     )
     return {
         "total": total,
@@ -184,11 +203,13 @@ def compute_losses(torch, output, batch):
 
 
 def selection_score(metrics: dict[str, float]) -> float:
+    score_quality = max(0.0, 1.0 - metrics.get("score_mae", 1.0))
     return (
-        0.45 * metrics.get("action_accuracy", 0.0)
-        + 0.25 * metrics.get("memory_type_accuracy", 0.0)
-        + 0.15 * metrics.get("indexable_accuracy", 0.0)
-        + 0.15 * metrics.get("recall_count_accuracy", 0.0)
+        0.40 * metrics.get("action_accuracy", 0.0)
+        + 0.20 * metrics.get("memory_type_accuracy", 0.0)
+        + 0.20 * score_quality
+        + 0.10 * metrics.get("indexable_accuracy", 0.0)
+        + 0.10 * metrics.get("recall_count_accuracy", 0.0)
     )
 
 

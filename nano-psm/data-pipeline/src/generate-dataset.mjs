@@ -24,9 +24,10 @@ const validationRatio = numberArg(args, "validation-ratio", 0.15);
 const locomoExamples = generateLocomoExamples(locomoPath, limit);
 const locomoRecallExamples = generateLocomoRecallExamples(locomoPath, recallLimit);
 const developerExamples = generateDeveloperExamples();
+const operationalStateExamples = generateOperationalStateExamples();
 const syntheticIndexableExamples = generateSyntheticIndexableExamples(syntheticCount);
 const hardNegativeExamples = generateHardNegativeExamples();
-const examples = [...locomoExamples, ...locomoRecallExamples, ...developerExamples, ...syntheticIndexableExamples, ...hardNegativeExamples]
+const examples = [...locomoExamples, ...locomoRecallExamples, ...developerExamples, ...operationalStateExamples, ...syntheticIndexableExamples, ...hardNegativeExamples]
   .map(normalizeTrainingExample)
   .map((example, index) => ({ ...example, id: example.id ?? `example-${index + 1}` }));
 
@@ -41,6 +42,7 @@ writeFileSync(join(outDir, "metadata.json"), JSON.stringify({
   locomo_examples: locomoExamples.length,
   locomo_recall_examples: locomoRecallExamples.length,
   developer_examples: developerExamples.length,
+  operational_state_examples: operationalStateExamples.length,
   synthetic_indexable_examples: syntheticIndexableExamples.length,
   hard_negative_examples: hardNegativeExamples.length,
   total_examples: examples.length,
@@ -452,6 +454,268 @@ function generateDeveloperExamples() {
       reasoning: "Important product constraint that conflicts with prior GPU assumption."
     })
   ];
+}
+
+function generateOperationalStateExamples() {
+  const states = [
+    operationalState({
+      id: "ops-python-env",
+      text: "For local Nano PSM smoke tests, use nano-psm/.venv/Scripts/python.exe; that venv has PyTorch 2.12.0+cpu installed and CUDA is false.",
+      content: "Local Nano PSM smoke tests should use nano-psm/.venv/Scripts/python.exe; that venv has PyTorch 2.12.0+cpu installed and CUDA unavailable.",
+      tags: ["project_state", "local_environment", "python", "pytorch", "smoke_test"],
+      subject: "Nano PSM local smoke tests",
+      predicate: "uses_python_environment",
+      value: "nano-psm/.venv/Scripts/python.exe with PyTorch 2.12.0+cpu and CUDA false",
+      indexableKeys: ["nano-psm-python-env", "pytorch-cpu-smoke-test"]
+    }),
+    operationalState({
+      id: "ops-node-global-cli",
+      text: "The PSM CLI is installed globally as psm and psm-memory; use psm recall \"question\" --json for targeted fallback memory checks.",
+      content: "The PSM CLI is globally available as psm and psm-memory; use psm recall \"question\" --json for targeted fallback memory checks.",
+      tags: ["project_state", "cli", "global_install", "recall_fallback"],
+      subject: "PSM CLI",
+      predicate: "provides_command",
+      value: "psm recall question --json",
+      indexableKeys: ["global-psm-cli", "targeted-recall-command"]
+    }),
+    operationalState({
+      id: "ops-colab-primary",
+      text: "The primary Nano PSM Colab run uses dataset repo chkrishna2001/nano-psm and checkpoint repo chkrishna2001/nano-psm-primary-10m-checkpoints.",
+      content: "Primary Nano PSM Colab training uses dataset repo chkrishna2001/nano-psm and checkpoint repo chkrishna2001/nano-psm-primary-10m-checkpoints.",
+      tags: ["project_state", "colab", "hugging_face", "checkpoint", "dataset"],
+      subject: "Primary Nano PSM Colab training",
+      predicate: "uses_artifact_repos",
+      value: "dataset chkrishna2001/nano-psm and checkpoint chkrishna2001/nano-psm-primary-10m-checkpoints",
+      indexableKeys: ["primary-ten-million-huggingface-repos", "nano-psm-checkpoint-repo"]
+    }),
+    operationalState({
+      id: "ops-model-cache",
+      text: "The default PSM GGUF model is cached under the PSM model cache and the CLI resolves it automatically after psm-memory setup.",
+      content: "The default PSM GGUF model is stored in the PSM model cache and resolved automatically by the CLI after psm-memory setup.",
+      tags: ["project_state", "model_cache", "gguf", "setup"],
+      subject: "PSM CLI",
+      predicate: "resolves_model_from",
+      value: "PSM model cache after psm-memory setup",
+      indexableKeys: ["psm-model-cache", "gguf-setup-path"]
+    }),
+    operationalState({
+      id: "ops-memory-db",
+      text: "The shared PSM memory database lives in the configured PSM memory directory; run psm config --path to locate the editable config.",
+      content: "The shared PSM memory database lives in the configured PSM memory directory; use psm config --path to locate the editable config.",
+      tags: ["project_state", "memory_database", "config", "shared_memory"],
+      subject: "PSM shared memory",
+      predicate: "is_configured_by",
+      value: "the editable config located with psm config --path",
+      indexableKeys: ["shared-memory-config", "psm-database-location"]
+    }),
+    operationalState({
+      id: "ops-build-command",
+      text: "For PSM package changes, the working flow is version packages, run npm run build, then commit after verification.",
+      content: "For PSM package changes, use the working flow: version packages, run npm run build, then commit after verification.",
+      tags: ["project_state", "build_process", "release_process", "working_command"],
+      subject: "PSM package changes",
+      predicate: "uses_release_flow",
+      value: "version packages, npm run build, then commit after verification",
+      indexableKeys: ["package-release-flow", "npm-build-verification"]
+    }),
+    operationalState({
+      id: "ops-benchmark-db",
+      text: "LOCOMO benchmark artifacts include a local SQLite ingest database and JSON result files; preserve their paths when syncing benchmark runs.",
+      content: "LOCOMO benchmark artifacts include a local SQLite ingest database and JSON result files; preserve artifact paths when syncing benchmark runs.",
+      tags: ["project_state", "benchmark", "sqlite", "artifact_sync"],
+      subject: "LOCOMO benchmark artifacts",
+      predicate: "include",
+      value: "SQLite ingest database and JSON result files",
+      indexableKeys: ["locomo-artifact-paths", "sqlite-ingest-database"]
+    }),
+    operationalState({
+      id: "ops-code-revision",
+      text: "Before Colab training, set CODE_REVISION to a branch or commit that contains the latest Nano PSM training fixes.",
+      content: "Before Colab training, CODE_REVISION should point to a branch or commit containing the latest Nano PSM training fixes.",
+      tags: ["project_state", "colab", "code_revision", "training"],
+      subject: "Nano PSM Colab training",
+      predicate: "requires_code_revision",
+      value: "branch or commit containing the latest training fixes",
+      indexableKeys: ["colab-code-revision", "training-fixes-branch"]
+    })
+  ];
+
+  return [
+    ...states.map((state) => state.remember),
+    ...operationalRecallExamples(states),
+    ...operationalHardNegatives()
+  ];
+}
+
+function operationalState(options) {
+  const sourceId = `operational-state-${options.id}`;
+  const memoryId = `mem-${options.id}`;
+  const memory = {
+    id: memoryId,
+    source_id: sourceId,
+    source_timestamp: "2026-05-25T09:45:00Z",
+    content: options.content,
+    tags: options.tags,
+    indexables: options.indexableKeys.map((key) => operationalIndexable(key, options.content, options.tags, memoryId))
+  };
+  const remember = example(options.id, {
+    source_kind: "operational_project_state",
+    source_id: sourceId,
+    current_turn: { speaker: "User", text: options.text, timestamp: "2026-05-25T09:45:00Z" },
+    prior_context: [],
+    memory_store: []
+  }, storeSemantic({
+    content: options.content,
+    tags: options.tags,
+    strength: 0.9,
+    decay_rate: 0.01,
+    emotional_weight: 0.25,
+    confidence: 0.96,
+    facts: [{
+      subject: options.subject,
+      predicate: options.predicate,
+      value: options.value,
+      confidence: 0.96,
+      inference_kind: "explicit",
+      evidence_text: options.text
+    }],
+    indexables: memory.indexables,
+    reasoning: "Explicit durable operational project state that future agents should recall before assuming setup is missing."
+  }));
+  return { ...options, memoryId, memory, remember };
+}
+
+function operationalRecallExamples(states) {
+  const byId = Object.fromEntries(states.map((state) => [state.id, state]));
+  const recallCases = [
+    {
+      id: "ops-recall-local-env",
+      question: "Do we already have a local environment for Nano PSM smoke training?",
+      selected: ["ops-python-env"],
+      distractors: ["ops-colab-primary", "ops-build-command"],
+      intent: "environment_state_recall"
+    },
+    {
+      id: "ops-recall-targeted-psm",
+      question: "The hook context missed a project fact; what command should the agent run to ask PSM directly?",
+      selected: ["ops-node-global-cli"],
+      distractors: ["ops-memory-db", "ops-model-cache"],
+      intent: "fallback_recall_command"
+    },
+    {
+      id: "ops-recall-colab-artifacts",
+      question: "Which Hugging Face repos should the primary 10M Colab run use?",
+      selected: ["ops-colab-primary"],
+      distractors: ["ops-python-env", "ops-benchmark-db"],
+      intent: "artifact_location_recall"
+    },
+    {
+      id: "ops-recall-memory-config",
+      question: "Where should I look to find the configured PSM memory database location?",
+      selected: ["ops-memory-db"],
+      distractors: ["ops-model-cache", "ops-build-command"],
+      intent: "config_location_recall"
+    },
+    {
+      id: "ops-recall-working-build",
+      question: "What package build flow worked for PSM changes?",
+      selected: ["ops-build-command"],
+      distractors: ["ops-node-global-cli", "ops-code-revision"],
+      intent: "working_command_recall"
+    },
+    {
+      id: "ops-recall-colab-code-revision",
+      question: "Before starting Colab training, what should CODE_REVISION point to?",
+      selected: ["ops-code-revision"],
+      distractors: ["ops-colab-primary", "ops-model-cache"],
+      intent: "training_setup_recall"
+    }
+  ];
+
+  return recallCases.map((item) => {
+    const selected = item.selected.map((id) => byId[id]);
+    const distractors = item.distractors.map((id) => byId[id]);
+    const memoryStore = [...selected, ...distractors].map((state) => state.memory);
+    return createOperationalRecallExample(item.id, item.question, item.intent, memoryStore, selected);
+  });
+}
+
+function createOperationalRecallExample(id, question, intent, memoryStore, selectedStates) {
+  return {
+    id,
+    instruction,
+    input: {
+      operation: "recall",
+      source_kind: "operational_project_state",
+      source_id: id,
+      current_query: { question, category: "agent_fallback_recall" },
+      memory_store: memoryStore
+    },
+    output: {
+      action: "recall_context",
+      memory: null,
+      facts: [],
+      indexables: [],
+      updates: [],
+      conflicts: [],
+      recall: {
+        query_intent: intent,
+        selected_memory_ids: selectedStates.map((state) => state.memoryId),
+        selected_indexable_keys: selectedStates.flatMap((state) => state.memory.indexables.map((indexable) => indexable.key)),
+        max_items: selectedStates.length,
+        reasoning: "Selected explicit operational project-state memories relevant to the fallback question."
+      },
+      reasoning: "When hook context is incomplete, targeted recall should retrieve grounded setup and project-state memories."
+    }
+  };
+}
+
+function operationalHardNegatives() {
+  return [
+    example("ops-ignore-transient-command-output", {
+      source_kind: "operational_project_state",
+      source_id: "ops-ignore-transient-command-output",
+      current_turn: { speaker: "Assistant", text: "Listing 'nano-psm/src/nano_psm'... Compiling dataset.py... Compiling train.py...", timestamp: "2026-05-25T09:50:00Z" },
+      prior_context: [],
+      memory_store: []
+    }, ignore("Transient compile output with no durable new setup fact.")),
+    example("ops-ignore-failed-remember-json", {
+      source_kind: "operational_project_state",
+      source_id: "ops-ignore-failed-remember-json",
+      current_turn: { speaker: "Assistant", text: "psm remember returned parse_error_noop with written empty because the model emitted invalid JSON.", timestamp: "2026-05-25T09:51:00Z" },
+      prior_context: [],
+      memory_store: []
+    }, storeSemantic({
+      content: "PSM remember can return parse_error_noop with written empty when model JSON parsing fails; this should trigger a non-model fallback insert fix.",
+      tags: ["project_state", "psm_remember", "parse_error", "fallback_insert"],
+      strength: 0.88,
+      decay_rate: 0.02,
+      emotional_weight: 0.35,
+      confidence: 0.95,
+      facts: [{
+        subject: "PSM remember",
+        predicate: "can_fail_with",
+        value: "parse_error_noop and written empty",
+        confidence: 0.95,
+        inference_kind: "explicit",
+        evidence_text: "psm remember returned parse_error_noop with written empty"
+      }],
+      reasoning: "This is not generic command noise; it is a reusable product bug and fallback requirement."
+    }))
+  ];
+}
+
+function operationalIndexable(key, content, tags, targetId) {
+  return {
+    kind: "mnemonic",
+    key,
+    target_type: "semantic",
+    target_id: targetId,
+    salience: 0.94,
+    reconstructive_hint: reconstructiveHint(content),
+    evidence_text: content,
+    tags: tags.slice(0, 6)
+  };
 }
 
 function generateSyntheticIndexableExamples(count) {

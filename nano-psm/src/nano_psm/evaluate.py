@@ -23,6 +23,8 @@ def evaluate_model(model, data_loader, device) -> dict[str, float]:
         "indexable_correct": 0,
         "fact_count_correct": 0,
         "recall_count_correct": 0,
+        "score_rows": 0,
+        "score_abs_error": 0.0,
     }
     with torch.no_grad():
         for batch in data_loader:
@@ -40,8 +42,15 @@ def evaluate_model(model, data_loader, device) -> dict[str, float]:
             totals["indexable_correct"] += int((indexable_pred == batch["has_indexables"]).sum().item())
             totals["fact_count_correct"] += int((fact_count_pred == batch["fact_count"]).sum().item())
             totals["recall_count_correct"] += int((recall_count_pred == batch["recall_count"]).sum().item())
+            score_mask = batch["has_score_target"] > 0
+            score_rows = int(score_mask.sum().item())
+            if score_rows:
+                score_error = (output["scores"][score_mask] - batch["scores"][score_mask]).abs().mean(dim=1)
+                totals["score_abs_error"] += float(score_error.sum().item())
+                totals["score_rows"] += score_rows
 
     rows = max(totals["rows"], 1)
+    score_rows = max(totals["score_rows"], 1)
     return {
         "rows": float(totals["rows"]),
         "action_accuracy": totals["action_correct"] / rows,
@@ -49,6 +58,8 @@ def evaluate_model(model, data_loader, device) -> dict[str, float]:
         "indexable_accuracy": totals["indexable_correct"] / rows,
         "fact_count_accuracy": totals["fact_count_correct"] / rows,
         "recall_count_accuracy": totals["recall_count_correct"] / rows,
+        "score_mae": totals["score_abs_error"] / score_rows,
+        "score_rows": float(totals["score_rows"]),
     }
 
 

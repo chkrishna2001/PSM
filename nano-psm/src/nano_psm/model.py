@@ -7,13 +7,30 @@ from .schema import ACTIONS, MEMORY_TYPES
 
 @dataclass(frozen=True)
 class NanoPsmConfig:
-    vocab_size: int
-    max_sequence_length: int
-    embedding_dim: int
-    encoder_layers: int
-    attention_heads: int
-    feed_forward_dim: int
-    dropout: float
+    vocab_size: int = 8192
+    max_sequence_length: int = 512
+    embedding_dim: int = 256
+    encoder_layers: int = 4
+    attention_heads: int = 4
+    feed_forward_dim: int = 512
+    dropout: float = 0.1
+
+    def estimate_parameters(self) -> int:
+        embeddings = (self.vocab_size + self.max_sequence_length) * self.embedding_dim
+        attention = 4 * self.embedding_dim * self.embedding_dim
+        feed_forward = 2 * self.embedding_dim * self.feed_forward_dim
+        layer_norms = 4 * self.embedding_dim
+        encoder = self.encoder_layers * (attention + feed_forward + layer_norms)
+        heads = (
+            self.embedding_dim * len(ACTIONS)
+            + self.embedding_dim * len(MEMORY_TYPES)
+            + self.embedding_dim * self.embedding_dim
+            + self.embedding_dim * 4
+            + self.embedding_dim
+            + self.embedding_dim * 9
+            + self.embedding_dim * 9
+        )
+        return embeddings + encoder + heads
 
 
 def require_torch():

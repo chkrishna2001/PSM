@@ -1,12 +1,12 @@
 {
   "name": "nano-psm-primary-10m",
   "model": {
-    "vocab_size": 24000,
-    "max_sequence_length": 1536,
-    "embedding_dim": 384,
-    "encoder_layers": 6,
-    "attention_heads": 6,
-    "feed_forward_dim": 1024,
+    "vocab_size": 18000,
+    "max_sequence_length": 1280,
+    "embedding_dim": 320,
+    "encoder_layers": 4,
+    "attention_heads": 8,
+    "feed_forward_dim": 768,
     "dropout": 0.1
   },
   "training": {
@@ -19,4 +19,3 @@
     "save_every": 500
   }
 }
-

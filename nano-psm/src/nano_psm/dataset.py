@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterator
 
-from .schema import TrainingExample, action_to_id, memory_type_to_id
+from .schema import TrainingExample, action_to_id, memory_type_to_id, normalize_action
 from .tokenizer import HashTokenizer
 
 
@@ -15,12 +15,20 @@ def load_jsonl(path: str | Path) -> list[TrainingExample]:
             if not line.strip():
                 continue
             raw = json.loads(line)
+            output = dict(raw.get("output") or {})
+            action = normalize_action(output.get("action"))
+            if not action:
+                continue
+            try:
+                action_to_id(action)
+            except ValueError:
+                continue
             rows.append(
                 TrainingExample(
                     id=str(raw.get("id") or f"{Path(path).stem}-{line_number}"),
-                    instruction=str(raw["instruction"]),
-                    input=dict(raw["input"]),
-                    output=dict(raw["output"]),
+                    instruction=str(raw.get("instruction") or raw.get("task") or ""),
+                    input=dict(raw.get("input") or {}),
+                    output=output,
                 )
             )
     return rows
@@ -46,30 +54,37 @@ def serialize_example(example: TrainingExample) -> str:
 
 def targets_for_example(example: TrainingExample) -> dict[str, Any]:
     output = example.output
+    action = normalize_action(output.get("action"))
     memory = output.get("memory")
     memory_type = memory.get("type") if isinstance(memory, dict) else None
     recall = output.get("recall") if isinstance(output.get("recall"), dict) else {}
+    has_memory_target = isinstance(memory, dict) and action not in {"ignore", "recall_context"}
     return {
-        "action": action_to_id(str(output.get("action"))),
+        "action": action_to_id(action),
         "memory_type": memory_type_to_id(memory_type),
-        "scores": [
-            score_value(memory, "strength"),
-            score_value(memory, "decay_rate"),
-            score_value(memory, "emotional_weight"),
-            score_value(memory, "confidence"),
-        ],
+        "scores": memory_scores(memory) if has_memory_target else [0.0, 0.0, 0.0, 0.0],
+        "has_score_target": 1.0 if has_memory_target else 0.0,
         "has_indexables": 1.0 if len(output.get("indexables") or []) > 0 else 0.0,
         "fact_count": min(len(output.get("facts") or []), 8),
         "recall_count": min(len(recall.get("selected_memory_ids") or []), 8),
     }
 
 
-def score_value(memory: object, key: str) -> float:
+def memory_scores(memory: object) -> list[float]:
+    return [
+        score_value(memory, "strength", default=0.75),
+        score_value(memory, "decay_rate", default=0.02),
+        score_value(memory, "emotional_weight", default=0.1),
+        score_value(memory, "confidence", default=0.85),
+    ]
+
+
+def score_value(memory: object, key: str, default: float = 0.0) -> float:
     if isinstance(memory, dict):
         value = memory.get(key)
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             return float(value)
-    return 0.0
+    return default
 
 
 class NanoPsmJsonlDataset:
@@ -105,6 +120,7 @@ def collate_batch(batch: list[dict[str, object]]) -> dict[str, object]:
         "action": torch.tensor([target["action"] for target in targets], dtype=torch.long),
         "memory_type": torch.tensor([target["memory_type"] for target in targets], dtype=torch.long),
         "scores": torch.tensor([target["scores"] for target in targets], dtype=torch.float32),
+        "has_score_target": torch.tensor([target["has_score_target"] for target in targets], dtype=torch.float32),
         "has_indexables": torch.tensor([target["has_indexables"] for target in targets], dtype=torch.float32),
         "fact_count": torch.tensor([target["fact_count"] for target in targets], dtype=torch.long),
         "recall_count": torch.tensor([target["recall_count"] for target in targets], dtype=torch.long),
