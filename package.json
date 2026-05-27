@@ -22,6 +22,7 @@
     "ft:sources": "node nano-psm/data-pipeline/src/prepare-external-sources.mjs",
     "ft:inspect:local": "node nano-psm/data-pipeline/src/inspect-local-psm-sources.mjs",
     "ft:generate": "node nano-psm/data-pipeline/src/generate-dataset.mjs",
+    "ft:generate:fast-mixed": "node nano-psm/data-pipeline/src/generate-fast-mixed-dataset.mjs",
     "ft:generate:local": "node nano-psm/data-pipeline/src/generate-local-psm-dataset.mjs",
     "ft:merge": "node nano-psm/data-pipeline/src/merge-datasets.mjs",
     "ft:validate": "node nano-psm/data-pipeline/src/validate-examples.mjs",
