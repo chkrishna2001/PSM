@@ -21,6 +21,7 @@ const baseDirs = listArg(args, "base", [
 const outDir = stringArg(args, "out", "nano-psm/data-pipeline/data/fast-mixed");
 const validationRatio = numberArg(args, "validation-ratio", 0.15);
 const maxTotal = intArg(args, "max-total", 10000);
+const excludeFiles = listArg(args, "exclude", []);
 
 const limits = {
   base: intArg(args, "base-limit", 2000),
@@ -42,7 +43,8 @@ const examples = [
   ...generateSyntheticCoverageExamples(limits.synthetic)
 ].map(normalizeTrainingExample);
 
-const deduped = dedupe(examples);
+const excludedKeys = loadExcludedKeys(excludeFiles);
+const deduped = dedupe(examples, excludedKeys);
 const limited = balancedLimit(deduped, maxTotal);
 const { train, validation } = splitDeterministically(limited, validationRatio);
 
@@ -56,6 +58,8 @@ writeFileSync(join(outDir, "metadata.json"), JSON.stringify({
   base_dirs: baseDirs,
   limits,
   loaded_examples: examples.length,
+  excluded_files: excludeFiles,
+  excluded_examples: excludedKeys.size,
   duplicate_examples_removed: examples.length - deduped.length,
   total_examples: limited.length,
   train_examples: train.length,
@@ -71,6 +75,7 @@ writeFileSync(join(outDir, "metadata.json"), JSON.stringify({
 console.log(JSON.stringify({
   out_dir: outDir,
   loaded: examples.length,
+  excluded: excludedKeys.size,
   deduped: deduped.length,
   total: limited.length,
   train: train.length,
@@ -285,7 +290,7 @@ function generateRealTalkExamples(path, limit) {
 function generateSyntheticCoverageExamples(limit) {
   const examples = [];
   for (let i = 1; i <= limit; i++) {
-    const lane = i % 6;
+    const lane = i % 7;
     if (lane === 0) {
       examples.push(example(`synthetic-hard-ignore-${i}`, "synthetic_hard_negative", {
         current_turn: { speaker: "Assistant", text: `Build completed in ${(i % 9) + 1}.${i % 10}s with no warnings.`, timestamp: "2026-05-27T10:00:00Z" }
@@ -305,9 +310,9 @@ function generateSyntheticCoverageExamples(limit) {
       }));
     } else if (lane === 2) {
       examples.push(example(`synthetic-episodic-${i}`, "synthetic", {
-        current_turn: { speaker: "User", text: `On May ${padDay(i)}, the memory smoke found ${i % 7} recall-count misses in validation.`, timestamp: `2026-05-${padDay(i)}T12:00:00Z` }
+        current_turn: { speaker: "User", text: `On May ${padDay(i)}, validation run ${i} found ${i % 7} recall-count misses in the memory smoke.`, timestamp: `2026-05-${padDay(i)}T12:00:00Z` }
       }, storeEpisodic({
-        content: `On 2026-05-${padDay(i)}, the memory smoke found ${i % 7} recall-count misses in validation.`,
+        content: `On 2026-05-${padDay(i)}, validation run ${i} found ${i % 7} recall-count misses in the memory smoke.`,
         tags: ["validation", "recall_count", "smoke"],
         facts: [fact("memory smoke", "recall_count_misses", String(i % 7), "recall-count misses in validation", 0.95)],
         reasoning: "Dated validation result with an explicit count."
@@ -333,12 +338,33 @@ function generateSyntheticCoverageExamples(limit) {
         conflicts: [],
         reasoning: "Explicit project-state update."
       }));
+    } else if (lane === 5) {
+      examples.push(example(`synthetic-conflict-${i}`, "synthetic", {
+        current_turn: { speaker: "User", text: `I may have been wrong: deployment lane ${i} might still require VPN access.`, timestamp: "2026-05-27T10:00:00Z" },
+        memory_store: [{ id: `deploy-${i}`, content: `Deployment lane ${i} does not require VPN access.` }]
+      }, {
+        action: "flag_conflict",
+        memory: memory(`Deployment lane ${i} may still require VPN access.`, "semantic", ["deployment", "vpn", "possible_conflict"], 0.68),
+        facts: [fact(`deployment lane ${i}`, "may_require", "VPN access", "might still require VPN access", 0.68)],
+        indexables: buildIndexables(`Deployment lane ${i} may still require VPN access.`, ["deployment", "vpn", "possible_conflict"]),
+        updates: [],
+        conflicts: [{ target_id: `deploy-${i}`, reason: "New statement is uncertain but conflicts with prior no-VPN memory." }],
+        reasoning: "The correction is uncertain, so flag conflict rather than fully replacing the old memory."
+      }));
     } else {
-      const selected = memoryStoreItem({
-        id: `synthetic-recall-memory-${i}`,
-        source_id: `synthetic:recall:${i}`,
-        content: `Training run ${i} should inspect recall-count mistakes before increasing model steps.`,
+      const selectedCount = (i % 4) + 1;
+      const selected = Array.from({ length: selectedCount }, (_, offset) => memoryStoreItem({
+        id: `synthetic-recall-memory-${i}-${offset + 1}`,
+        source_id: `synthetic:recall:${i}:${offset + 1}`,
+        content: `Training run ${i} should inspect recall-count mistake cluster ${offset + 1} before increasing model steps.`,
         tags: ["training", "recall_count", "validation"],
+        target_type: "semantic"
+      }));
+      const distractor = memoryStoreItem({
+        id: `synthetic-recall-distractor-${i}`,
+        source_id: `synthetic:recall:distractor:${i}`,
+        content: `Training run ${i} completed packaging notes after checkpoint upload.`,
+        tags: ["training", "distractor"],
         target_type: "semantic"
       });
       examples.push({
@@ -347,10 +373,10 @@ function generateSyntheticCoverageExamples(limit) {
         input: {
           operation: "recall",
           source_kind: "synthetic_recall",
-          current_query: { question: `What should training run ${i} inspect before increasing steps?`, category: "training" },
-          memory_store: [selected]
+          current_query: { question: `Which recall-count mistake clusters should training run ${i} inspect before increasing steps?`, category: "training" },
+          memory_store: [...selected, distractor]
         },
-        output: recallOutput([selected], "Selected the memory containing the exact training-run inspection rule.")
+        output: recallOutput(selected, "Selected the memories containing the exact training-run recall-count inspection clusters.")
       });
     }
   }
@@ -549,7 +575,9 @@ function normalizeTrainingExample(row) {
     };
     normalized.indexables = buildIndexables(normalized.memory.content, normalized.memory.tags ?? [], normalized.memory.type);
   }
-  if (normalized.action === "recall_context" && !normalized.recall) normalized.recall = recallOutput([], "No grounded memory selected.").recall;
+  if (normalized.action === "recall_context") {
+    normalized.recall = normalizeRecallSelection(normalized.recall ?? recallOutput([], "No grounded memory selected.").recall);
+  }
   return {
     ...row,
     instruction: row.instruction ?? instruction,
@@ -562,20 +590,44 @@ function normalizeTrainingExample(row) {
   };
 }
 
-function dedupe(rows) {
-  const seen = new Set();
+function normalizeRecallSelection(recall, cap = 4) {
+  const selectedIds = Array.isArray(recall.selected_memory_ids) ? recall.selected_memory_ids.slice(0, cap) : [];
+  const selectedKeys = Array.isArray(recall.selected_indexable_keys) ? recall.selected_indexable_keys.slice(0, Math.max(cap, selectedIds.length)) : [];
+  return {
+    ...recall,
+    selected_memory_ids: selectedIds,
+    selected_indexable_keys: selectedKeys,
+    max_items: Math.min(cap, Number(recall.max_items) || selectedIds.length)
+  };
+}
+
+function loadExcludedKeys(files) {
+  const keys = new Set();
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    for (const row of readJsonl(file)) keys.add(dedupeKey(row));
+  }
+  return keys;
+}
+
+function dedupe(rows, excluded = new Set()) {
+  const seen = new Set(excluded);
   const result = [];
   for (const row of rows) {
-    const key = [
-      row.output?.action,
-      row.input?.source_kind,
-      normalize(row.output?.memory?.content || row.input?.current_turn?.text || row.input?.current_query?.question || "")
-    ].join("|");
+    const key = dedupeKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(row);
   }
   return result;
+}
+
+function dedupeKey(row) {
+  return [
+    row.output?.action,
+    row.input?.source_kind,
+    normalize(row.output?.memory?.content || row.input?.current_turn?.text || row.input?.current_query?.question || "")
+  ].join("|");
 }
 
 function balancedLimit(rows, maxTotal) {
