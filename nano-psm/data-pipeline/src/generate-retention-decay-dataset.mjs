@@ -108,7 +108,7 @@ function generateShortLivedRows(count) {
       type: "episodic",
       content,
       tags: ["retention_short_lived", "temporary", "debug", "session_state", `lane_${n % 17}`],
-      scores: score(index, [0.45, 0.65], [0.12, 0.30], [0.05, 0.30], [0.75, 0.95]),
+      scores: score(index, [0.45, 0.65], [0.12, 0.30], shortLivedEmotion(index), [0.75, 0.95]),
       fact: fact(`temporary lane ${n}`, "has_state", content, text, 0.88),
       reasoning: "Temporary task state is useful briefly and should decay quickly."
     }));
@@ -137,8 +137,8 @@ function generateNormalEpisodicRows(count) {
         ? ["retention_normal_episodic", "archive_candidate", "historical", "merged_branch", `run_${n}`]
         : ["retention_normal_episodic", "validation", "benchmark", "recall_count", `run_${n}`],
       scores: archive
-        ? score(index, [0.62, 0.78], [0.07, 0.11], [0.10, 0.30], [0.84, 0.96])
-        : score(index, [0.70, 0.85], [0.04, 0.08], [0.15, 0.45], [0.85, 0.98]),
+        ? score(index, [0.62, 0.78], [0.07, 0.11], 0.16, [0.84, 0.96])
+        : score(index, [0.70, 0.85], [0.04, 0.08], 0.28, [0.85, 0.98]),
       fact: archive
         ? fact(`retention branch ${n}`, "was_deleted_after_merge", "true", text, 0.91)
         : fact(`validation run ${n}`, "recall_count_misses", String(n % 7), text, 0.94),
@@ -167,7 +167,7 @@ function generateDurableSemanticRows(count) {
       type: "semantic",
       content,
       tags: ["retention_durable_semantic", "durable", ...extraTags, `lane_${n % 23}`],
-      scores: score(index, [0.80, 0.92], [0.01, 0.03], [0.10, 0.45], [0.85, 0.98]),
+      scores: score(index, [0.80, 0.92], [0.01, 0.03], durableEmotion(index), [0.85, 0.98]),
       fact: fact(subjectFor(content), "has_rule", content, text, 0.94),
       reasoning: "The turn states a durable rule, preference, or environment constraint."
     }));
@@ -191,7 +191,7 @@ function generateCriticalLowDecayRows(count) {
       type: "semantic",
       content,
       tags: ["retention_critical_low_decay", "critical", "durable", ...extraTags, `lane_${n % 19}`],
-      scores: score(index, [0.90, 0.98], [0.001, 0.01], [0.25, 0.70], [0.90, 0.99]),
+      scores: score(index, [0.90, 0.98], [0.001, 0.01], criticalEmotion(index), [0.90, 0.99]),
       fact: fact(subjectFor(content), "has_critical_rule", content, text, 0.96),
       reasoning: "Critical project, safety, access, or retention policy should persist with very low decay."
     }));
@@ -213,7 +213,7 @@ function generateUpdateExistingRows(count) {
       type: "semantic",
       content,
       tags: ["retention_update_existing", "dataset", "training", "replacement", `run_${n}`],
-      scores: score(index, [0.82, 0.95], [0.01, 0.05], [0.15, 0.40], [0.90, 0.99]),
+      scores: score(index, [0.82, 0.95], [0.01, 0.05], 0.28, [0.90, 0.99]),
       fact: fact(`dataset run ${n}`, "targets_rows", "10000 gated rows", text, 0.96),
       updates: [{ target_id: targetId, relationship: "replaces", reason: "New target supersedes the prior 1k compatibility-row target." }],
       reasoning: "Clear replacement should update the older memory."
@@ -236,7 +236,7 @@ function generateFlagConflictRows(count) {
       type: "semantic",
       content,
       tags: ["retention_flag_conflict", "possible_conflict", "vpn", "deployment", `lane_${n}`],
-      scores: score(index, [0.55, 0.75], [0.04, 0.12], [0.10, 0.35], [0.55, 0.75]),
+      scores: score(index, [0.55, 0.75], [0.04, 0.12], 0.22, [0.55, 0.75]),
       fact: fact(`deployment lane ${n}`, "may_require", "VPN access", text, 0.67),
       conflicts: [{ target_id: targetId, reason: "New statement is uncertain and conflicts with prior no-VPN memory." }],
       reasoning: "Uncertain contradiction should be flagged without overwriting the prior memory."
@@ -259,7 +259,7 @@ function generateFlagAndStoreRows(count) {
       type: "semantic",
       content,
       tags: ["retention_flag_and_store", "correction", "checkpoint", "durable", `lane_${n}`],
-      scores: score(index, [0.85, 0.98], [0.005, 0.03], [0.20, 0.50], [0.92, 0.99]),
+      scores: score(index, [0.85, 0.98], [0.005, 0.03], 0.36, [0.92, 0.99]),
       fact: fact(`evaluation lane ${n}`, "uses_checkpoint", "checkpoint-best.pt", text, 0.97),
       conflicts: [{ target_id: targetId, reason: "Explicit correction conflicts with the prior checkpoint-last memory." }],
       reasoning: "Clear durable correction should be stored and the old memory should be marked as conflicting."
@@ -372,9 +372,21 @@ function score(index, strengthRange, decayRange, emotionalRange, confidenceRange
   return {
     strength: ranged(index, strengthRange),
     decay_rate: ranged(index + 3, decayRange),
-    emotional_weight: ranged(index + 5, emotionalRange),
+    emotional_weight: Array.isArray(emotionalRange) ? ranged(index + 5, emotionalRange) : round(emotionalRange),
     confidence: ranged(index + 7, confidenceRange)
   };
+}
+
+function shortLivedEmotion(index) {
+  return [0.08, 0.20, 0.06, 0.08, 0.12][index % 5];
+}
+
+function durableEmotion(index) {
+  return [0.24, 0.38, 0.32, 0.22, 0.16][index % 5];
+}
+
+function criticalEmotion(index) {
+  return [0.65, 0.55, 0.45, 0.58][index % 4];
 }
 
 function ranged(index, [min, max]) {
