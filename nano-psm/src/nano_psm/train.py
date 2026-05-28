@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--train", required=True)
     parser.add_argument("--validation", required=True)
     parser.add_argument("--checkpoint-dir", required=True)
+    parser.add_argument("--init-checkpoint", default=None)
     parser.add_argument("--resume", default="auto")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--max-steps", type=int, default=None)
@@ -89,6 +90,8 @@ def main() -> None:
     last_checkpoint = checkpoint_dir / "checkpoint-last.pt"
     if args.resume == "auto" and last_checkpoint.exists():
         state = load_checkpoint(torch, last_checkpoint, model, optimizer, device)
+    elif args.init_checkpoint:
+        load_model_weights(torch, Path(args.init_checkpoint), model, device)
 
     print(json.dumps({
         "status": "training_start",
@@ -97,6 +100,7 @@ def main() -> None:
         "train_examples": len(train_examples),
         "validation_examples": len(validation_examples),
         "device": str(device),
+        "init_checkpoint": args.init_checkpoint,
         "resume_step": state["global_step"],
         "max_steps": max_steps,
     }, indent=2))
@@ -241,6 +245,11 @@ def load_checkpoint(torch, path: Path, model, optimizer, device):
     model.load_state_dict(checkpoint["model"])
     optimizer.load_state_dict(checkpoint["optimizer"])
     return checkpoint.get("state", {"global_step": 0, "best_score": -1.0})
+
+
+def load_model_weights(torch, path: Path, model, device) -> None:
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint["model"])
 
 
 def write_trainer_state(checkpoint_dir: Path, state: dict[str, object]) -> None:

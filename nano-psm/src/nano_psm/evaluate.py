@@ -25,6 +25,7 @@ def evaluate_model(model, data_loader, device) -> dict[str, float]:
         "recall_count_correct": 0,
         "score_rows": 0,
         "score_abs_error": 0.0,
+        "score_component_abs_error": None,
     }
     with torch.no_grad():
         for batch in data_loader:
@@ -45,12 +46,26 @@ def evaluate_model(model, data_loader, device) -> dict[str, float]:
             score_mask = batch["has_score_target"] > 0
             score_rows = int(score_mask.sum().item())
             if score_rows:
-                score_error = (output["scores"][score_mask] - batch["scores"][score_mask]).abs().mean(dim=1)
+                score_component_error = (output["scores"][score_mask] - batch["scores"][score_mask]).abs()
+                score_error = score_component_error.mean(dim=1)
                 totals["score_abs_error"] += float(score_error.sum().item())
+                component_sum = score_component_error.sum(dim=0)
+                if totals["score_component_abs_error"] is None:
+                    totals["score_component_abs_error"] = component_sum
+                else:
+                    totals["score_component_abs_error"] += component_sum
                 totals["score_rows"] += score_rows
 
     rows = max(totals["rows"], 1)
     score_rows = max(totals["score_rows"], 1)
+    score_component_names = ["strength", "decay_rate", "emotional_weight", "confidence"]
+    if totals["score_component_abs_error"] is None:
+        score_component_mae = {f"{name}_mae": 0.0 for name in score_component_names}
+    else:
+        score_component_mae = {
+            f"{name}_mae": float(totals["score_component_abs_error"][index].item()) / score_rows
+            for index, name in enumerate(score_component_names)
+        }
     return {
         "rows": float(totals["rows"]),
         "action_accuracy": totals["action_correct"] / rows,
@@ -59,6 +74,7 @@ def evaluate_model(model, data_loader, device) -> dict[str, float]:
         "fact_count_accuracy": totals["fact_count_correct"] / rows,
         "recall_count_accuracy": totals["recall_count_correct"] / rows,
         "score_mae": totals["score_abs_error"] / score_rows,
+        **score_component_mae,
         "score_rows": float(totals["score_rows"]),
     }
 
