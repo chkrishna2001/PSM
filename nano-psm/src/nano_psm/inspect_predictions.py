@@ -67,6 +67,10 @@ def main() -> None:
                 predicted_fact_count = int(fact_count_pred[index].item())
                 expected_recall_count = int(batch["recall_count"][index].item())
                 predicted_recall_count = int(recall_count_pred[index].item())
+                has_score_target = bool(int(batch["has_score_target"][index].item()))
+                expected_scores = score_values(batch["scores"][index]) if has_score_target else None
+                predicted_scores = score_values(output["scores"][index]) if has_score_target else None
+                score_errors = score_abs_errors(expected_scores, predicted_scores)
 
                 correct = (
                     expected_action == predicted_action
@@ -90,6 +94,7 @@ def main() -> None:
                             "has_indexables": expected_indexable,
                             "fact_count": expected_fact_count,
                             "recall_count": expected_recall_count,
+                            "scores": expected_scores,
                         },
                         "predicted": {
                             "action": predicted_action,
@@ -97,7 +102,9 @@ def main() -> None:
                             "has_indexables": predicted_indexable,
                             "fact_count": predicted_fact_count,
                             "recall_count": predicted_recall_count,
+                            "scores": predicted_scores,
                         },
+                        "score_errors": score_errors,
                         "input": compact_input(example.input),
                     }
                 )
@@ -113,6 +120,23 @@ def compact_input(value: dict[str, object]) -> dict[str, object]:
         if key in compact:
             compact[key] = compact_text(compact[key])
     return compact
+
+
+def score_values(tensor) -> dict[str, float]:
+    names = ["strength", "decay_rate", "emotional_weight", "confidence"]
+    return {
+        name: round(float(tensor[index].detach().cpu().item()), 6)
+        for index, name in enumerate(names)
+    }
+
+
+def score_abs_errors(expected: dict[str, float] | None, predicted: dict[str, float] | None) -> dict[str, float] | None:
+    if expected is None or predicted is None:
+        return None
+    return {
+        key: round(abs(predicted[key] - expected[key]), 6)
+        for key in expected
+    }
 
 
 def compact_text(value: object, max_chars: int = 900) -> object:
