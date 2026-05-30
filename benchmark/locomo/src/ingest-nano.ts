@@ -25,6 +25,7 @@ export async function main(argv: string[]): Promise<number> {
   const script = getOption(argv, "nano-script", "nano-psm/src/nano_psm/predict.py");
   const python = getOption(argv, "python", "python");
   const device = getOption(argv, "device", "auto");
+  const actionMode = getOption(argv, "nano-action-mode", "predict");
   const windowSize = Number(getOption(argv, "window-size", "2"));
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
@@ -59,7 +60,7 @@ export async function main(argv: string[]): Promise<number> {
             instruction,
             input: nanoLocomoInput(sample, turns, index, Number.isInteger(windowSize) && windowSize >= 0 ? windowSize : 2),
           });
-          const result = store.applyDecision(userId, source, toStorageDecision(prediction, sample, turn, source), [
+          const result = store.applyDecision(userId, source, toStorageDecision(prediction, sample, turn, source, actionMode), [
             `locomo_sample_id:${sampleId}`,
             `locomo_dia_id:${diaId}`,
             `locomo_speaker:${turn.speaker ?? ""}`,
@@ -112,17 +113,22 @@ function nanoLocomoInput(sample: LocomoSample, turns: LocomoTurn[], index: numbe
   };
 }
 
-function toStorageDecision(prediction: NanoPrediction, sample: LocomoSample, turn: LocomoTurn, sourceId: string): StorageDecision {
-  const memory = prediction.memory ? {
-    ...prediction.memory,
-    content: String(prediction.memory.content ?? turn.text ?? ""),
+function toStorageDecision(prediction: NanoPrediction, sample: LocomoSample, turn: LocomoTurn, sourceId: string, actionMode: string): StorageDecision {
+  const denseMode = actionMode === "locomo-dense";
+  const forcedAction = denseMode && String(turn.text ?? "").trim()
+    ? (prediction.nano?.memory_type === "semantic" ? "promote_semantic" : "store_episodic")
+    : undefined;
+  const predictedMemory = prediction.memory ?? (forcedAction ? fallbackMemory(prediction, turn) : null);
+  const memory = predictedMemory ? {
+    ...predictedMemory,
+    content: locomoMemoryContent(turn),
     source_kind: "locomo",
     source_id: sourceId,
     source_timestamp: locomoSourceTimestamp(sample, turn.session),
     source_label: `LOCOMO ${sourceId}`,
   } : null;
   const decision = {
-    action: normalizeAction(prediction.action),
+    action: normalizeAction(forcedAction ?? prediction.action),
     memory,
     facts: Array.isArray(prediction.facts) ? prediction.facts : [],
     reasoning: prediction.reasoning ?? "Nano PSM structured prediction.",
@@ -139,6 +145,30 @@ function toStorageDecision(prediction: NanoPrediction, sample: LocomoSample, tur
     };
   }
   return decision;
+}
+
+function fallbackMemory(prediction: NanoPrediction, turn: LocomoTurn): Record<string, unknown> {
+  const scores = isRecord(prediction.nano?.scores) ? prediction.nano.scores : {};
+  return {
+    content: locomoMemoryContent(turn),
+    type: prediction.nano?.memory_type === "semantic" ? "semantic" : "episodic",
+    strength: numberValue(scores.strength, 0.75),
+    decay_rate: numberValue(scores.decay_rate, 0.02),
+    emotional_weight: numberValue(scores.emotional_weight, 0.2),
+    confidence: numberValue(scores.confidence, 0.8),
+    tags: []
+  };
+}
+
+function locomoMemoryContent(turn: LocomoTurn): string {
+  const fields = [
+    `${turn.speaker ?? "Unknown"} said: ${turn.text ?? ""}`.trim(),
+    turn.query ? `Image query: ${turn.query}` : "",
+    turn.blip_caption ? `Image caption: ${turn.blip_caption}` : "",
+    turn.session ? `Session: ${turn.session}` : "",
+    turn.dia_id ? `Dialogue id: ${turn.dia_id}` : "",
+  ].filter(Boolean);
+  return fields.join(" ");
 }
 
 function normalizeAction(action: string): StorageDecision["action"] {
@@ -170,6 +200,14 @@ function recordApplyResult(
   } else {
     stats.ignored++;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function finish(store: MemoryStore, nano: NanoClient, stats: NanoIngestStats): number {

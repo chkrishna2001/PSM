@@ -5,6 +5,7 @@ import { loadSamples, parseOptions, parseTags, tagValue } from "./common.js";
 
 export function main(argv: string[]): number {
   const options = parseOptions(argv);
+  const answerableOnly = hasFlag(argv, "answerable-only");
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
   const records: Array<Record<string, unknown>> = [];
@@ -14,9 +15,11 @@ export function main(argv: string[]): number {
     const userId = `locomo-${sampleId}`;
     const memories = store.selectMemories(userId, ["semantic", "episodic"], 10000);
     if (memories.length === 0) continue;
+    const ingestedEvidenceIds = new Set(memories.map(locomoDiaId).filter(Boolean));
     for (const qa of sample.qa ?? []) {
       const evidence = (qa.evidence ?? []).map(String).filter(Boolean);
       if (evidence.length === 0) continue;
+      if (answerableOnly && !evidence.some((id) => ingestedEvidenceIds.has(id))) continue;
       const ranked = rankMemories(String(qa.question ?? ""), memories, options.topK);
       const selected = ranked.map(locomoDiaId).filter(Boolean);
       records.push({
@@ -41,6 +44,10 @@ export function main(argv: string[]): number {
   store.close();
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\nWrote ${options.out}\n`);
   return records.length === 0 ? 1 : 0;
+}
+
+function hasFlag(argv: string[], key: string): boolean {
+  return argv.includes(`--${key}`);
 }
 
 function hitAt(evidence: string[], selected: string[], k: number): boolean {

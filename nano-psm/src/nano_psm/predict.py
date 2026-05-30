@@ -116,6 +116,12 @@ def predict_one(torch, model, tokenizer: HashTokenizer, row: dict[str, Any], dev
             "memory_type": memory_type,
             "memory_type_confidence": round(float(memory_type_probs[memory_type_id].item()), 6),
             "action_confidence": round(float(action_probs[action_id].item()), 6),
+            "scores": {
+                "strength": round(scores[0], 6),
+                "decay_rate": round(scores[1], 6),
+                "emotional_weight": round(scores[2], 6),
+                "confidence": round(scores[3], 6),
+            },
             "indexable_probability": round(indexable_probability, 6),
             "fact_count": fact_count,
             "recall_count": recall_count,

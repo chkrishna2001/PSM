@@ -1,0 +1,72 @@
+{
+  "data": "/content/PSM/benchmark/locomo/data/locomo10.json",
+  "db": "/content/locomo/results/locomo-psm-memory-smoke-20-q4_k_m-20260520T120554Z.db",
+  "model": "/content/psm-memory-cache/psm-memory-qwen-1.5b-q4_k_m.gguf",
+  "limit": 20,
+  "batch_size": 5,
+  "offset": 0,
+  "progress": "/content/locomo/results/locomo-ingest-progress-smoke-20-q4_k_m-20260520T120554Z.json",
+  "summary": "/content/locomo/results/ingest-summary-smoke-20-q4_k_m-20260520T120554Z.json",
+  "checkpoint_dir": "/content/locomo/checkpoints/smoke-20-q4_k_m-20260520T120554Z",
+  "total_records": 5882,
+  "start_index": 0,
+  "end_index": 20,
+  "next_index": 20,
+  "seen": 20,
+  "stored": 8,
+  "ignored": 0,
+  "failed": 12,
+  "started_at": "2026-05-20T12:09:56.004Z",
+  "ended_at": null,
+  "errors": [
+    {
+      "source": "conv-26:D1:1",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D1:2",
+      "error": "Unexpected non-whitespace character after JSON at position 1493 (line 40 column 2)"
+    },
+    {
+      "source": "conv-26:D1:3",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D1:5",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D1:6",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D1:7",
+      "error": "Unexpected non-whitespace character after JSON at position 1122 (line 27 column 2)"
+    },
+    {
+      "source": "conv-26:D1:8",
+      "error": "Unexpected non-whitespace character after JSON at position 1286 (line 30 column 2)"
+    },
+    {
+      "source": "conv-26:D1:9",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D1:11",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D1:13",
+      "error": "Unexpected non-whitespace character after JSON at position 960 (line 22 column 2)"
+    },
+    {
+      "source": "conv-26:D1:15",
+      "error": "Unexpected token 'i', \"invalid lo\"... is not valid JSON"
+    },
+    {
+      "source": "conv-26:D2:2",
+      "error": "Unexpected non-whitespace character after JSON at position 1181 (line 26 column 2)"
+    }
+  ],
+  "checkpointed_at": "2026-05-20T12:13:41.062Z"
+}

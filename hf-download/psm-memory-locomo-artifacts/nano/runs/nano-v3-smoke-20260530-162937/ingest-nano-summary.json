@@ -1,0 +1,10 @@
+{
+  "db": "/content/locomo/results/locomo-nano-v3-smoke.db",
+  "data": "benchmark/locomo/data/locomo10.json",
+  "checkpoint": "/content/nano-psm-primary-10m-retention-dominant-codex-selector-v3-checkpoints/checkpoint-best.pt",
+  "seen": 25,
+  "stored": 6,
+  "ignored": 19,
+  "failed": 0,
+  "errors": []
+}

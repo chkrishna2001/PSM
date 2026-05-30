@@ -1,0 +1,23 @@
+{
+  "data": "/content/PSM/benchmark/locomo/data/locomo10.json",
+  "db": "/content/locomo/results/locomo-psm-memory-smoke-20-f16-20260520T143708Z.db",
+  "model": "/content/psm-memory-cache/gguf/psm-memory-qwen-1.5b-f16.gguf",
+  "limit": 20,
+  "batch_size": 5,
+  "offset": 0,
+  "progress": "/content/locomo/results/locomo-ingest-progress-smoke-20-f16-20260520T143708Z.json",
+  "summary": "/content/locomo/results/ingest-summary-smoke-20-f16-20260520T143708Z.json",
+  "checkpoint_dir": "/content/locomo/checkpoints/smoke-20-f16-20260520T143708Z",
+  "total_records": 5882,
+  "start_index": 0,
+  "end_index": 20,
+  "next_index": 20,
+  "seen": 20,
+  "stored": 12,
+  "ignored": 8,
+  "failed": 0,
+  "started_at": "2026-05-20T14:38:26.068Z",
+  "ended_at": null,
+  "errors": [],
+  "checkpointed_at": "2026-05-20T14:41:39.164Z"
+}
