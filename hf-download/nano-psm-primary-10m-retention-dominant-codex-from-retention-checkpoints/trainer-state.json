@@ -1,0 +1,6 @@
+{
+  "global_step": 1200,
+  "best_score": 0.6975877532368151,
+  "model_name": "nano-psm-primary-10m",
+  "selection_mode": "multi_validation_v1"
+}

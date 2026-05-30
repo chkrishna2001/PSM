@@ -290,6 +290,8 @@ def selection_score(metrics_by_name: dict[str, dict[str, float]]) -> float:
     scores = []
     penalties = 0.0
     for name, metrics in metrics_by_name.items():
+        if metrics.get("rows", 0.0) < 50:
+            continue
         score_quality = max(0.0, 1.0 - metrics.get("score_mae", 1.0))
         score = (
             0.45 * metrics.get("action_accuracy", 0.0)
@@ -300,6 +302,8 @@ def selection_score(metrics_by_name: dict[str, dict[str, float]]) -> float:
         )
         scores.append(score)
         penalties += gate_penalty(name, metrics)
+    if not scores:
+        return -1.0
     return min(scores) - penalties
 
 
