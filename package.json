@@ -17,6 +17,7 @@
     "locomo:evaluate": "node dist/benchmark/locomo/src/evaluate.js",
     "locomo:answer-evaluate": "node dist/benchmark/locomo/src/answer-evaluate.js",
     "locomo:ingest": "node dist/benchmark/locomo/src/ingest.js",
+    "locomo:ingest-nano": "node dist/benchmark/locomo/src/ingest-nano.js",
     "locomo:ingest-node": "node dist/benchmark/locomo/src/ingest-node.js",
     "locomo:report": "node dist/benchmark/locomo/src/report.js",
     "ft:sources": "node nano-psm/data-pipeline/src/prepare-external-sources.mjs",

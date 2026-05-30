@@ -63,13 +63,19 @@ declare module "node:http" {
 }
 
 declare module "node:child_process" {
+  export interface ChildProcess {
+    stdin?: { write(data: string, encoding?: BufferEncoding, callback?: (error?: Error | null) => void): void; end(): void };
+    stdout?: { on(event: "data", callback: (chunk: unknown) => void): void };
+    stderr?: { on(event: "data", callback: (chunk: unknown) => void): void };
+    on(event: "error", callback: (error: Error) => void): void;
+    on(event: "exit", callback: (code: number | null, signal: string | null) => void): void;
+    unref(): void;
+  }
   export function spawn(command: string, args?: string[], options?: {
     detached?: boolean;
-    stdio?: "ignore";
+    stdio?: "ignore" | Array<"ignore" | "pipe">;
     windowsHide?: boolean;
-  }): {
-    unref(): void;
-  };
+  }): ChildProcess;
   export function spawnSync(command: string, args?: string[], options?: {
     cwd?: string;
     encoding?: BufferEncoding;
@@ -113,8 +119,9 @@ declare module "node:assert/strict" {
 declare module "node:readline" {
   export function createInterface(options: {
     input: unknown;
-    output: unknown;
+    output?: unknown;
   }): {
+    on(event: "line", callback: (line: string) => void): void;
     question(query: string, callback: (answer: string) => void): void;
     close(): void;
   };
