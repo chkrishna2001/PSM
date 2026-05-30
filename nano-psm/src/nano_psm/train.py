@@ -132,6 +132,7 @@ def main() -> None:
         metrics_by_name = evaluate_all(model, validation_loader, extra_validation_loaders, device)
         score = selection_score(metrics_by_name)
         append_validation_metrics(checkpoint_dir, 0, score, metrics_by_name)
+        save_checkpoint(torch, checkpoint_dir / "checkpoint-eval-step-0.pt", model, optimizer, state)
         if score > state["best_score"]:
             state["best_score"] = score
             save_checkpoint(torch, checkpoint_dir / "checkpoint-best.pt", model, optimizer, state)
@@ -169,6 +170,13 @@ def main() -> None:
                 metrics_by_name = evaluate_all(model, validation_loader, extra_validation_loaders, device)
                 score = selection_score(metrics_by_name)
                 append_validation_metrics(checkpoint_dir, state["global_step"], score, metrics_by_name)
+                save_checkpoint(
+                    torch,
+                    checkpoint_dir / f"checkpoint-eval-step-{state['global_step']}.pt",
+                    model,
+                    optimizer,
+                    state,
+                )
                 if score > state["best_score"]:
                     state["best_score"] = score
                     save_checkpoint(torch, checkpoint_dir / "checkpoint-best.pt", model, optimizer, state)
@@ -313,11 +321,11 @@ def gate_penalty(name: str, metrics: dict[str, float]) -> float:
     decay_ceiling = 0.035
     penalty = 0.0
     if metrics.get("action_accuracy", 0.0) < action_floor:
-        penalty += (action_floor - metrics.get("action_accuracy", 0.0)) * 5.0
+        penalty += (action_floor - metrics.get("action_accuracy", 0.0)) * 25.0
     if metrics.get("recall_count_accuracy", 0.0) < recall_floor:
-        penalty += (recall_floor - metrics.get("recall_count_accuracy", 0.0)) * 2.0
+        penalty += (recall_floor - metrics.get("recall_count_accuracy", 0.0)) * 10.0
     if ("retention" in name or name == "primary") and metrics.get("decay_rate_mae", 0.0) > decay_ceiling:
-        penalty += (metrics.get("decay_rate_mae", 0.0) - decay_ceiling) * 3.0
+        penalty += (metrics.get("decay_rate_mae", 0.0) - decay_ceiling) * 10.0
     return penalty
 
 

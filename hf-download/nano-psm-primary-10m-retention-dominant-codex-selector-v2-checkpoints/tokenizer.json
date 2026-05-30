@@ -1,0 +1,5 @@
+{
+  "type": "hash",
+  "vocab_size": 18000,
+  "max_length": 1280
+}
