@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--train", required=True)
     parser.add_argument("--validation", required=True)
+    parser.add_argument("--extra-validation", action="append", default=[], help="Additional validation set as name=path.")
     parser.add_argument("--checkpoint-dir", required=True)
     parser.add_argument("--init-checkpoint", default=None)
     parser.add_argument("--resume", default="auto")
@@ -57,9 +58,17 @@ def main() -> None:
 
     train_examples = load_jsonl(args.train)
     validation_examples = load_jsonl(args.validation)
+    extra_validation_examples = {
+        name: load_jsonl(path)
+        for name, path in parse_named_paths(args.extra_validation).items()
+    }
     action_weights = compute_action_weights(torch, train_examples, device)
     train_dataset = NanoPsmJsonlDataset(train_examples, tokenizer)
     validation_dataset = NanoPsmJsonlDataset(validation_examples, tokenizer)
+    extra_validation_datasets = {
+        name: NanoPsmJsonlDataset(examples, tokenizer)
+        for name, examples in extra_validation_examples.items()
+    }
 
     train_loader = DataLoader(
         train_dataset,
@@ -73,6 +82,15 @@ def main() -> None:
         shuffle=False,
         collate_fn=collate_batch,
     )
+    extra_validation_loaders = {
+        name: DataLoader(
+            dataset,
+            batch_size=int(train_config["batch_size"]),
+            shuffle=False,
+            collate_fn=collate_batch,
+        )
+        for name, dataset in extra_validation_datasets.items()
+    }
 
     wrapped = build_model(model_config)
     model = wrapped.module.to(device)
@@ -86,10 +104,14 @@ def main() -> None:
         "global_step": 0,
         "best_score": -1.0,
         "model_name": config_doc["name"],
+        "selection_mode": selection_mode(args.extra_validation),
     }
     last_checkpoint = checkpoint_dir / "checkpoint-last.pt"
     if args.resume == "auto" and last_checkpoint.exists():
         state = load_checkpoint(torch, last_checkpoint, model, optimizer, device)
+        if state.get("selection_mode") != selection_mode(args.extra_validation):
+            state["best_score"] = -1.0
+            state["selection_mode"] = selection_mode(args.extra_validation)
     elif args.init_checkpoint:
         load_model_weights(torch, Path(args.init_checkpoint), model, device)
 
@@ -99,6 +121,7 @@ def main() -> None:
         "parameter_budget": wrapped.parameter_budget_note(),
         "train_examples": len(train_examples),
         "validation_examples": len(validation_examples),
+        "extra_validation_examples": {name: len(examples) for name, examples in extra_validation_examples.items()},
         "device": str(device),
         "init_checkpoint": args.init_checkpoint,
         "resume_step": state["global_step"],
@@ -129,14 +152,23 @@ def main() -> None:
                 })
 
             if state["global_step"] % eval_every == 0:
-                metrics = evaluate_model(model, validation_loader, device)
-                score = selection_score(metrics)
+                metrics_by_name = evaluate_all(model, validation_loader, extra_validation_loaders, device)
+                metrics = metrics_by_name["primary"]
+                score = selection_score(metrics_by_name)
                 append_jsonl(checkpoint_dir / "metrics.jsonl", {
                     "step": state["global_step"],
                     "split": "validation",
                     "score": score,
                     **metrics,
                 })
+                for name, extra_metrics in metrics_by_name.items():
+                    if name == "primary":
+                        continue
+                    append_jsonl(checkpoint_dir / "metrics.jsonl", {
+                        "step": state["global_step"],
+                        "split": f"validation:{name}",
+                        **extra_metrics,
+                    })
                 if score > state["best_score"]:
                     state["best_score"] = score
                     save_checkpoint(torch, checkpoint_dir / "checkpoint-best.pt", model, optimizer, state)
@@ -173,6 +205,31 @@ def compute_action_weights(torch, examples, device):
     return torch.tensor(weights, dtype=torch.float32, device=device)
 
 
+def parse_named_paths(values: list[str]) -> dict[str, str]:
+    parsed = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"--extra-validation must use name=path, got: {value}")
+        name, path = value.split("=", 1)
+        name = name.strip()
+        path = path.strip()
+        if not name or not path:
+            raise ValueError(f"--extra-validation must use name=path, got: {value}")
+        parsed[name] = path
+    return parsed
+
+
+def selection_mode(extra_validation: list[str]) -> str:
+    return "multi_validation_v1" if extra_validation else "primary_validation_v1"
+
+
+def evaluate_all(model, primary_loader, extra_loaders, device) -> dict[str, dict[str, float]]:
+    results = {"primary": evaluate_model(model, primary_loader, device)}
+    for name, loader in extra_loaders.items():
+        results[name] = evaluate_model(model, loader, device)
+    return results
+
+
 def compute_losses(torch, output, batch, action_weights=None):
     ce = torch.nn.functional.cross_entropy
     bce = torch.nn.functional.binary_cross_entropy_with_logits
@@ -206,15 +263,35 @@ def compute_losses(torch, output, batch, action_weights=None):
     }
 
 
-def selection_score(metrics: dict[str, float]) -> float:
-    score_quality = max(0.0, 1.0 - metrics.get("score_mae", 1.0))
-    return (
-        0.40 * metrics.get("action_accuracy", 0.0)
-        + 0.20 * metrics.get("memory_type_accuracy", 0.0)
-        + 0.20 * score_quality
-        + 0.10 * metrics.get("indexable_accuracy", 0.0)
-        + 0.10 * metrics.get("recall_count_accuracy", 0.0)
-    )
+def selection_score(metrics_by_name: dict[str, dict[str, float]]) -> float:
+    scores = []
+    penalties = 0.0
+    for name, metrics in metrics_by_name.items():
+        score_quality = max(0.0, 1.0 - metrics.get("score_mae", 1.0))
+        score = (
+            0.45 * metrics.get("action_accuracy", 0.0)
+            + 0.15 * metrics.get("memory_type_accuracy", 0.0)
+            + 0.20 * score_quality
+            + 0.10 * metrics.get("indexable_accuracy", 0.0)
+            + 0.10 * metrics.get("recall_count_accuracy", 0.0)
+        )
+        scores.append(score)
+        penalties += gate_penalty(name, metrics)
+    return min(scores) - penalties
+
+
+def gate_penalty(name: str, metrics: dict[str, float]) -> float:
+    action_floor = 0.96
+    recall_floor = 0.88
+    decay_ceiling = 0.035
+    penalty = 0.0
+    if metrics.get("action_accuracy", 0.0) < action_floor:
+        penalty += (action_floor - metrics.get("action_accuracy", 0.0)) * 5.0
+    if metrics.get("recall_count_accuracy", 0.0) < recall_floor:
+        penalty += (recall_floor - metrics.get("recall_count_accuracy", 0.0)) * 2.0
+    if ("retention" in name or name == "primary") and metrics.get("decay_rate_mae", 0.0) > decay_ceiling:
+        penalty += (metrics.get("decay_rate_mae", 0.0) - decay_ceiling) * 3.0
+    return penalty
 
 
 def resolve_device(torch, requested: str):

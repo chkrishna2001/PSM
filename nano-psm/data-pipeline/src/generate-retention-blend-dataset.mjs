@@ -30,6 +30,12 @@ const sources = [
     dir: "nano-psm/data-pipeline/data/retention-decay-5k",
     trainLimit: intArg(args, "retention-train-limit", 1500),
     validationLimit: intArg(args, "retention-validation-limit", 175)
+  },
+  {
+    name: "codex_sessions_gpt41_mini_200",
+    dir: "nano-psm/data-pipeline/data/codex-sessions-gpt41-mini-200",
+    trainLimit: intArg(args, "codex-train-limit", 160),
+    validationLimit: intArg(args, "codex-validation-limit", 40)
   }
 ];
 
