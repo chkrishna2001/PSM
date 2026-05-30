@@ -128,6 +128,20 @@ def main() -> None:
         "max_steps": max_steps,
     }, indent=2))
 
+    if state["global_step"] == 0:
+        metrics_by_name = evaluate_all(model, validation_loader, extra_validation_loaders, device)
+        score = selection_score(metrics_by_name)
+        append_validation_metrics(checkpoint_dir, 0, score, metrics_by_name)
+        if score > state["best_score"]:
+            state["best_score"] = score
+            save_checkpoint(torch, checkpoint_dir / "checkpoint-best.pt", model, optimizer, state)
+            write_trainer_state(checkpoint_dir, state)
+        print(json.dumps({
+            "status": "initial_validation",
+            "score": score,
+            "metrics": metrics_by_name,
+        }, indent=2))
+
     grad_accum = int(train_config.get("gradient_accumulation_steps", 1))
     model.train()
     while state["global_step"] < max_steps:
@@ -153,22 +167,8 @@ def main() -> None:
 
             if state["global_step"] % eval_every == 0:
                 metrics_by_name = evaluate_all(model, validation_loader, extra_validation_loaders, device)
-                metrics = metrics_by_name["primary"]
                 score = selection_score(metrics_by_name)
-                append_jsonl(checkpoint_dir / "metrics.jsonl", {
-                    "step": state["global_step"],
-                    "split": "validation",
-                    "score": score,
-                    **metrics,
-                })
-                for name, extra_metrics in metrics_by_name.items():
-                    if name == "primary":
-                        continue
-                    append_jsonl(checkpoint_dir / "metrics.jsonl", {
-                        "step": state["global_step"],
-                        "split": f"validation:{name}",
-                        **extra_metrics,
-                    })
+                append_validation_metrics(checkpoint_dir, state["global_step"], score, metrics_by_name)
                 if score > state["best_score"]:
                     state["best_score"] = score
                     save_checkpoint(torch, checkpoint_dir / "checkpoint-best.pt", model, optimizer, state)
@@ -183,12 +183,13 @@ def main() -> None:
 
     save_checkpoint(torch, last_checkpoint, model, optimizer, state)
     write_trainer_state(checkpoint_dir, state)
-    final_metrics = evaluate_model(model, validation_loader, device)
+    final_metrics_by_name = evaluate_all(model, validation_loader, extra_validation_loaders, device)
     print(json.dumps({
         "status": "training_complete",
         "global_step": state["global_step"],
         "best_score": state["best_score"],
-        "final_validation": final_metrics,
+        "final_validation": final_metrics_by_name["primary"],
+        "final_validation_all": final_metrics_by_name,
         "checkpoint_dir": str(checkpoint_dir),
     }, indent=2))
 
@@ -228,6 +229,28 @@ def evaluate_all(model, primary_loader, extra_loaders, device) -> dict[str, dict
     for name, loader in extra_loaders.items():
         results[name] = evaluate_model(model, loader, device)
     return results
+
+
+def append_validation_metrics(
+    checkpoint_dir: Path,
+    step: int,
+    score: float,
+    metrics_by_name: dict[str, dict[str, float]],
+) -> None:
+    append_jsonl(checkpoint_dir / "metrics.jsonl", {
+        "step": step,
+        "split": "validation",
+        "score": score,
+        **metrics_by_name["primary"],
+    })
+    for name, extra_metrics in metrics_by_name.items():
+        if name == "primary":
+            continue
+        append_jsonl(checkpoint_dir / "metrics.jsonl", {
+            "step": step,
+            "split": f"validation:{name}",
+            **extra_metrics,
+        })
 
 
 def compute_losses(torch, output, batch, action_weights=None):
