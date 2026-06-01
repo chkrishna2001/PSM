@@ -46,27 +46,46 @@ export async function run(argv: string[]): Promise<number> {
 
     if (command === "setup") {
       const force = boolOption(options, "force");
-      const config = await resolveSetupConfig(options, { interactive: canPrompt() && !boolOption(options, "yes") });
-      writePsmConfig(config);
-      const modelPath = boolOption(options, "skip-model")
-        ? undefined
-        : await setupModel({
+      installLog("setup_start", { options: safeSetupOptions(options) });
+      const config = await installStep("resolve_config", () => resolveSetupConfig(options, { interactive: canPrompt() && !boolOption(options, "yes") }));
+      await installStep("write_config", async () => writePsmConfig(config));
+      const modelPath = await installStep("model_prepare", () => boolOption(options, "skip-model")
+        ? Promise.resolve(undefined)
+        : setupModel({
           force,
-          log: (message) => write(`${message}\n`)
-        });
+          log: (message) => {
+            installLog("model_log", { message });
+            write(`${message}\n`);
+          }
+        }));
       const dbPath = configuredDbPath(options);
-      mkdirSync(dirname(dbPath), { recursive: true });
-      const store = new MemoryStore(dbPath);
-      try {
-        store.initializeSchema();
-      } finally {
-        store.close();
-      }
+      await installStep("db_initialize", async () => {
+        mkdirSync(dirname(dbPath), { recursive: true });
+        const store = new MemoryStore(dbPath);
+        try {
+          store.initializeSchema();
+        } finally {
+          store.close();
+        }
+      }, { db: dbPath });
       const embeddingModel = config.embeddings.model;
       if (config.embeddings.enabled && !boolOption(options, "skip-embeddings")) {
         write(`Preparing embedding model: ${embeddingModel}\n`);
-        await createEmbeddingRuntime({ ...options, "embedding-model": embeddingModel }).runtime.embed("PSM Memory embedding setup check.");
+        await installStep("embedding_prepare", () => createEmbeddingRuntime({ ...options, "embedding-model": embeddingModel }).runtime.embed("PSM Memory embedding setup check."), { embedding_model: embeddingModel });
       }
+      if (modelPath) {
+        await installStep("runtime_verify", async () => {
+          const runtime = new NodeLlamaRuntime({
+            modelPath,
+            contextSize: config.runtime.contextSize,
+            gpu: config.runtime.gpu as "auto",
+            gpuLayers: config.runtime.gpuLayers as "auto",
+            log: (message) => installLog("runtime_log", { message })
+          });
+          await runtime.generateJson("Return only valid JSON: {\"ok\":true}", { maxTokens: 8, temperature: 0 });
+        }, { model: modelPath });
+      }
+      installLog("setup_ok", { model: modelPath, db: dbPath, embedding_model: config.embeddings.enabled && !boolOption(options, "skip-embeddings") ? embeddingModel : undefined });
       output({ model: modelPath, config: defaultPsmConfigPath(), memory_dir: config.memoryDir, db: dbPath, schema_migrated: true, embedding_model: config.embeddings.enabled && !boolOption(options, "skip-embeddings") ? embeddingModel : undefined, daemon: config.daemon, installed: true }, pretty || json);
       return 0;
     }
@@ -1301,6 +1320,55 @@ function write(value: string): void {
   process.stdout.write(value);
 }
 
+async function installStep<T>(step: string, action: () => Promise<T> | T, data: Record<string, unknown> = {}): Promise<T> {
+  installLog("step_start", { step, ...data });
+  try {
+    const value = await action();
+    installLog("step_ok", { step, ...data });
+    return value;
+  } catch (error) {
+    installLog("step_error", { step, ...data, error: serializeInstallError(error) });
+    throw error;
+  }
+}
+
+function installLog(event: string, data: Record<string, unknown>): void {
+  const path = process.env.PSM_MEMORY_INSTALL_LOG;
+  if (!path) return;
+  try {
+    appendFileSync(path, `${JSON.stringify({ ts: new Date().toISOString(), event, ...data })}\n`, "utf8");
+  } catch {
+    // Install logging must never mask the setup failure being diagnosed.
+  }
+}
+
+function safeSetupOptions(options: Record<string, string | boolean>): Record<string, unknown> {
+  const safe: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (/token|secret|password|key/i.test(key)) {
+      safe[key] = "<redacted>";
+    } else {
+      safe[key] = value;
+    }
+  }
+  return safe;
+}
+
+function serializeInstallError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { message: String(error) };
+  const detail = error as Error & { code?: string; syscall?: string; path?: string; dest?: string; errno?: number };
+  return {
+    name: error.name,
+    message: error.message,
+    code: detail.code,
+    errno: detail.errno,
+    syscall: detail.syscall,
+    path: detail.path,
+    dest: detail.dest,
+    stack: error.stack
+  };
+}
+
 function cliVersion(): string {
   const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const raw = readFileSync(packageJsonPath, "utf8");
@@ -1323,7 +1391,7 @@ function helpText(): string {
   backup [--out <path>] [--pretty]
   migrate [--pretty]
 
-The model downloads automatically during npm install. If that was skipped or failed, run "psm-memory setup".
+The model downloads automatically during npm install. If installation failed, inspect the install log path printed by npm and rerun "npm install -g @psm-memory/cli" after fixing the root cause.
 Interactive setup writes an editable config file. Run "psm-memory config --path" to locate it.
 `;
 }
@@ -1341,8 +1409,8 @@ function advancedHelpText(): string {
   --trace-psm             Enable full local PSM model I/O JSONL tracing.
   --trace-path <path>     Write PSM model I/O traces to this JSONL file.
   setup --yes             Accept defaults without prompting.
-  setup --skip-model      Skip PSM model download during setup.
-  setup --skip-embeddings Skip embedding model preparation during setup.
+  setup --skip-model      Developer/debug only: skip PSM model download during manual setup.
+  setup --skip-embeddings Developer/debug only: skip embedding model preparation during manual setup.
   --context-size <n>      Override local GGUF runtime context size.
   --gpu <mode>            Override node-llama-cpp backend selection.
   --gpu-layers <mode>     Override GPU layer offload.
@@ -1350,6 +1418,6 @@ function advancedHelpText(): string {
 Default model path:
   ${defaultModelPath()}
 
-The npm package downloads the default Q4_K_M GGUF model during install. If that download was skipped or failed, run "psm-memory setup".
+The npm package downloads the default Q4_K_M GGUF model during install. If installation fails, inspect the install log path printed by npm.
 `;
 }

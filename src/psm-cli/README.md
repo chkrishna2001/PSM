@@ -3,7 +3,6 @@
 Command line interface for shared local PSM Memory.
 
 ```bash
-psm-memory setup
 psm-memory remember "User prefers concise answers."
 psm-memory recall "How should I answer?"
 psm-memory config --path
@@ -15,9 +14,9 @@ Install globally:
 npm install -g @psm-memory/cli
 ```
 
-Install only the CLI for normal use. npm installs `@psm-memory/sdk` automatically because it is a CLI dependency. A separate SDK install is only needed for custom SDK integrations or unpublished local-tarball testing.
+Install the CLI and local memory runtime for normal use. npm installs `@psm-memory/sdk` automatically because it is a CLI dependency. A separate SDK install is only needed for custom SDK integrations or unpublished local-tarball testing.
 
-Global install runs setup. In an interactive terminal it asks for the shared memory directory, local user id, recall count, embedding settings, daemon settings, and optional tracing settings. The answers are stored in an editable `config.json`; run `psm-memory config --path` to locate it.
+Global install runs non-interactive setup with defaults, creates the local config and DB, downloads the default model, prepares embeddings, and verifies the local runtime. The config is stored in an editable `config.json`; run `psm-memory config --path` to locate it.
 
 When daemon autostart is enabled, `remember` and `recall` start a background daemon on first use. The daemon uses an OS-assigned local port, records it in `daemon.json` in the memory directory, and shuts down after the configured idle timeout.
 
@@ -71,12 +70,10 @@ PSM_MEMORY_TRACE=1 PSM_MEMORY_TRACE_PATH=./psm-model-io.jsonl psm-memory recall 
 
 Trace files contain full prompts, raw model outputs, errors, and timings. They are local only and can include private data.
 
-The CLI downloads the default PSM Memory Qwen 1.5B Q4_K_M GGUF model during npm installation.
+The CLI downloads the default PSM Memory Qwen 1.5B Q4_K_M GGUF model during npm installation and verifies the local runtime needed by memory commands.
 
-If the install-time download is skipped or interrupted, run:
+If install-time setup fails, npm install fails and prints the local install log path. The log includes the failing setup step, error code, syscall, path, and destination path when Node provides them.
 
 ```bash
-psm-memory setup
+npm install -g @psm-memory/cli
 ```
-
-Set `PSM_MEMORY_SKIP_MODEL_DOWNLOAD=1` to skip model download in CI or packaging environments. Set `PSM_MEMORY_SKIP_SETUP=1` to skip install-time setup entirely.

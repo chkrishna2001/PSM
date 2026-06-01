@@ -33,7 +33,7 @@ export function resolveModelPath(): string {
   throw new Error([
     "PSM Memory model is not installed.",
     `Run "psm-memory setup" to download ${defaultModel.filename}.`,
-    "This usually means the npm install-time download was skipped, interrupted, or blocked by network settings."
+    "This usually means the npm install-time download failed, was interrupted, or was blocked by network settings."
   ].join(" "));
 }
 

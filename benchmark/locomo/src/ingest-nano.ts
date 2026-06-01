@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { MemoryStore, type StorageDecision } from "@psm-memory/sdk";
+import { defaultEmbeddingModel, MemoryStore, PsmService, TransformersEmbeddingRuntime, type StorageDecision } from "@psm-memory/sdk";
 import { flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
 import { NanoClient, type NanoPrediction } from "./nano-client.js";
+import { NanoModelRuntime } from "./nano-runtime.js";
 import type { LocomoSample, LocomoTurn } from "./types.js";
 
 interface NanoIngestStats {
@@ -26,10 +27,21 @@ export async function main(argv: string[]): Promise<number> {
   const python = getOption(argv, "python", "python");
   const device = getOption(argv, "device", "auto");
   const actionMode = getOption(argv, "nano-action-mode", "predict");
+  const pipeline = getOption(argv, "pipeline", "service");
+  const embeddingModel = getOption(argv, "embedding-model", process.env.PSM_MEMORY_EMBEDDING_MODEL || defaultEmbeddingModel);
+  const noEmbeddings = argv.includes("--no-embeddings");
   const windowSize = Number(getOption(argv, "window-size", "2"));
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
   const nano = new NanoClient({ python, script, config, checkpoint, device });
+  const service = new PsmService(
+    store,
+    new NanoModelRuntime(nano),
+    noEmbeddings ? undefined : {
+      model: embeddingModel,
+      runtime: new TransformersEmbeddingRuntime({ model: embeddingModel })
+    }
+  );
   store.initializeSchema();
 
   const stats: NanoIngestStats = {
@@ -55,6 +67,30 @@ export async function main(argv: string[]): Promise<number> {
         const source = `${sampleId}:${diaId || stats.seen}`;
         stats.seen++;
         try {
+          if (pipeline === "service") {
+            const result = await service.remember({
+              userId,
+              llmResponse: locomoMemoryContent(turn),
+              source: {
+                source_kind: "locomo",
+                source_id: source,
+                source_timestamp: locomoSourceTimestamp(sample, turn.session),
+                source_label: `LOCOMO ${source}`
+              },
+              extraTags: [
+                `locomo_sample_id:${sampleId}`,
+                `locomo_dia_id:${diaId}`,
+                `locomo_speaker:${turn.speaker ?? ""}`,
+                `locomo_session:${turn.session ?? ""}`
+              ],
+              includeExistingMemories: false
+            });
+            recordServiceResult(stats, source, result);
+            if (stats.seen % options.batchSize === 0) {
+              process.stdout.write(`nano-ingested ${stats.seen} | stored=${stats.stored} ignored=${stats.ignored} failed=${stats.failed}\n`);
+            }
+            continue;
+          }
           const prediction = await nano.predict({
             id: `locomo:${source}`,
             instruction,
@@ -197,6 +233,23 @@ function recordApplyResult(
     stats.ignored++;
   } else if (result.written.length > 0) {
     stats.stored++;
+  } else {
+    stats.ignored++;
+  }
+}
+
+function recordServiceResult(stats: NanoIngestStats, source: string, result: Record<string, unknown>): void {
+  if (typeof result.parse_error === "string" && result.parse_error) {
+    stats.failed++;
+    stats.errors.push({ source, error: result.parse_error });
+    return;
+  }
+  const written = Array.isArray(result.written) ? result.written : [];
+  const route = String(result.route ?? "");
+  if (written.length > 0) {
+    stats.stored++;
+  } else if (route === "ignore" || route === "recall_only" || result.action === "ignore") {
+    stats.ignored++;
   } else {
     stats.ignored++;
   }
