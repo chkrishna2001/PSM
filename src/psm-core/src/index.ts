@@ -7,6 +7,7 @@ export * from "./llama-runtime.js";
 export * from "./prompts.js";
 export * from "./ranking.js";
 export * from "./service.js";
+export * from "./sqlite.js";
 export * from "./store.js";
 export * from "./temporal.js";
 export * from "./trace.js";

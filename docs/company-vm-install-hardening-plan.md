@@ -19,14 +19,14 @@ If any of those steps fail, npm install should fail with concise terminal output
 - Global npm install may not have write access.
 - `@psm-memory/cli` postinstall runs setup automatically, which is the desired product flow but currently needs better hardening.
 - Setup may download the Qwen GGUF model during install, so install must handle network, proxy, certificate, and cache-write failures cleanly.
-- Native dependencies can fail on locked-down Windows VMs, especially `better-sqlite3` and optional `node-llama-cpp`.
+- Native dependencies can fail on locked-down Windows VMs, especially optional `node-llama-cpp`.
 - Corporate antivirus or EDR tools may block, quarantine, or temporarily lock native binaries.
 
 The observed `EPERM` install error means Windows denied a filesystem or process operation. For this package, likely denied operations are:
 
 - writing to the global npm prefix, usually under `Program Files` or another admin-controlled location.
 - extracting, replacing, or executing native dependency binaries, especially `.node` files.
-- running native package install scripts for `better-sqlite3` or optional `node-llama-cpp`.
+- running native package install scripts for optional `node-llama-cpp`.
 - postinstall setup writing config, model, DB, or cache files during npm install.
 - antivirus or EDR locking a file while npm is trying to rename or delete it.
 
@@ -36,7 +36,7 @@ We need the exact denied path and npm lifecycle phase from logs before choosing 
 
 A clean install on any supported machine requires:
 
-- A supported Node/npm version with available Windows binaries for required native dependencies.
+- Node 22.13.0 or newer, where `node:sqlite` is available without an experimental flag.
 - A writable npm installation prefix. If global admin paths are blocked, install must clearly report that and document a user-owned npm prefix path.
 - Required native dependencies must either install from prebuilt binaries or have a supported fallback.
 - Optional native dependencies must not fail the CLI install.
@@ -98,14 +98,14 @@ Make install-time setup reliable:
 - `postinstall` should fail the install if memory is not usable.
 - Failure output should be short and point to the detailed install log.
 
-### Fix Native Dependency Install
+### Keep SQLite Behind an Adapter
 
-Make npm dependency installation as reliable as possible:
+Keep the memory store loosely coupled to the SQLite driver:
 
+- `MemoryStore` depends on a small internal SQLite interface, not a third-party package directly.
+- The default adapter uses Node's built-in `node:sqlite` to avoid a native npm database dependency.
+- A future `better-sqlite3` adapter can be added without touching memory store logic.
 - Keep `node-llama-cpp` optional so failure to install it does not fail CLI installation.
-- Check whether `better-sqlite3` has Windows prebuild coverage for the supported Node version.
-- If `better-sqlite3` requires local compilation on the target Node version, either pin to a version with prebuilds or move SQLite behind a supported fallback.
-- Document the supported Node/npm versions for Windows.
 - Treat `npm install -g @psm-memory/cli` failure as a package/dependency/install-time setup bug, not something to bypass with skip flags.
 
 ### Add Install Logs

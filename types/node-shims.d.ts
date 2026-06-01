@@ -127,6 +127,20 @@ declare module "node:readline" {
   };
 }
 
+declare module "node:sqlite" {
+  export class DatabaseSync {
+    constructor(path: string);
+    exec(sql: string): void;
+    prepare(sql: string): {
+      run(...params: unknown[]): unknown;
+      all(...params: unknown[]): Record<string, unknown>[];
+      get(...params: unknown[]): Record<string, unknown> | undefined;
+    };
+    close(): void;
+    loadExtension(path: string): void;
+  }
+}
+
 type BufferEncoding = "utf8" | "utf-8";
 
 declare const process: {
@@ -159,27 +173,3 @@ declare function fetch(url: string, init?: {
   json(): Promise<unknown>;
   text(): Promise<string>;
 }>;
-
-declare module "better-sqlite3" {
-  namespace Database {
-    interface Database {
-      exec(sql: string): void;
-      prepare(sql: string): Statement;
-      close(): void;
-    }
-
-    interface Statement {
-      run(...params: unknown[]): unknown;
-      all(...params: unknown[]): Record<string, unknown>[];
-      get(...params: unknown[]): Record<string, unknown> | undefined;
-    }
-  }
-
-  interface DatabaseConstructor {
-    new(path: string): Database.Database;
-    (path: string): Database.Database;
-  }
-
-  const Database: DatabaseConstructor;
-  export default Database;
-}

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { buildStoragePrompt, hybridRankMemories, MemoryStore, parseRecallPlan, parseStorageDecision, rankMemories, routeForAction, TraceModelRuntime, type ModelRuntime } from "@psm-memory/sdk";
 import { run as runCli } from "@psm-memory/cli";
 import { createPsmHooks } from "@psm-memory/pi-plugin";
@@ -147,12 +148,13 @@ test("CLI exposes version output", async () => {
   const direct = await captureCli(["version"]);
   const flag = await captureCli(["--version"]);
   const shortFlag = await captureCli(["-v"]);
+  const expectedVersion = JSON.parse(readFileSync("src/psm-cli/package.json", "utf8")).version as string;
   assert.equal(direct.code, 0);
   assert.equal(flag.code, 0);
   assert.equal(shortFlag.code, 0);
-  assert.equal(direct.stdout.trim(), "0.1.2");
-  assert.equal(flag.stdout.trim(), "0.1.2");
-  assert.equal(shortFlag.stdout.trim(), "0.1.2");
+  assert.equal(direct.stdout.trim(), expectedVersion);
+  assert.equal(flag.stdout.trim(), expectedVersion);
+  assert.equal(shortFlag.stdout.trim(), expectedVersion);
 });
 
 test("CLI init uses PSM-owned app data by default", async () => {

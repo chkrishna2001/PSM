@@ -1,5 +1,11 @@
 # @psm-memory/sdk
 
+## 0.1.3
+
+### Patch Changes
+
+- Move SQLite storage behind an internal adapter, default to Node's built-in `node:sqlite`, and remove the default `better-sqlite3` install dependency.
+
 ## 0.1.2
 
 ### Patch Changes

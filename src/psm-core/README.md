@@ -8,6 +8,8 @@ import { MemoryStore, NodeLlamaRuntime, PsmService } from "@psm-memory/sdk";
 
 `NodeLlamaRuntime` uses `node-llama-cpp` when a GGUF model path is provided.
 
+SQLite storage is isolated behind an internal adapter. The default adapter uses Node's built-in `node:sqlite`, so the default SDK install does not depend on a native npm SQLite package. See `docs/sqlite-storage-adapter.md` in the repository for the driver boundary and tradeoffs.
+
 Core guarantees:
 
 - PSM may plan retrieval and render agent context, but rendered context is validated against selected DB rows before injection.

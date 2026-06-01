@@ -1,16 +1,14 @@
 import { randomUUID } from "node:crypto";
-import Database from "better-sqlite3";
 import { routeForAction } from "./actions.js";
+import { openSqliteDatabase, type DbRow, type SqliteDatabase } from "./sqlite.js";
 import type { MemoryAction, MemoryFactPayload, MemoryFactRecord, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision, WrittenMemoryRef } from "./types.js";
 import { memoryTables } from "./types.js";
 
-type DbRow = Record<string, unknown>;
-
 export class MemoryStore {
-  private readonly db: Database.Database;
+  private readonly db: SqliteDatabase;
 
   constructor(readonly dbPath: string) {
-    this.db = new Database(dbPath);
+    this.db = openSqliteDatabase(dbPath);
     this.db.exec("PRAGMA foreign_keys = ON;");
   }
 
@@ -488,7 +486,7 @@ function asMemoryFactRecord(row: DbRow): MemoryFactRecord {
   };
 }
 
-function tableColumns(db: Database.Database, table: string): string[] {
+function tableColumns(db: SqliteDatabase, table: string): string[] {
   return db.prepare(`PRAGMA table_info(${table})`).all().map((row) => String((row as DbRow).name));
 }
 

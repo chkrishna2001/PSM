@@ -14,6 +14,8 @@ Install globally:
 npm install -g @psm-memory/cli
 ```
 
+Requires Node 22.13.0 or newer. PSM uses Node's built-in `node:sqlite` storage adapter so the SQLite store does not require a native npm database package.
+
 Install the CLI and local memory runtime for normal use. npm installs `@psm-memory/sdk` automatically because it is a CLI dependency. A separate SDK install is only needed for custom SDK integrations or unpublished local-tarball testing.
 
 Global install runs non-interactive setup with defaults, creates the local config and DB, downloads the default model, prepares embeddings, and verifies the local runtime. The config is stored in an editable `config.json`; run `psm-memory config --path` to locate it.
