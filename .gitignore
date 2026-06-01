@@ -23,6 +23,7 @@ pnpm-debug.log*
 *.db-shm
 *.db-wal
 *.jsonl
+!psm-model/data/probes/*.jsonl
 results/
 benchmark/**/results/
 nano-psm/data-pipeline/reports/
@@ -33,7 +34,10 @@ nano-psm/data/*
 !nano-psm/data/README.md
 nano-psm/checkpoints/*
 !nano-psm/checkpoints/.gitkeep
+psm-model/checkpoints/*
+psm-model/tokenizers/*
 models/
+*.pt
 *.onnx
 *.onnx_adapter
 *.gguf
@@ -59,6 +63,7 @@ nupkg/
 # Local-only archive
 archive/
 hf-upload/
+.worktrees/
 
 # OS/editor noise
 .DS_Store
