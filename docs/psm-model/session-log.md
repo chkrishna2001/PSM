@@ -88,3 +88,41 @@ python -m psm_model.action_smoke psm-model/checkpoints/<ckpt>.pt psm-model/data/
 - **Handoff:** [2026-06-04-end-of-day-handoff.md](2026-06-04-end-of-day-handoff.md) — resume commands, checkpoint paths, LoCoMo/REALTALK conversion notes, manual-smoke requirement.
 - **External data:** LoCoMo + REALTALK already flow through `nano-psm` → `fast-mixed` / `retention-blend` → `convert_nano_dataset` → `nano-hf-storage-v1`, `real-v1`, and `psm-50m-full-storage-v1`. “Letta” in repo = benchmark name, not a training corpus. Tomorrow: consider explicit `combine_jsonl` of converted benchmark rows into mixed curriculum.
 - **scratch-v1** left at ~5.2k steps for reference; manual smoke 10% @ step 5000 despite probe 0.56.
+
+## 2026-06-06 — RunPod mixed-v1 training (primary path; Colab retired)
+
+- **Runtime:** RunPod RTX 4090 via SSH (`runpod-psm`); HF sync `chkrishna2001/psm-50m-mixed-v1-run` + dataset `chkrishna2001/psm-50m-action-mixed-v1`.
+- **Resume:** step 400 → target 8000; `tmux` session `train` on pod.
+- **Best expanded probe so far:** step **4400** macro **0.648**, collapse **0.48**.
+- **Manual smoke @ 4400:** `match_rate` **0.30** (need 0.80). Strong: `ignore`, `update_existing`, `flag_conflict`. Weak: `promote_semantic` vs `store_episodic` confusion.
+- **Gate 2:** still **FAIL** on manual probes despite rising expanded macro — same nano-psm pattern.
+
+### Three-stage product map (gates)
+
+| Stage | Capability | Training gate | Current status |
+|-------|------------|---------------|----------------|
+| **1. Categorize** | `ignore`, `store_episodic`, `promote_semantic` | Gate 2 `phase1-action` + manual smoke | **In progress** — mixed-v1 RunPod |
+| **2. Consolidate / conflict** | `update_existing`, `flag_conflict`, `flag_and_store` | Gate 2 (same) + hard-behavior probes | Partial — 3/10 manual cases pass |
+| **3. Recall** | `recall_context`, full `StorageDecision`, indexable selection | Gate 3 full tagged output + direct probes | **Blocked** until Gate 2 passes |
+
+### Data pipeline after Gate 2 (or if 8k manual still < 0.80)
+
+1. `convert_nano_dataset` from HF: `chkrishna2001/nano-psm`, fast-mixed (LoCoMo/REALTALK), retention-blend.
+2. `combine_jsonl` into mixed curriculum v2 (storage + direct-behavior + converted benchmark rows).
+3. Letta: benchmark competitor only today; add adapter if export data becomes available.
+4. Phase 2 (Gate 3): resume Gate-2 checkpoint on `psm-50m-full-storage-v1-filtered.jsonl` with `--output-format tagged`.
+
+## 2026-06-06 — mixed-v1 RunPod run complete (pod stopped)
+
+- **Training:** finished step **8000**. Best expanded probe @ 8000: macro **0.711**, collapse **0.40**. Manual smoke @ 8000: **0.40** (gate still FAIL).
+- **HF:** `chkrishna2001/psm-50m-mixed-v1-run` — `step-008000.pt`, `real-v3-50m-action-mixed-v1.pt`, metrics uploaded. Full `sync_training_to_hf.py` run aborted (network); slow because it re-uploads all checkpoints.
+- **Pod:** local `.pt` files deleted after upload; **stop pod in RunPod console** to avoid disk charges.
+
+## 2026-06-06 — RunPod reusable image (ephemeral pods)
+
+- **Goal:** delete/recreate pods without manual bootstrap; HF holds checkpoints/data.
+- **Docker:** `psm-model/docker/Dockerfile` → `chkrishna2001/psm-50m-train:latest` (PyTorch + tmux + repo code + HF bootstrap on start).
+- **Scripts:** `runpod_bootstrap.sh`, `runpod_entrypoint.sh`, `runpod_ctl.py` (`list-pods`, `stop-all`, `create-template`, `deploy`), `runpod_build_image.ps1`.
+- **HF sync fix:** `sync_training_to_hf.py --only-new` skips already-uploaded files (manifest).
+- **API key:** `o runpodkey` → `$env:RUNPOD_API_KEY = Get-Clipboard`
+- **HF auth:** RunPod secret `HF_TOKEN` → template env `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}` (no plain token in template/deploy).

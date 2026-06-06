@@ -1,0 +1,10 @@
+**/__pycache__
+**/*.pyc
+**/.venv
+**/checkpoints
+**/tokenizers
+**/*.pt
+**/*.jsonl
+node_modules
+.git
+.worktrees

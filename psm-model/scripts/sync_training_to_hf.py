@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 STEP_SUFFIX = re.compile(r"-step-(\d+)\.pt$")
+MANIFEST_NAME = ".hf_sync_manifest.json"
 
 
 def _step_from_path(path: Path) -> int | None:
@@ -55,6 +56,21 @@ def _upload_files(api: object, repo_id: str, files: list[Path], *, repo_root: Pa
         print(json.dumps({"event": "uploaded", "local": str(path), "remote": remote_path}))
 
 
+def _load_manifest(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _save_manifest(path: Path, manifest: dict[str, str]) -> None:
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _file_signature(path: Path) -> str:
+    stat = path.stat()
+    return f"{stat.st_size}:{int(stat.st_mtime)}"
+
+
 def sync_training_artifacts(
     *,
     repo_id: str,
@@ -64,6 +80,7 @@ def sync_training_artifacts(
     repo_root: Path,
     keep_local: int,
     dry_run: bool,
+    only_new: bool,
 ) -> dict[str, object]:
     if keep_local < 1:
         raise ValueError("--keep-local must be at least 1")
@@ -84,13 +101,31 @@ def sync_training_artifacts(
     if not step_checkpoints:
         raise SystemExit(f"no step checkpoints found for {run_stem} in {checkpoint_dir}")
 
+    manifest_path = checkpoint_dir / MANIFEST_NAME
+    manifest = _load_manifest(manifest_path)
+
     files_to_upload: list[Path] = []
     for step_path in step_checkpoints:
         files_to_upload.extend(_related_checkpoint_files(step_path))
     if metrics_path is not None and metrics_path.exists():
         files_to_upload.append(metrics_path)
 
-    _upload_files(api, repo_id, files_to_upload, repo_root=repo_root, dry_run=dry_run)
+    if only_new:
+        pending: list[Path] = []
+        for path in files_to_upload:
+            rel = _hf_path(path, repo_root=repo_root)
+            sig = _file_signature(path)
+            if manifest.get(rel) == sig:
+                continue
+            pending.append(path)
+        files_to_upload = pending
+
+    if files_to_upload:
+        _upload_files(api, repo_id, files_to_upload, repo_root=repo_root, dry_run=dry_run)
+        if not dry_run:
+            for path in files_to_upload:
+                manifest[_hf_path(path, repo_root=repo_root)] = _file_signature(path)
+            _save_manifest(manifest_path, manifest)
     uploaded.extend(str(path) for path in files_to_upload)
 
     keep_steps = {_step_from_path(path) for path in step_checkpoints[-keep_local:]}
@@ -153,6 +188,11 @@ def main() -> int:
         help="How many newest step checkpoints to retain locally after upload",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--only-new",
+        action="store_true",
+        help="Skip files already uploaded with the same size/mtime (uses .hf_sync_manifest.json)",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -164,6 +204,7 @@ def main() -> int:
         repo_root=repo_root,
         keep_local=args.keep_local,
         dry_run=args.dry_run,
+        only_new=args.only_new,
     )
     return 0
 
