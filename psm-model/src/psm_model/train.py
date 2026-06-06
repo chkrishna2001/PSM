@@ -631,8 +631,9 @@ def _resolve_probe_checkpoint(
         return checkpoint_path_for_step(out, completed)
     if out is None:
         raise ValueError("probe evaluation during training requires --out when step is not a save_every checkpoint")
+    stem_base = re.sub(r"-step-\d+$", "", out.stem)
     probe_path = checkpoint_path_for_step(out, completed).with_name(
-        f"{re.sub(r'-step-\\d+$', '', out.stem)}-probe-{completed:06d}{out.suffix}"
+        f"{stem_base}-probe-{completed:06d}{out.suffix}"
     )
     _save_training_checkpoint(
         probe_path,

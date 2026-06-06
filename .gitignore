@@ -30,6 +30,8 @@ nano-psm/data-pipeline/reports/
 
 # Local datasets and model artifacts
 data/
+!psm-model/src/psm_model/data/
+!psm-model/src/psm_model/data/**
 nano-psm/data/*
 !nano-psm/data/README.md
 nano-psm/checkpoints/*
