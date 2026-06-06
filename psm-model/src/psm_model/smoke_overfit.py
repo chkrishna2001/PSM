@@ -46,7 +46,7 @@ def run_smoke(
     )
     texts = load_training_texts(probes_path, output_format=output_format)
     model, losses = overfit_texts(texts, config=config, tokenizer=tokenizer, steps=steps, learning_rate=1e-3)
-    prompt = render_storage_prompt(row["input"])
+    prompt = render_storage_prompt(row["input"], output_format=output_format)
     input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], dtype=torch.long)
     output_ids = model.generate(
         input_ids,

@@ -12,7 +12,7 @@ from psm_model.model import TinyDecoderConfig
 from psm_model.prompts import render_storage_prompt
 from psm_model.schema import parse_and_validate_storage_decision, validate_storage_decision
 from psm_model.tokenizer import ByteTokenizer, load_tokenizer
-from psm_model.train import load_training_texts, overfit_texts
+from psm_model.train import ACTION_ORDER, ACTION_TO_ID, load_training_texts, overfit_texts, resolve_device
 
 
 def _torch():
@@ -31,6 +31,8 @@ def evaluate_generation(
     steps: int = 300,
     max_new_tokens: int = 1200,
     tokenizer_path: Path | None = None,
+    device: str = "cpu",
+    force_action_head: bool = False,
 ) -> dict[str, Any]:
     eval_source = eval_path or train_path
     rows = [json.loads(line) for line in eval_source.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -48,6 +50,7 @@ def evaluate_generation(
         tokenizer=tokenizer,
         steps=steps,
         learning_rate=1e-3,
+        device=device,
     )
 
     report = evaluate_model_rows(
@@ -56,6 +59,8 @@ def evaluate_generation(
         rows,
         output_format=output_format,
         max_new_tokens=max_new_tokens,
+        device=device,
+        force_action_head=force_action_head,
     )
     report.update(
         {
@@ -77,8 +82,12 @@ def evaluate_model_rows(
     *,
     output_format: str = "tagged",
     max_new_tokens: int = 1200,
+    device: str = "cpu",
+    force_action_head: bool = False,
 ) -> dict[str, Any]:
     torch = _torch()
+    device_obj = resolve_device(device, torch)
+    model.to(device_obj)
     reports: list[dict[str, Any]] = []
     parse_valid = 0
     schema_valid = 0
@@ -87,11 +96,23 @@ def evaluate_model_rows(
     memory_content_exact = 0
     fact_count_correct = 0
     facts_exact = 0
+    action_head_correct = 0
+    action_head_available = 0
     generated_tokens = 0
 
     for row in rows:
-        prompt = render_storage_prompt(row["input"])
-        input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], dtype=torch.long)
+        prompt = render_storage_prompt(row["input"], output_format=output_format)
+        input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], dtype=torch.long, device=device_obj)
+        action_head_prediction = None
+        action_head_confidence = None
+        action_head_prediction, action_head_confidence = predict_action_head(model, input_ids)
+        if action_head_prediction is not None:
+            action_head_available += 1
+            action_head_correct += int(action_head_prediction == row["expected"]["action"])
+            if force_action_head:
+                forced_prefix = render_action_prefix(action_head_prediction, output_format=output_format)
+                forced_ids = torch.tensor([tokenizer.encode(forced_prefix)], dtype=torch.long, device=device_obj)
+                input_ids = torch.cat([input_ids, forced_ids], dim=1)
         output_ids = model.generate(
             input_ids,
             max_new_tokens=max_new_tokens,
@@ -128,6 +149,8 @@ def evaluate_model_rows(
                 "schema_valid": schema_ok,
                 "expected_action": expected["action"],
                 "predicted_action": parsed.get("action") if parsed else None,
+                "action_head_prediction": action_head_prediction,
+                "action_head_confidence": action_head_confidence,
                 "expected_memory_type": expected_type,
                 "predicted_memory_type": predicted_type,
                 "memory_content_exact": schema_ok and _memory_content(parsed) == _memory_content(expected),
@@ -148,13 +171,41 @@ def evaluate_model_rows(
         "parse_valid_rate": parse_valid / total if total else 0.0,
         "schema_valid_rate": schema_valid / total if total else 0.0,
         "action_accuracy": action_correct / total if total else 0.0,
+        "action_head_accuracy": action_head_correct / action_head_available if action_head_available else None,
+        "action_head_examples": action_head_available,
         "memory_type_accuracy": memory_type_correct / total if total else 0.0,
         "memory_content_exact_rate": memory_content_exact / total if total else 0.0,
         "fact_count_accuracy": fact_count_correct / total if total else 0.0,
         "facts_exact_rate": facts_exact / total if total else 0.0,
         "avg_generated_tokens": generated_tokens / total if total else 0.0,
+        "force_action_head": force_action_head,
         "reports": reports,
     }
+
+
+def predict_action_head(model: Any, input_ids: Any) -> tuple[str | None, float | None]:
+    if not hasattr(model, "action_head"):
+        return None, None
+    torch = _torch()
+    with torch.no_grad():
+        action_positions = torch.tensor([input_ids.size(1) - 1], dtype=torch.long, device=input_ids.device)
+        action_result = model(input_ids, action_positions=action_positions)
+        action_logits = action_result.get("action_logits")
+        if action_logits is None:
+            return None, None
+        probs = torch.nn.functional.softmax(action_logits, dim=-1)
+        predicted_id = int(torch.argmax(probs, dim=-1).detach().cpu()[0])
+        return ACTION_ORDER[predicted_id], float(probs[0, predicted_id].detach().cpu())
+
+
+def render_action_prefix(action: str, *, output_format: str) -> str:
+    if output_format == "tagged":
+        return f"A:{action}\n"
+    if output_format == "at_tag":
+        return f"@a {action}\n"
+    if output_format == "json":
+        return f'{{"action":"{action}",'
+    raise ValueError(f"unsupported output format: {output_format}")
 
 
 def _parse_output(raw: str, output_format: str) -> tuple[dict[str, Any] | None, tuple[Any, ...]]:
@@ -196,6 +247,8 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--max-new-tokens", type=int, default=1200)
     parser.add_argument("--tokenizer", type=Path)
+    parser.add_argument("--device", default="cpu", help="Evaluation device: cpu, cuda, or auto.")
+    parser.add_argument("--force-action-head", action="store_true", help="Use the auxiliary action head to force the generated action prefix.")
     args = parser.parse_args()
 
     report = evaluate_generation(
@@ -205,6 +258,8 @@ def main() -> int:
         steps=args.steps,
         max_new_tokens=args.max_new_tokens,
         tokenizer_path=args.tokenizer,
+        device=args.device,
+        force_action_head=args.force_action_head,
     )
     report["gate"] = gate_report(report)
     print(json.dumps(report, indent=2, sort_keys=True))

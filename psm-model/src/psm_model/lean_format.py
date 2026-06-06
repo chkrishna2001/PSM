@@ -302,9 +302,11 @@ def _ensure_memory(memory: dict[str, Any] | None) -> dict[str, Any]:
 
 def _parse_fact(value: str, index: int, issues: list[ValidationIssue]) -> dict[str, Any]:
     parts = value.split("|")
-    if len(parts) != 6:
+    if len(parts) < 6:
         issues.append(ValidationIssue(f"$.facts[{index}]", "fact line must have 6 pipe-delimited fields"))
         return {}
+    if len(parts) > 6:
+        parts = parts[:5] + ["|".join(parts[5:])]
     subject, predicate, fact_value, confidence, inference_kind, evidence_text = (_unescape(part) for part in parts)
     return {
         "subject": subject,

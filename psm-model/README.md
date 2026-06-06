@@ -2,6 +2,8 @@
 
 Experimental generative PSM model package.
 
+**Training:** see [docs/psm-model/training-playbook.md](../docs/psm-model/training-playbook.md) and [docs/psm-model/session-log.md](../docs/psm-model/session-log.md).
+
 This package is intentionally separate from `nano-psm`. The first goal is not model size; it is a strict, testable path from model text output to validated PSM storage JSON.
 
 ## Current Slice

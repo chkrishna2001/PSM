@@ -11,7 +11,7 @@ from psm_model.data import validate_training_row
 from psm_model.schema import ACTIONS, validate_storage_decision
 
 
-STORAGE_ACTIONS = ACTIONS - {"recall_context"}
+STORAGE_ACTIONS = ACTIONS
 
 
 def convert_nano_files(

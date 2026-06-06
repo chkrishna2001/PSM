@@ -84,6 +84,25 @@ class LeanFormatTests(unittest.TestCase):
         self.assertEqual(parsed["facts"][0]["value"], decision["facts"][0]["value"])
         self.assertEqual(parsed["facts"][0]["evidence_text"], decision["facts"][0]["evidence_text"])
 
+    def test_tagged_parser_merges_extra_fact_pipes_into_evidence(self):
+        raw = "\n".join(
+            [
+                "A:promote_semantic",
+                "T:semantic",
+                "C:The user prefers concise answers.",
+                "Q:0.85,0.02,0.35,0.9",
+                "F:User|prefers|concise answers|0.96|explicit|I prefer concise|technical answers",
+                "R:Explicit durable preference.",
+                "END",
+            ]
+        )
+
+        parsed, issues = parse_tagged_decision(raw)
+
+        self.assertEqual(issues, ())
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["facts"][0]["evidence_text"], "I prefer concise|technical answers")
+
     def test_compare_file_reports_savings(self):
         path = Path(__file__).resolve().parents[1] / "data" / "probes" / "direct_probes.jsonl"
 

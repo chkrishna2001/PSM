@@ -70,7 +70,7 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--tokenizer", type=Path, required=True)
     parser.add_argument("--max-tokens", type=int, default=2049)
-    parser.add_argument("--output-format", choices=["json", "tagged", "at_tag"], default="tagged")
+    parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action"], default="tagged")
     args = parser.parse_args()
 
     report = filter_jsonl_by_token_budget(

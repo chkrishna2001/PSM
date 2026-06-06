@@ -64,6 +64,7 @@ nupkg/
 archive/
 hf-upload/
 .worktrees/
+manual-scripts/
 
 # OS/editor noise
 .DS_Store
