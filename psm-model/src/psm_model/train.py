@@ -361,6 +361,7 @@ def train_texts(
     freeze_backbone: bool = False,
     reset_optimizer: bool = False,
     probe_path: Path | None = None,
+    manual_probe_path: Path | None = None,
     eval_every: int | None = None,
     abort_after_step: int = 300,
     collapse_threshold: float = 0.8,
@@ -521,6 +522,17 @@ def train_texts(
                     "collapse_fraction": probe_report["collapse_fraction"],
                     "predicted_action_counts": probe_report["predicted_action_counts"],
                 }
+                if manual_probe_path is not None:
+                    manual_report = evaluate_action_prefixes(
+                        probe_checkpoint,
+                        manual_probe_path,
+                        output_format=output_format,
+                        device=str(device_obj),
+                    )
+                    step_event["manual_probe"] = {
+                        "macro_action_prefix_accuracy": manual_report["macro_action_prefix_accuracy"],
+                        "predicted_action_counts": manual_report["predicted_action_counts"],
+                    }
                 if completed >= abort_after_step and probe_report["collapse_fraction"] > collapse_threshold:
                     step_event["abort_reason"] = "prediction_collapse"
                     _write_metric(metrics_file, step_event)
@@ -828,6 +840,11 @@ def main() -> int:
         help="Optional per-process CUDA memory cap from 0 to 1. Ignored on CPU.",
     )
     parser.add_argument("--probe", type=Path, help="JSONL probe file for periodic action-prefix evaluation during training.")
+    parser.add_argument(
+        "--manual-probe",
+        type=Path,
+        help="Optional small probe (e.g. manual-probe.jsonl) logged alongside --probe each eval step.",
+    )
     parser.add_argument("--eval-every", type=int, help="Evaluate --probe every N completed steps.")
     parser.add_argument("--abort-after-step", type=int, default=300, help="Allow prediction-collapse abort only after this step.")
     parser.add_argument(
@@ -884,6 +901,7 @@ def main() -> int:
         "cuda_memory_fraction": args.cuda_memory_fraction,
         "cuda_available": bool(torch.cuda.is_available()),
         "probe": str(args.probe) if args.probe is not None else None,
+        "manual_probe": str(args.manual_probe) if args.manual_probe is not None else None,
         "eval_every": args.eval_every,
         "abort_after_step": args.abort_after_step,
         "collapse_threshold": args.collapse_threshold,
@@ -950,6 +968,7 @@ def main() -> int:
         freeze_backbone=args.freeze_backbone,
         reset_optimizer=args.reset_optimizer,
         probe_path=args.probe,
+        manual_probe_path=args.manual_probe,
         eval_every=args.eval_every,
         abort_after_step=args.abort_after_step,
         collapse_threshold=args.collapse_threshold,

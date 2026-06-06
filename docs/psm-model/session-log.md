@@ -126,3 +126,14 @@ python -m psm_model.action_smoke psm-model/checkpoints/<ckpt>.pt psm-model/data/
 - **HF sync fix:** `sync_training_to_hf.py --only-new` skips already-uploaded files (manifest).
 - **API key:** `o runpodkey` → `$env:RUNPOD_API_KEY = Get-Clipboard`
 - **HF auth:** RunPod secret `HF_TOKEN` → template env `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}` (no plain token in template/deploy).
+
+## 2026-06-06 — Gate 2 repair: mixed-v2 + RunPod redeploy
+
+- **Local rule:** training on RunPod only; **local eval `--device cpu` only** (GPU eval crashed laptop).
+- **Baseline @ step-7600** (downloaded via `hf download`): expanded macro **0.785**, manual **0.70** — FAIL. Failure mode: over-predicts `store_episodic` on manual `promote_semantic` / `ignore` cases.
+- **mixed-v2 curriculum** built + uploaded to HF dataset: `curriculum/psm-50m-action-mixed-v2-ctx2048.jsonl` (46,825 rows: storage + direct-behavior 8× + manual-probe 300×).
+- **Training weights (v2):** `promote_semantic=6`, `store_episodic=2.5`, `ignore=4` (counter over-prediction of episodic).
+- **RunPod pod:** `psm-mixed-v2` id `j9pht1oxpeomj0`, RTX 4090, stock image `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04` (custom `psm-50m-train` image exited immediately).
+- **SSH:** `ssh -p 29016 root@103.196.86.82` (update `~/.ssh/config` `runpod-psm` when pod changes).
+- **Kickoff on pod:** `hf download chkrishna2001/psm-50m-action-mixed-v1 runpod/runpod_remote_kickoff.sh --local-dir /tmp && bash /tmp/runpod/runpod_remote_kickoff.sh`
+- **Resume:** step-7600 → `real-v3-50m-action-mixed-v2.pt`, target 12k steps, `--manual-probe` logged every 200 steps.

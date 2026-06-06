@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -18,7 +19,7 @@ HF_TOKEN_SECRET_REF = "{{ RUNPOD_SECRET_HF_TOKEN }}"
 
 DEFAULT_TEMPLATE = {
     "name": "psm-50m-train",
-    "imageName": "chkrishna2001/psm-50m-train:latest",
+    "imageName": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
     "containerDiskInGb": 20,
     "volumeInGb": 40,
     "volumeMountPath": "/workspace",
@@ -34,10 +35,33 @@ DEFAULT_TEMPLATE = {
 }
 
 
+def _api_key_from_opener() -> str:
+    opener = "o"
+    if os.name == "nt":
+        opener = "o.exe"
+    subprocess.run([opener, "runpodkey"], check=True, capture_output=True, text=True)
+    if os.name == "nt":
+        clip = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return clip.stdout.strip()
+    clip = subprocess.run(["pbpaste"], check=True, capture_output=True, text=True)
+    return clip.stdout.strip()
+
+
 def _api_key() -> str:
     key = os.environ.get("RUNPOD_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        key = _api_key_from_opener()
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise SystemExit("Could not load RunPod API key via `o runpodkey`") from exc
     if not key:
-        raise SystemExit("Set RUNPOD_API_KEY (run: o runpodkey, then $env:RUNPOD_API_KEY = Get-Clipboard)")
+        raise SystemExit("RunPod API key from `o runpodkey` was empty")
     return key
 
 
@@ -58,67 +82,52 @@ def _graphql(query: str, variables: dict | None = None) -> dict:
     return body["data"]
 
 
-def _rest(method: str, path: str, data: dict | None = None) -> dict:
+def _rest(method: str, path: str, data: dict | None = None) -> dict | list:
     url = f"{REST_URL}{path}"
     headers = {"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"}
     body = json.dumps(data).encode("utf-8") if data is not None else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        raw = resp.read().decode("utf-8")
-        return json.loads(raw) if raw else {}
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {"status": resp.status}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8")
+        raise SystemExit(f"RunPod REST {method} {path} failed ({exc.code}): {detail}") from exc
 
 
 def cmd_list_pods(_: argparse.Namespace) -> int:
-    data = _graphql(
-        """
-        query {
-          myself {
-            pods {
-              id
-              name
-              desiredStatus
-              imageName
-              machine { podHostId }
-            }
-          }
-        }
-        """
-    )
-    pods = data["myself"]["pods"]
+    pods = _rest("GET", "/pods")
     print(json.dumps(pods, indent=2))
     return 0
 
 
 def cmd_stop_pod(args: argparse.Namespace) -> int:
-    data = _graphql(
-        'mutation Stop($input: PodStopInput!) { podStop(input: $input) { id desiredStatus } }',
-        {"input": {"podId": args.pod_id}},
-    )
-    print(json.dumps(data, indent=2))
+    result = _rest("POST", f"/pods/{args.pod_id}/stop")
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_delete_pod(args: argparse.Namespace) -> int:
+    result = _rest("DELETE", f"/pods/{args.pod_id}")
+    print(json.dumps(result, indent=2))
     return 0
 
 
 def cmd_stop_all(_: argparse.Namespace) -> int:
-    data = _graphql(
-        """
-        query {
-          myself {
-            pods {
-              id
-              name
-              desiredStatus
-            }
-          }
-        }
-        """
-    )
-    for pod in data["myself"]["pods"]:
-        if pod["desiredStatus"] in {"RUNNING", "EXITED"}:
-            print(f"Stopping {pod['id']} ({pod['name']})...")
-            _graphql(
-                'mutation Stop($input: PodStopInput!) { podStop(input: $input) { id desiredStatus } }',
-                {"input": {"podId": pod["id"]}},
-            )
+    pods = _rest("GET", "/pods")
+    for pod in pods:
+        if pod.get("desiredStatus") in {"RUNNING", "EXITED"}:
+            print(f"Stopping {pod['id']} ({pod.get('name')})...")
+            _rest("POST", f"/pods/{pod['id']}/stop")
+    return 0
+
+
+def cmd_delete_all(_: argparse.Namespace) -> int:
+    pods = _rest("GET", "/pods")
+    for pod in pods:
+        print(f"Deleting {pod['id']} ({pod.get('name')})...")
+        _rest("DELETE", f"/pods/{pod['id']}")
     return 0
 
 
@@ -141,38 +150,27 @@ def cmd_create_template(args: argparse.Namespace) -> int:
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:
-    data = _graphql(
-        """
-        mutation Deploy($input: PodFindAndDeployOnDemandInput!) {
-          podFindAndDeployOnDemand(input: $input) {
-            id
-            name
-            imageName
-            machineId
-            desiredStatus
-          }
-        }
-        """,
-        {
-            "input": {
-                "cloudType": "ALL",
-                "gpuCount": 1,
-                "volumeInGb": args.volume_gb,
-                "containerDiskInGb": args.container_disk_gb,
-                "gpuTypeId": args.gpu,
-                "name": args.name,
-                "imageName": args.image,
-                "ports": "22/tcp",
-                "volumeMountPath": "/workspace",
-                "dockerArgs": "sleep infinity",
-                "env": [
-                    {"key": "HF_TOKEN", "value": HF_TOKEN_SECRET_REF},
-                    {"key": "PYTHONPATH", "value": "psm-model/src"},
-                    {"key": "PSM_REPO_ROOT", "value": "/workspace/PSM"},
-                ],
-            }
+    payload = {
+        "name": args.name,
+        "imageName": args.image,
+        "gpuTypeIds": [args.gpu],
+        "gpuCount": 1,
+        "cloudType": "SECURE",
+        "volumeInGb": args.volume_gb,
+        "containerDiskInGb": args.container_disk_gb,
+        "volumeMountPath": "/workspace",
+        "ports": ["22/tcp"],
+        "dockerStartCmd": ["sleep", "infinity"],
+        "env": {
+            "HF_TOKEN": HF_TOKEN_SECRET_REF,
+            "PYTHONPATH": "psm-model/src",
+            "PSM_REPO_ROOT": "/workspace/PSM",
+            "PSM_HF_MODEL_REPO": "chkrishna2001/psm-50m-mixed-v1-run",
+            "PSM_HF_DATASET_REPO": "chkrishna2001/psm-50m-action-mixed-v1",
+            "PSM_SYNC_GIT": "1",
         },
-    )
+    }
+    data = _rest("POST", "/pods", payload)
     print(json.dumps(data, indent=2))
     return 0
 
@@ -189,6 +187,12 @@ def main() -> int:
 
     sub.add_parser("stop-all", help="Stop all running pods").set_defaults(func=cmd_stop_all)
 
+    delete = sub.add_parser("delete-pod", help="Terminate one pod by id")
+    delete.add_argument("pod_id")
+    delete.set_defaults(func=cmd_delete_pod)
+
+    sub.add_parser("delete-all", help="Terminate all pods").set_defaults(func=cmd_delete_all)
+
     tmpl = sub.add_parser("create-template", help="Register REST template for psm-50m-train image")
     tmpl.add_argument("--name", default=DEFAULT_TEMPLATE["name"])
     tmpl.add_argument("--image", default=DEFAULT_TEMPLATE["imageName"])
@@ -196,7 +200,11 @@ def main() -> int:
 
     deploy = sub.add_parser("deploy", help="Deploy pod from image (after docker push)")
     deploy.add_argument("--name", default="psm-train")
-    deploy.add_argument("--image", default=DEFAULT_TEMPLATE["imageName"])
+    deploy.add_argument(
+        "--image",
+        default="runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+        help="Default: stock RunPod PyTorch (custom psm-50m-train image may not be published yet).",
+    )
     deploy.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
     deploy.add_argument("--volume-gb", type=int, default=40)
     deploy.add_argument("--container-disk-gb", type=int, default=20)

@@ -118,12 +118,12 @@ Eval after training (numbers **and** qualitative smoke on manual probes):
 ```powershell
 .\.venv\Scripts\python.exe -m psm_model.gate_checkpoint `
   psm-model\checkpoints\real-v3-50m-action-mixed-v1.pt `
-  --mode phase1-action --device auto --output-format action
+  --mode phase1-action --device cpu --output-format action
 
 .\.venv\Scripts\python.exe -m psm_model.action_smoke `
   psm-model\checkpoints\real-v3-50m-action-mixed-v1.pt `
   psm-model\data\direct-behavior-v1\manual-probe.jsonl `
-  --device auto --output-format action --prefix-eval
+  --device cpu --output-format action --prefix-eval
 ```
 
 Pass: expanded macro >= 0.85, manual model action >= 0.80, >= 4 distinct predicted actions, **and** manual `match_rate` >= 0.80 in `action_smoke`. Abort if one action > 80%, macro < 0.50 at step 500, or no improvement by step 300.
