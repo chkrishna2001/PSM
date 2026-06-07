@@ -41,7 +41,7 @@ GPU reports: `psm-model/checkpoints/gate-eval/summary.json`
 
 9. **PowerShell:** no bash `<<<`; use `runpod_ctl.py` or Python `subprocess` with `input=` for SSH stdin.
 
-10. **Delete idle pods** when done (`delete-pod`) — eval pods on 4090 ~$0.69/hr.
+10. **Delete idle pods** when done (`delete-pod`) — GPU billing continues until stop/delete. Default deploy is **RTX 3090** (see playbook sizing); use 4090 only if 3090 is unavailable.
 
 ---
 
@@ -68,7 +68,11 @@ cd C:\Users\chkri\source\repos\PSM
 ```powershell
 python psm-model\scripts\runpod_ctl.py list-pods
 
-python psm-model\scripts\runpod_ctl.py deploy --name psm-eval --wait-ssh 300
+# GPU stock + price (GraphQL; needs API key with GraphQL access)
+python psm-model\scripts\runpod_ctl.py list-gpus
+python psm-model\scripts\runpod_ctl.py pick-gpu
+
+python psm-model\scripts\runpod_ctl.py deploy --name psm-eval --auto-gpu --wait-ssh 300
 
 python psm-model\scripts\runpod_ctl.py stop-pod <pod_id>
 python psm-model\scripts\runpod_ctl.py delete-pod <pod_id>

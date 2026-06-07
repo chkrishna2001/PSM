@@ -280,3 +280,18 @@ Improved vs pre-train baseline (action 0.36, parse 0.58) but still far from ship
 ```powershell
 python psm-model\scripts\runpod_ctl.py train-gate4 --deploy --target-steps 36000 --proxy-user <pod>-<suffix>
 ```
+
+## 2026-06-07 — Gate 4 v1 training live (pod `zya02byfyqquyr`)
+
+- **Proxy SSH:** `zya02byfyqquyr-644114c3@ssh.runpod.io`
+- **Direct TCP:** `root@103.196.86.55 -p 33382` (when exposed)
+- **Command:** `train-gate4 --pod-id zya02byfyqquyr --proxy-user zya02byfyqquyr-644114c3 --target-steps 36000`
+- **Resume:** `real-v3-50m-full-v2-step-022800.pt` → absolute **36000** (+13200)
+- **Curriculum:** `psm-50m-gate4-train-v1.jsonl` — **53,800 rows**
+  - expanded full ×40: 36,800 (68.4%)
+  - parse drills ×25: 12,000 (22.3%)
+  - stratified promote/store: 2,500 (4.7%)
+  - direct anchors ×500: 2,500 (4.7%)
+- **tmux:** `psm-gate4`, log `/tmp/psm-gate4-train.log`, metrics `real-v3-50m-full-v2-gate4.metrics.jsonl`
+- **GPU:** RTX 4090, torch 2.4.1+cu124
+- **Note:** first kickoff hit broken `/workspace/PSM` clone; fixed bootstrap in `runpod_train_gate4.sh` (fresh clone when `psm-model/src` missing).

@@ -26,6 +26,44 @@ $env:PYTHONPATH='psm-model\src'
 --cuda-memory-fraction 0.5
 ```
 
+## RunPod sizing (50M @ batch-size 1)
+
+Telemetry on RTX 4090 pods showed ~1–3 GiB VRAM and ~2 GiB RAM during training — the 50M decoder at batch-size 1 does not need a 4090 or a high-RAM host.
+
+| Setting | Default (`runpod_ctl.py`) | Notes |
+|---------|---------------------------|-------|
+| GPU | **RTX 3090** | 24 GiB VRAM is plenty (~3–6 GiB used). L4 / 3060 12GB may work; override with `--gpu` if unavailable. |
+| Volume | **25 GiB** | Repo + HF checkpoints + curricula (~18 GiB observed). Bump to 30 GiB if keeping many step saves on disk. |
+| Container disk | **10 GiB** | Stock PyTorch image + apt/pip only. |
+
+Override only when needed:
+
+```powershell
+python psm-model\scripts\runpod_ctl.py train-gate4 --deploy `
+  --gpu "NVIDIA GeForce RTX 4090" `
+  --volume-gb 40 `
+  --container-disk-gb 20
+```
+
+Delete pods after upload + eval — idle GPU billing continues until the pod is stopped or deleted.
+
+### GPU availability (RunPod GraphQL)
+
+RunPod exposes real-time stock via **GraphQL** (`gpuTypes` → `lowestPrice.stockStatus`: `High` / `Medium` / `Low` / `None`). The REST deploy API does not list availability — check before deploy:
+
+```powershell
+# PSM preference list (3090 → 4080 → L4 → 4090)
+python psm-model\scripts\runpod_ctl.py list-gpus
+
+# Pick first available from that list
+python psm-model\scripts\runpod_ctl.py pick-gpu
+
+# Deploy using first available GPU (same preference order)
+python psm-model\scripts\runpod_ctl.py train-gate4 --deploy --auto-gpu --target-steps 36000
+```
+
+Requires GraphQL Read/Write on your API key (the RunPod warning about unrestricted access is expected). If `list-gpus` returns **403 error 1010**, that is Cloudflare blocking Python's default `User-Agent` — not missing key permissions. Current `runpod_ctl.py` sends a browser User-Agent to avoid this.
+
 ## Checkpoint denylist (never `--resume` for main path)
 
 ```text

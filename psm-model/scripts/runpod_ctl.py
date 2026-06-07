@@ -15,6 +15,8 @@ from pathlib import Path
 
 GRAPHQL_URL = "https://api.runpod.io/graphql"
 REST_URL = "https://rest.runpod.io/v1"
+# api.runpod.io sits behind Cloudflare; default Python-urllib UA gets 403 error 1010.
+GRAPHQL_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 SSH_CONFIG_HOST = "runpod-psm"
 SSH_BIN = "ssh.exe" if os.name == "nt" else "ssh"
 SCP_BIN = "scp.exe" if os.name == "nt" else "scp"
@@ -27,11 +29,40 @@ HF_TOKEN_SECRET_REF = "{{ RUNPOD_SECRET_HF_TOKEN }}"
 # Custom image chkrishna2001/psm-50m-train:latest is NOT on Docker Hub — use stock PyTorch only.
 STOCK_PYTORCH_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
+# 50M trains at batch-size 1 (~3–6 GiB VRAM). 3090 + modest volume is enough; 4090 is overkill.
+DEFAULT_GPU = "NVIDIA GeForce RTX 3090"
+DEFAULT_VOLUME_GB = 25
+DEFAULT_CONTAINER_DISK_GB = 10
+DEFAULT_MIN_VRAM_GB = 12
+
+# Cheapest-first preference order for --auto-gpu (GraphQL stockStatus must not be None).
+PSM_GPU_PREFERENCES = (
+    "NVIDIA GeForce RTX 3090",
+    "NVIDIA GeForce RTX 4080",
+    "NVIDIA L4",
+    "NVIDIA GeForce RTX 4090",
+)
+
+GPU_TYPES_QUERY = """
+query {
+  gpuTypes {
+    id
+    displayName
+    memoryInGb
+    lowestPrice(input: { gpuCount: 1, secureCloud: true }) {
+      stockStatus
+      uninterruptablePrice
+      availableGpuCounts
+    }
+  }
+}
+"""
+
 DEFAULT_TEMPLATE = {
     "name": "psm-50m-train",
     "imageName": STOCK_PYTORCH_IMAGE,
-    "containerDiskInGb": 20,
-    "volumeInGb": 40,
+    "containerDiskInGb": DEFAULT_CONTAINER_DISK_GB,
+    "volumeInGb": DEFAULT_VOLUME_GB,
     "volumeMountPath": "/workspace",
     "ports": ["22/tcp"],
     "dockerStartCmd": ["sleep", "infinity"],
@@ -82,14 +113,114 @@ def _graphql(query: str, variables: dict | None = None) -> dict:
     req = urllib.request.Request(
         f"{GRAPHQL_URL}?api_key={_api_key()}",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": GRAPHQL_USER_AGENT,
+        },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        body = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        if exc.code == 403 and "1010" in detail:
+            raise SystemExit(
+                "RunPod GraphQL blocked by Cloudflare (error 1010). This is not an API-key permission "
+                "issue — urllib's default User-Agent is rejected. Update runpod_ctl.py or retry with "
+                "a current version that sets a browser User-Agent on GraphQL requests."
+            ) from exc
+        if exc.code == 403:
+            raise SystemExit(
+                "RunPod GraphQL returned 403. If your key has GraphQL Read/Write enabled, the block "
+                f"may still be Cloudflare or account scope. Response: {detail[:300]}"
+            ) from exc
+        raise
     if body.get("errors"):
         raise RuntimeError(json.dumps(body["errors"], indent=2))
     return body["data"]
+
+
+def _fetch_gpu_types() -> list[dict[str, object]]:
+    data = _graphql(GPU_TYPES_QUERY)
+    rows = data.get("gpuTypes")
+    return list(rows) if isinstance(rows, list) else []
+
+
+def _gpu_availability_row(row: dict[str, object]) -> dict[str, object]:
+    price = row.get("lowestPrice") if isinstance(row.get("lowestPrice"), dict) else {}
+    return {
+        "id": row.get("id"),
+        "displayName": row.get("displayName"),
+        "memoryInGb": row.get("memoryInGb"),
+        "stockStatus": price.get("stockStatus"),
+        "pricePerHr": price.get("uninterruptablePrice"),
+        "availableGpuCounts": price.get("availableGpuCounts"),
+    }
+
+
+def pick_gpu_from_preferences(
+    preferences: list[str] | tuple[str, ...],
+    *,
+    min_vram_gb: int = DEFAULT_MIN_VRAM_GB,
+    gpu_types: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    available = _fetch_gpu_types() if gpu_types is None else gpu_types
+    by_id = {str(row.get("id")): row for row in available if isinstance(row.get("id"), str)}
+    rejected: list[dict[str, object]] = []
+    for gpu_id in preferences:
+        row = by_id.get(gpu_id)
+        if row is None:
+            rejected.append({"id": gpu_id, "reason": "not_listed"})
+            continue
+        memory_gb = int(row.get("memoryInGb") or 0)
+        if memory_gb < min_vram_gb:
+            rejected.append({"id": gpu_id, "reason": "insufficient_vram", "memoryInGb": memory_gb})
+            continue
+        summary = _gpu_availability_row(row)
+        if summary.get("stockStatus") == "None":
+            rejected.append({"id": gpu_id, "reason": "no_stock", "stockStatus": summary.get("stockStatus")})
+            continue
+        return summary
+    raise SystemExit(
+        "No GPU from preference list is available right now. "
+        f"Checked: {list(preferences)}. Rejected: {json.dumps(rejected, sort_keys=True)}"
+    )
+
+
+def _parse_gpu_preferences(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return PSM_GPU_PREFERENCES
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _apply_auto_gpu(args: argparse.Namespace) -> None:
+    if not getattr(args, "auto_gpu", False):
+        return
+    preferences = _parse_gpu_preferences(getattr(args, "gpu_preferences", None))
+    min_vram_gb = int(getattr(args, "min_vram_gb", DEFAULT_MIN_VRAM_GB))
+    picked = pick_gpu_from_preferences(preferences, min_vram_gb=min_vram_gb)
+    print(json.dumps({"event": "auto_gpu_picked", **picked}, indent=2), file=sys.stderr)
+    args.gpu = str(picked["id"])
+
+
+def _add_auto_gpu_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--auto-gpu",
+        action="store_true",
+        help="Query RunPod GraphQL stockStatus and pick the first available GPU from the preference list.",
+    )
+    parser.add_argument(
+        "--gpu-preferences",
+        default="",
+        help=f"Comma-separated GPU ids for --auto-gpu (default: {', '.join(PSM_GPU_PREFERENCES)}).",
+    )
+    parser.add_argument(
+        "--min-vram-gb",
+        type=int,
+        default=DEFAULT_MIN_VRAM_GB,
+        help="Minimum GPU VRAM when using --auto-gpu (50M @ batch 1 needs ~12 GiB).",
+    )
 
 
 def _rest(method: str, path: str, data: dict | None = None) -> dict | list:
@@ -109,6 +240,38 @@ def _rest(method: str, path: str, data: dict | None = None) -> dict | list:
 def cmd_list_pods(_: argparse.Namespace) -> int:
     pods = _rest("GET", "/pods")
     print(json.dumps(pods, indent=2))
+    return 0
+
+
+def cmd_list_gpus(args: argparse.Namespace) -> int:
+    gpu_types = _fetch_gpu_types()
+    if args.all:
+        rows = [_gpu_availability_row(row) for row in gpu_types if isinstance(row, dict)]
+        rows.sort(
+            key=lambda row: (
+                row.get("stockStatus") in (None, "None"),
+                row.get("pricePerHr") if isinstance(row.get("pricePerHr"), (int, float)) else 9999,
+                str(row.get("id")),
+            )
+        )
+    else:
+        preferences = _parse_gpu_preferences(args.gpu_preferences or None)
+        by_id = {str(row.get("id")): row for row in gpu_types if isinstance(row.get("id"), str)}
+        rows = []
+        for gpu_id in preferences:
+            row = by_id.get(gpu_id)
+            if row is None:
+                rows.append({"id": gpu_id, "missing": True})
+            else:
+                rows.append(_gpu_availability_row(row))
+    print(json.dumps({"gpus": rows, "defaults": {"gpu": DEFAULT_GPU, "volume_gb": DEFAULT_VOLUME_GB}}, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_pick_gpu(args: argparse.Namespace) -> int:
+    preferences = _parse_gpu_preferences(args.gpu_preferences or None)
+    picked = pick_gpu_from_preferences(preferences, min_vram_gb=args.min_vram_gb)
+    print(json.dumps({"picked": picked, "volume_gb": args.volume_gb, "container_disk_gb": args.container_disk_gb}, indent=2, sort_keys=True))
     return 0
 
 
@@ -745,6 +908,7 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
         print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
 
     if args.deploy:
+        _apply_auto_gpu(args)
         deploy_args = argparse.Namespace(
             name=args.name,
             image=args.image,
@@ -835,6 +999,7 @@ def _resolve_train_pod_ssh(
         return pod_id, ssh_host, ssh_port, ssh_user
 
     if args.deploy:
+        _apply_auto_gpu(args)
         deploy_args = argparse.Namespace(
             name=args.name,
             image=args.image,
@@ -1001,6 +1166,7 @@ def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:
+    _apply_auto_gpu(args)
     start_cmd = ["bash", "-lc", AUTOSTART_CMD] if args.autostart else ["sleep", "infinity"]
     env = {
         "HF_TOKEN": HF_TOKEN_SECRET_REF,
@@ -1032,6 +1198,22 @@ def main() -> int:
 
     sub.add_parser("list-pods", help="List your pods").set_defaults(func=cmd_list_pods)
 
+    list_gpus = sub.add_parser("list-gpus", help="Query RunPod GraphQL GPU stockStatus and pricing")
+    list_gpus.add_argument("--all", action="store_true", help="List every GPU type (not just PSM preferences).")
+    list_gpus.add_argument(
+        "--gpu-preferences",
+        default="",
+        help=f"Comma-separated ids to show (default: {', '.join(PSM_GPU_PREFERENCES)}).",
+    )
+    list_gpus.set_defaults(func=cmd_list_gpus)
+
+    pick_gpu = sub.add_parser("pick-gpu", help="Pick first available GPU from the PSM preference list")
+    pick_gpu.add_argument("--gpu-preferences", default="", help="Override comma-separated preference order.")
+    pick_gpu.add_argument("--min-vram-gb", type=int, default=DEFAULT_MIN_VRAM_GB)
+    pick_gpu.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB, help="Echo default volume with pick result.")
+    pick_gpu.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    pick_gpu.set_defaults(func=cmd_pick_gpu)
+
     stop = sub.add_parser("stop-pod", help="Stop one pod by id")
     stop.add_argument("pod_id")
     stop.set_defaults(func=cmd_stop_pod)
@@ -1061,9 +1243,10 @@ def main() -> int:
         default="",
         help="RunPod template id (e.g. mo1fjgnycd). Uses template SSH/image/volume settings.",
     )
-    deploy.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
-    deploy.add_argument("--volume-gb", type=int, default=40)
-    deploy.add_argument("--container-disk-gb", type=int, default=20)
+    deploy.add_argument("--gpu", default=DEFAULT_GPU)
+    deploy.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    deploy.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(deploy)
     deploy.add_argument(
         "--autostart",
         action="store_true",
@@ -1110,9 +1293,10 @@ def main() -> int:
     eval_gates.add_argument("--name", default="psm-eval", help="Pod name when --deploy is set.")
     eval_gates.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
     eval_gates.add_argument("--template", default="", help="RunPod template id (optional).")
-    eval_gates.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
-    eval_gates.add_argument("--volume-gb", type=int, default=40)
-    eval_gates.add_argument("--container-disk-gb", type=int, default=20)
+    eval_gates.add_argument("--gpu", default=DEFAULT_GPU)
+    eval_gates.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    eval_gates.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(eval_gates)
     eval_gates.add_argument("--host-alias", default=SSH_CONFIG_HOST)
     eval_gates.add_argument(
         "--proxy-user",
@@ -1152,9 +1336,10 @@ def main() -> int:
     train_gate4.add_argument("--name", default="psm-train-gate4", help="Pod name when --deploy is set.")
     train_gate4.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
     train_gate4.add_argument("--template", default="", help="RunPod template id (optional).")
-    train_gate4.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
-    train_gate4.add_argument("--volume-gb", type=int, default=40)
-    train_gate4.add_argument("--container-disk-gb", type=int, default=20)
+    train_gate4.add_argument("--gpu", default=DEFAULT_GPU)
+    train_gate4.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    train_gate4.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(train_gate4)
     train_gate4.add_argument("--host-alias", default=SSH_CONFIG_HOST)
     train_gate4.add_argument(
         "--proxy-user",
@@ -1219,9 +1404,10 @@ def main() -> int:
     upload_gate4.add_argument("--name", default="psm-train-gate4")
     upload_gate4.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
     upload_gate4.add_argument("--template", default="")
-    upload_gate4.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
-    upload_gate4.add_argument("--volume-gb", type=int, default=40)
-    upload_gate4.add_argument("--container-disk-gb", type=int, default=20)
+    upload_gate4.add_argument("--gpu", default=DEFAULT_GPU)
+    upload_gate4.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    upload_gate4.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(upload_gate4)
     upload_gate4.add_argument("--host-alias", default=SSH_CONFIG_HOST)
     upload_gate4.add_argument("--proxy-user", default="")
     upload_gate4.add_argument("--wait-ssh", type=int, default=120)

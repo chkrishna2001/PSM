@@ -22,22 +22,25 @@ apt-get update -qq
 apt-get install -y -qq git tmux >/dev/null 2>&1 || true
 pip install -q huggingface_hub hf_transfer numpy
 
-if [[ ! -d "$ROOT/psm-model/src" ]]; then
-  if [[ -d "$ROOT/.git" ]]; then
-    echo "Updating existing PSM repo..."
-    git -C "$ROOT" pull --ff-only || true
-  fi
-  if [[ ! -d "$ROOT/psm-model/src" ]]; then
-    echo "Cloning PSM repo..."
-    if [[ -d "$ROOT" ]] && [[ -n "$(ls -A "$ROOT" 2>/dev/null || true)" ]]; then
-      mv "$ROOT" "${ROOT}.stale.$(date +%s)" 2>/dev/null || rm -rf "$ROOT"
+if [[ -d "$ROOT/psm-model/src" ]]; then
+  echo "PSM repo present at $ROOT"
+  cd "$ROOT"
+  git pull --ff-only || true
+else
+  echo "PSM repo missing or incomplete; fresh clone into $ROOT"
+  if [[ -d "$ROOT" ]]; then
+    stale="${ROOT}.stale.$(date +%s)"
+    if mv "$ROOT" "$stale" 2>/dev/null; then
+      echo "Moved stale tree to $stale"
+    else
+      echo "Removing incomplete tree at $ROOT"
+      rm -rf "$ROOT"
     fi
-    mkdir -p "$(dirname "$ROOT")"
-    git clone --depth 1 "$GIT_URL" "$ROOT"
   fi
+  mkdir -p "$(dirname "$ROOT")"
+  git clone --depth 1 "$GIT_URL" "$ROOT"
+  cd "$ROOT"
 fi
-cd "$ROOT"
-git pull --ff-only || true
 export PYTHONPATH=psm-model/src
 
 mkdir -p psm-model/checkpoints psm-model/data/curriculum psm-model/data/probes psm-model/data/direct-behavior-v1
