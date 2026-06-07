@@ -799,6 +799,95 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_train_gate4(args: argparse.Namespace) -> int:
+    script_path = Path(__file__).resolve().parent / "runpod_train_gate4.sh"
+    if not script_path.exists():
+        raise SystemExit(f"missing train script: {script_path}")
+
+    pod_id = args.pod_id
+    ssh_host: str | None = None
+    ssh_port: str | None = None
+    ssh_user = "root"
+    proxy_user = args.proxy_user or None
+    if args.pod_id and not args.deploy:
+        target = _wait_pod_ssh_endpoint(
+            args.pod_id,
+            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
+            proxy_user=proxy_user,
+        )
+        ssh_host = target["host"]
+        ssh_port = target["port"]
+        ssh_user = target["user"]
+        pod_id = args.pod_id
+        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
+
+    if args.deploy:
+        deploy_args = argparse.Namespace(
+            name=args.name,
+            image=args.image,
+            template=args.template,
+            gpu=args.gpu,
+            volume_gb=args.volume_gb,
+            container_disk_gb=args.container_disk_gb,
+            autostart=False,
+            wait_ssh=0,
+        )
+        data = _rest("POST", "/pods", _deploy_payload(deploy_args))
+        print(json.dumps(data, indent=2))
+        pod_id = str(data.get("id", ""))
+        if not pod_id:
+            raise SystemExit("deploy did not return pod id")
+        target = _wait_pod_ssh_endpoint(
+            pod_id,
+            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
+            proxy_user=proxy_user,
+        )
+        ssh_host = target["host"]
+        ssh_port = target["port"]
+        ssh_user = target["user"]
+        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
+
+    extra_env = {
+        "PSM_TRAIN_DEVICE": args.device,
+        "TARGET_STEPS": str(args.target_steps),
+        "RESUME_CHECKPOINT": args.resume_checkpoint,
+        "TOKENIZER": args.tokenizer,
+    }
+    rc = _ssh_run_script(
+        args.host_alias,
+        script_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=args.timeout_sec,
+        extra_env=extra_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=bool(args.deploy or args.pod_id),
+    )
+
+    if args.pull_metrics:
+        local_metrics = Path(args.pull_metrics)
+        scp_rc = _scp_from_pod(
+            args.host_alias,
+            "/workspace/PSM/psm-model/checkpoints/real-v3-50m-full-v2-gate4.metrics.jsonl",
+            local_metrics.parent,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if scp_rc != 0:
+            print("warning: could not pull gate4 metrics", file=sys.stderr)
+
+    if args.delete_after and pod_id:
+        if rc == 255:
+            print(f"Skipping pod delete because training never started (pod {pod_id} left running).", file=sys.stderr)
+        else:
+            print(f"Deleting pod {pod_id}...")
+            _rest("DELETE", f"/pods/{pod_id}")
+
+    return rc
+
+
 def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
     start_cmd = ["bash", "-lc", AUTOSTART_CMD] if args.autostart else ["sleep", "infinity"]
     env = {
@@ -975,6 +1064,54 @@ def main() -> int:
     )
     eval_gates.add_argument("--delete-after", action="store_true", help="Delete the pod after eval (use with --deploy).")
     eval_gates.set_defaults(func=cmd_eval_gates)
+
+    train_gate4 = sub.add_parser(
+        "train-gate4",
+        help="Deploy (optional) and run Gate 4 full-model training on RunPod GPU",
+    )
+    train_gate4.add_argument("--deploy", action="store_true", help="Deploy a new training pod before running.")
+    train_gate4.add_argument("--pod-id", default="", help="Existing pod id (skip deploy).")
+    train_gate4.add_argument("--name", default="psm-train-gate4", help="Pod name when --deploy is set.")
+    train_gate4.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    train_gate4.add_argument("--template", default="", help="RunPod template id (optional).")
+    train_gate4.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
+    train_gate4.add_argument("--volume-gb", type=int, default=40)
+    train_gate4.add_argument("--container-disk-gb", type=int, default=20)
+    train_gate4.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    train_gate4.add_argument(
+        "--proxy-user",
+        default="",
+        help="Proxy SSH user from Connect tab (pod_id-suffix@ssh.runpod.io).",
+    )
+    train_gate4.add_argument("--device", default="cuda")
+    train_gate4.add_argument(
+        "--target-steps",
+        type=int,
+        default=28000,
+        help="Absolute training step target (resume @22800 → +5200 steps).",
+    )
+    train_gate4.add_argument(
+        "--resume-checkpoint",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-022800.pt",
+    )
+    train_gate4.add_argument(
+        "--tokenizer",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-022800.tokenizer.json",
+    )
+    train_gate4.add_argument("--wait-ssh", type=int, default=300, metavar="SEC")
+    train_gate4.add_argument("--timeout-sec", type=int, default=28800, help="SSH training session timeout (8h default).")
+    train_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
+    train_gate4.add_argument(
+        "--pull-metrics",
+        default="",
+        help="Local path to directory for metrics jsonl pull after training (empty to skip).",
+    )
+    train_gate4.add_argument(
+        "--delete-after",
+        action="store_true",
+        help="Delete pod after training completes (not recommended — upload checkpoints first).",
+    )
+    train_gate4.set_defaults(func=cmd_train_gate4)
 
     args = parser.parse_args()
     return args.func(args)

@@ -199,6 +199,21 @@ After eval, bucket parse vs action vs content failures:
 
 RunPod `runpod_eval_gates.sh` writes `gate4-failure-analysis.json` automatically when expanded eval runs.
 
+### Training (resume @ step-22800)
+
+Curriculum: `build_gate4_curriculum` = full-storage filtered + direct probes ×500 + expanded ×8 + ignore oversample ×4.
+
+```powershell
+python psm-model\scripts\runpod_ctl.py train-gate4 --deploy `
+  --target-steps 28000 `
+  --proxy-user <pod_id>-<suffix> `
+  --timeout-sec 28800
+```
+
+Resume checkpoint: `real-v3-50m-full-v2-step-022800.pt` (Gate 3 pass). `--steps` is absolute — 28000 = +5200 from 22800.
+
+After training: upload new checkpoints to HF, then `eval-gates --expanded`.
+
 ### Product smoke (additional, not gated in CI yet)
 
 - Manual full-output smoke: `match_rate` ≥ 0.80 on `manual-probe.jsonl`
