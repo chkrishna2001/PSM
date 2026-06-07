@@ -100,9 +100,22 @@ def evaluate_model_rows(
     action_head_available = 0
     generated_tokens = 0
 
+    context_length = int(getattr(getattr(model, "config", None), "context_length", 2048))
     for row in rows:
         prompt = render_storage_prompt(row["input"], output_format=output_format)
         input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], dtype=torch.long, device=device_obj)
+        prompt_tokens = int(input_ids.shape[1])
+        if prompt_tokens > context_length:
+            reports.append(
+                {
+                    "id": row.get("id"),
+                    "skipped": True,
+                    "reason": "context_overflow",
+                    "prompt_tokens": prompt_tokens,
+                    "context_length": context_length,
+                }
+            )
+            continue
         action_head_prediction = None
         action_head_confidence = None
         action_head_prediction, action_head_confidence = predict_action_head(model, input_ids)

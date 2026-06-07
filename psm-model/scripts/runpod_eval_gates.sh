@@ -109,9 +109,20 @@ run_eval gate2-action-smoke \
   --device "$DEVICE" --output-format action --prefix-eval || SMOKE_RC=$?
 
 if [[ "$RUN_EXPANDED" == "1" ]]; then
+  EXPANDED_PROBE="psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl"
+  EXPANDED_BUDGET="psm-model/data/direct-behavior-v1/expanded-probe-v1-budget.jsonl"
+  if [[ -f "$EXPANDED_PROBE" ]]; then
+    python3 -m psm_model.filter_by_token_budget \
+      "$EXPANDED_PROBE" "$EXPANDED_BUDGET" \
+      --tokenizer "${FULL_CKPT%.pt}.tokenizer.json" \
+      --max-tokens 1536 --output-format tagged || true
+    if [[ -f "$EXPANDED_BUDGET" ]]; then
+      EXPANDED_PROBE="$EXPANDED_BUDGET"
+    fi
+  fi
   run_eval gate4-full-expanded \
     -m psm_model.eval_checkpoint \
-    "$FULL_CKPT" psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
+    "$FULL_CKPT" "$EXPANDED_PROBE" \
     --device "$DEVICE" --output-format tagged || EXPANDED_RC=$?
 fi
 
