@@ -71,6 +71,20 @@ def _file_signature(path: Path) -> str:
     return f"{stat.st_size}:{int(stat.st_mtime)}"
 
 
+def _promoted_checkpoint_files(checkpoint_dir: Path, promoted_stem: str | None) -> list[Path]:
+    if not promoted_stem:
+        return []
+    return [
+        path
+        for path in (
+            checkpoint_dir / f"{promoted_stem}.pt",
+            checkpoint_dir / f"{promoted_stem}.meta.json",
+            checkpoint_dir / f"{promoted_stem}.tokenizer.json",
+        )
+        if path.exists()
+    ]
+
+
 def sync_training_artifacts(
     *,
     repo_id: str,
@@ -81,6 +95,7 @@ def sync_training_artifacts(
     keep_local: int,
     dry_run: bool,
     only_new: bool,
+    promoted_stem: str | None = None,
 ) -> dict[str, object]:
     if keep_local < 1:
         raise ValueError("--keep-local must be at least 1")
@@ -109,6 +124,7 @@ def sync_training_artifacts(
         files_to_upload.extend(_related_checkpoint_files(step_path))
     if metrics_path is not None and metrics_path.exists():
         files_to_upload.append(metrics_path)
+    files_to_upload.extend(_promoted_checkpoint_files(checkpoint_dir, promoted_stem))
 
     if only_new:
         pending: list[Path] = []
@@ -193,6 +209,11 @@ def main() -> int:
         action="store_true",
         help="Skip files already uploaded with the same size/mtime (uses .hf_sync_manifest.json)",
     )
+    parser.add_argument(
+        "--promoted-stem",
+        default="",
+        help="Also sync rolling checkpoint stem (e.g. real-v3-50m-full-v2.pt without step suffix).",
+    )
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
@@ -205,6 +226,7 @@ def main() -> int:
         keep_local=args.keep_local,
         dry_run=args.dry_run,
         only_new=args.only_new,
+        promoted_stem=args.promoted_stem.strip() or None,
     )
     return 0
 

@@ -31,7 +31,7 @@ STOCK_PYTORCH_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
 # 50M trains at batch-size 1 (~3–6 GiB VRAM). 3090 + modest volume is enough; 4090 is overkill.
 DEFAULT_GPU = "NVIDIA GeForce RTX 3090"
-DEFAULT_VOLUME_GB = 25
+DEFAULT_VOLUME_GB = 20
 DEFAULT_CONTAINER_DISK_GB = 10
 DEFAULT_MIN_VRAM_GB = 12
 
@@ -62,7 +62,7 @@ DEFAULT_TEMPLATE = {
     "name": "psm-50m-train",
     "imageName": STOCK_PYTORCH_IMAGE,
     "containerDiskInGb": DEFAULT_CONTAINER_DISK_GB,
-    "volumeInGb": DEFAULT_VOLUME_GB,
+    "volumeInGb": DEFAULT_VOLUME_GB,  # 20GB OK with HF sync + keep-local=2
     "volumeMountPath": "/workspace",
     "ports": ["22/tcp"],
     "dockerStartCmd": ["sleep", "infinity"],
@@ -699,7 +699,8 @@ def _ssh_run_script(
     extra_env: dict[str, str] | None = None,
     ssh_ready_timeout_sec: int = 300,
     skip_ssh_wait: bool = False,
-) -> int:
+    capture_output: bool = False,
+) -> int | tuple[int, str]:
     if not skip_ssh_wait and not _wait_ssh_shell(
         host_alias,
         host=host,
@@ -753,24 +754,31 @@ def _ssh_run_script(
     import time
 
     deadline = time.time() + timeout_sec
+    captured: list[str] = []
     while True:
         if proc.poll() is not None:
             remainder = proc.stdout.read()
             if remainder:
+                if capture_output:
+                    captured.append(remainder)
                 _ssh_stream_print(remainder)
             break
         if time.time() > deadline:
             proc.kill()
             print(f"SSH eval timed out after {timeout_sec}s", file=sys.stderr)
-            return 124
+            rc = 124
+            return (rc, "".join(captured)) if capture_output else rc
         line = proc.stdout.readline()
         if line:
+            if capture_output:
+                captured.append(line)
             _ssh_stream_print(line)
         elif proc.poll() is not None:
             break
         else:
             time.sleep(0.05)
-    return proc.returncode if proc.returncode is not None else 124
+    rc = proc.returncode if proc.returncode is not None else 124
+    return (rc, "".join(captured)) if capture_output else rc
 
 
 def _ssh_pull_dir(
@@ -1028,6 +1036,101 @@ def _resolve_train_pod_ssh(
     return pod_id, ssh_host, ssh_port, ssh_user
 
 
+def _parse_resume_checkpoint(upload_output: str) -> tuple[str, str]:
+    resume_checkpoint = ""
+    resume_step = ""
+    for line in upload_output.splitlines():
+        if line.startswith("RESUME_CHECKPOINT="):
+            resume_checkpoint = line.split("=", 1)[1].strip()
+        elif line.startswith("RESUME_STEP="):
+            resume_step = line.split("=", 1)[1].strip()
+    return resume_checkpoint, resume_step
+
+
+def cmd_recover_gate4(args: argparse.Namespace) -> int:
+    upload_path = Path(__file__).resolve().parent / "runpod_upload_gate4.sh"
+    train_path = Path(__file__).resolve().parent / "runpod_train_gate4.sh"
+    if not upload_path.exists() or not train_path.exists():
+        raise SystemExit("missing upload or train script for recover-gate4")
+    proxy_user = args.proxy_user or None
+    if not args.pod_id:
+        raise SystemExit("recover-gate4 requires --pod-id")
+    _, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(
+        argparse.Namespace(
+            pod_id=args.pod_id,
+            deploy=False,
+            name="",
+            image=STOCK_PYTORCH_IMAGE,
+            template="",
+            gpu=DEFAULT_GPU,
+            volume_gb=DEFAULT_VOLUME_GB,
+            container_disk_gb=DEFAULT_CONTAINER_DISK_GB,
+            autostart=False,
+            wait_ssh=args.wait_ssh,
+            ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+            auto_gpu=False,
+            gpu_preferences="",
+            min_vram_gb=DEFAULT_MIN_VRAM_GB,
+        ),
+        proxy_user=proxy_user,
+    )
+    shared_env = {
+        "KEEP_LOCAL": str(args.keep_local),
+        "TARGET_STEPS": str(args.target_steps),
+        "SAVE_EVERY": str(args.save_every),
+        "SYNC_INTERVAL_SEC": "600",
+    }
+    upload_result = _ssh_run_script(
+        args.host_alias,
+        upload_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=min(args.timeout_sec, 7200),
+        extra_env=shared_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+        capture_output=True,
+    )
+    if isinstance(upload_result, tuple):
+        upload_rc, upload_output = upload_result
+    else:
+        upload_rc, upload_output = upload_result, ""
+    if upload_rc != 0:
+        return upload_rc
+
+    resume_checkpoint, resume_step = _parse_resume_checkpoint(upload_output)
+    if not resume_checkpoint:
+        raise SystemExit("upload-gate4 did not report RESUME_CHECKPOINT; cannot resume training")
+    tokenizer = f"{resume_checkpoint.removesuffix('.pt')}.tokenizer.json" if resume_checkpoint.endswith(".pt") else ""
+    print(
+        json.dumps(
+            {"event": "recover_resume", "checkpoint": resume_checkpoint, "step": resume_step},
+            indent=2,
+            sort_keys=True,
+        ),
+        file=sys.stderr,
+    )
+
+    train_env = {
+        **shared_env,
+        "RESUME_CHECKPOINT": resume_checkpoint,
+        "TOKENIZER": tokenizer,
+    }
+    train_rc = _ssh_run_script(
+        args.host_alias,
+        train_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=args.timeout_sec,
+        extra_env=train_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+    )
+    return train_rc if isinstance(train_rc, int) else train_rc[0]
+
+
 def cmd_upload_gate4(args: argparse.Namespace) -> int:
     upload_path = Path(__file__).resolve().parent / "runpod_upload_gate4.sh"
     if not upload_path.exists():
@@ -1095,6 +1198,9 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "STRATIFIED_MAX": str(args.stratified_max),
         "IGNORE_EXTRA_COPIES": str(args.ignore_extra_copies),
         "EVAL_EVERY": str(args.eval_every),
+        "SAVE_EVERY": str(args.save_every),
+        "KEEP_LOCAL": str(args.keep_local),
+        "SYNC_INTERVAL_SEC": str(args.sync_interval_sec),
     }
     rc = _ssh_run_script(
         args.host_alias,
@@ -1366,9 +1472,12 @@ def main() -> int:
     train_gate4.add_argument(
         "--upload-keep-local",
         type=int,
-        default=1,
-        help="How many latest step checkpoints to upload (default 1 = latest only).",
+        default=2,
+        help="Step checkpoints to retain on pod after HF sync.",
     )
+    train_gate4.add_argument("--save-every", type=int, default=400)
+    train_gate4.add_argument("--keep-local", type=int, default=2, help="Pod disk: retain N step checkpoints locally.")
+    train_gate4.add_argument("--sync-interval-sec", type=int, default=600, help="HF sync + prune interval during training.")
     train_gate4.add_argument(
         "--curriculum-builder",
         choices=("v1", "legacy"),
@@ -1413,8 +1522,23 @@ def main() -> int:
     upload_gate4.add_argument("--wait-ssh", type=int, default=120)
     upload_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=120)
     upload_gate4.add_argument("--timeout-sec", type=int, default=7200)
-    upload_gate4.add_argument("--keep-local", type=int, default=1, help="Upload N latest step checkpoints.")
+    upload_gate4.add_argument("--keep-local", type=int, default=2, help="Retain N newest step checkpoints on pod after HF sync.")
     upload_gate4.set_defaults(func=cmd_upload_gate4)
+
+    recover_gate4 = sub.add_parser(
+        "recover-gate4",
+        help="Prune corrupt checkpoints, sync all to HF, resume Gate 4 training with periodic sync",
+    )
+    recover_gate4.add_argument("--pod-id", default="", help="Existing pod id.")
+    recover_gate4.add_argument("--proxy-user", default="")
+    recover_gate4.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    recover_gate4.add_argument("--target-steps", type=int, default=36000)
+    recover_gate4.add_argument("--save-every", type=int, default=400)
+    recover_gate4.add_argument("--keep-local", type=int, default=2)
+    recover_gate4.add_argument("--timeout-sec", type=int, default=28800)
+    recover_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
+    recover_gate4.add_argument("--wait-ssh", type=int, default=120)
+    recover_gate4.set_defaults(func=cmd_recover_gate4)
 
     args = parser.parse_args()
     return args.func(args)

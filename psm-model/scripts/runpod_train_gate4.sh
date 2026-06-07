@@ -14,6 +14,9 @@ TOK="${TOKENIZER:-psm-model/checkpoints/real-v3-50m-full-v2-step-022800.tokenize
 TARGET_STEPS="${TARGET_STEPS:-36000}"
 CURRICULUM="${GATE4_CURRICULUM:-psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl}"
 CURRICULUM_BUILDER="${GATE4_CURRICULUM_BUILDER:-v1}"
+SAVE_EVERY="${SAVE_EVERY:-400}"
+KEEP_LOCAL="${KEEP_LOCAL:-2}"
+SYNC_INTERVAL_SEC="${SYNC_INTERVAL_SEC:-600}"
 
 echo "=== PSM Gate 4 train $(date -u +%Y-%m-%dT%H:%M:%SZ) device=$DEVICE target=$TARGET_STEPS ==="
 
@@ -338,6 +341,12 @@ PY
 }
 build_curriculum
 
+RUN_STEM="real-v3-50m-full-v2"
+SYNC_CMD="cd '$ROOT' && export KEEP_LOCAL=$KEEP_LOCAL PSM_HF_MODEL_REPO='$MODEL_REPO' && while true; do sleep $SYNC_INTERVAL_SEC; bash psm-model/scripts/runpod_upload_gate4.sh 2>&1 | tee -a psm-model/checkpoints/gate4-sync.log; done"
+tmux kill-session -t psm-gate4-sync 2>/dev/null || true
+tmux new-session -d -s psm-gate4-sync bash -lc "$(printf '%q' "$SYNC_CMD")"
+echo "HF sync loop: tmux psm-gate4-sync every ${SYNC_INTERVAL_SEC}s keep-local=$KEEP_LOCAL"
+
 echo "--- training (tmux session psm-gate4) ---"
 TRAIN_LOG="/tmp/psm-gate4-train.log"
 TRAIN_DONE="/tmp/psm-gate4.done"
@@ -358,7 +367,7 @@ tmux new-session -d -s psm-gate4 bash -lc "
     --output-format tagged \
     --sampling action_balanced \
     --device '$DEVICE' \
-    --save-every 200 \
+    --save-every '$SAVE_EVERY' \
     --metrics-out psm-model/checkpoints/real-v3-50m-full-v2-gate4.metrics.jsonl \
     --action-span-weight ignore=4 \
     --action-span-weight promote_semantic=8 \
@@ -383,6 +392,7 @@ while [[ ! -f "$TRAIN_DONE" ]]; do
   fi
   sleep 30
 done
+kill "$TAIL_PID" 2>/dev/null || true
 wait "$TAIL_PID" 2>/dev/null || true
 
 echo "=== Gate 4 train done $(date -u +%H:%M:%SZ) ==="

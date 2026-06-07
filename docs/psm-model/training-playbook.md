@@ -33,7 +33,7 @@ Telemetry on RTX 4090 pods showed ~1–3 GiB VRAM and ~2 GiB RAM during training
 | Setting | Default (`runpod_ctl.py`) | Notes |
 |---------|---------------------------|-------|
 | GPU | **RTX 3090** | 24 GiB VRAM is plenty (~3–6 GiB used). L4 / 3060 12GB may work; override with `--gpu` if unavailable. |
-| Volume | **25 GiB** | Repo + HF checkpoints + curricula (~18 GiB observed). Bump to 30 GiB if keeping many step saves on disk. |
+| Volume | **20 GiB** | OK with HF sync every 10 min + `keep-local=2` (~1.3 GiB step saves). Without sync, fills fast at `--save-every 200`. |
 | Container disk | **10 GiB** | Stock PyTorch image + apt/pip only. |
 
 Override only when needed:
