@@ -4,6 +4,7 @@ export * from "./context.js";
 export * from "./embeddings.js";
 export * from "./json.js";
 export * from "./llama-runtime.js";
+export * from "./psm-model-runtime.js";
 export * from "./prompts.js";
 export * from "./ranking.js";
 export * from "./service.js";

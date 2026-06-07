@@ -27,12 +27,21 @@ export interface PsmTraceConfig {
   path: string;
 }
 
+export interface PsmModelConfig {
+  enabled: boolean;
+  checkpoint: string;
+  python: string;
+  device: string;
+  outputFormat: "tagged" | "json" | "at_tag";
+}
+
 export interface PsmConfig {
   memoryDir: string;
   userId: string;
   recallTopK: number;
   embeddings: PsmEmbeddingConfig;
   runtime: PsmRuntimeConfig;
+  psmModel: PsmModelConfig;
   daemon: PsmDaemonConfig;
   trace: PsmTraceConfig;
 }
@@ -73,6 +82,13 @@ export function defaultPsmConfig(): PsmConfig {
       gpu: "auto",
       gpuLayers: "auto"
     },
+    psmModel: {
+      enabled: false,
+      checkpoint: "psm-model/checkpoints/real-v3-50m-full-v2.pt",
+      python: process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python",
+      device: "cpu",
+      outputFormat: "tagged"
+    },
     daemon: {
       enabled: false,
       host: "127.0.0.1",
@@ -96,6 +112,7 @@ export function readPsmConfig(): PsmConfig {
     if (!isRecord(parsed)) return defaults;
     const embeddings = isRecord(parsed.embeddings) ? parsed.embeddings : {};
     const runtime = isRecord(parsed.runtime) ? parsed.runtime : {};
+    const psmModel = isRecord(parsed.psmModel) ? parsed.psmModel : {};
     const daemon = isRecord(parsed.daemon) ? parsed.daemon : {};
     const trace = isRecord(parsed.trace) ? parsed.trace : {};
     return {
@@ -110,6 +127,13 @@ export function readPsmConfig(): PsmConfig {
         contextSize: positiveIntValue(runtime.contextSize, defaults.runtime.contextSize),
         gpu: stringValue(runtime.gpu, defaults.runtime.gpu),
         gpuLayers: stringValue(runtime.gpuLayers, defaults.runtime.gpuLayers)
+      },
+      psmModel: {
+        enabled: booleanValue(psmModel.enabled, defaults.psmModel.enabled),
+        checkpoint: stringValue(psmModel.checkpoint, defaults.psmModel.checkpoint),
+        python: stringValue(psmModel.python, defaults.psmModel.python),
+        device: stringValue(psmModel.device, defaults.psmModel.device),
+        outputFormat: stringValue(psmModel.outputFormat, defaults.psmModel.outputFormat) as PsmModelConfig["outputFormat"]
       },
       daemon: {
         enabled: booleanValue(daemon.enabled, defaults.daemon.enabled),
@@ -149,6 +173,10 @@ export function mergePsmConfig(config: Partial<PsmConfig>): PsmConfig {
     runtime: {
       ...current.runtime,
       ...(config.runtime ?? {})
+    },
+    psmModel: {
+      ...current.psmModel,
+      ...(config.psmModel ?? {})
     },
     daemon: {
       ...current.daemon,

@@ -4,7 +4,7 @@ import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TraceModelRuntime, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, HybridPsmRuntime, MemoryStore, NodeLlamaRuntime, PsmModelRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TraceModelRuntime, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
 import { callDaemon, startDaemon } from "./daemon.js";
 import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
@@ -297,12 +297,25 @@ export async function run(argv: string[]): Promise<number> {
 function createRuntime(options: Record<string, string | boolean>): ModelRuntime {
   const modelPath = resolveModelPath();
   const config = readPsmConfig();
-  const runtime = new NodeLlamaRuntime({
+  const primary = new NodeLlamaRuntime({
     modelPath,
     contextSize: intOption(options, "context-size", config.runtime.contextSize),
     gpu: stringOption(options, "gpu", config.runtime.gpu) as "auto",
     gpuLayers: stringOption(options, "gpu-layers", config.runtime.gpuLayers) as "auto"
   });
+  const usePsmModel = boolOption(options, "psm-model") || config.psmModel.enabled;
+  const runtime: ModelRuntime = usePsmModel
+    ? new HybridPsmRuntime(
+        primary,
+        new PsmModelRuntime({
+          checkpoint: stringOption(options, "psm-checkpoint", config.psmModel.checkpoint),
+          python: stringOption(options, "psm-python", config.psmModel.python),
+          device: stringOption(options, "psm-device", config.psmModel.device),
+          outputFormat: stringOption(options, "psm-output-format", config.psmModel.outputFormat) as "tagged",
+          repoRoot: process.cwd()
+        })
+      )
+    : primary;
   return traceEnabled(options, config) ? new TraceModelRuntime({
     runtime,
     path: tracePath(options, config),

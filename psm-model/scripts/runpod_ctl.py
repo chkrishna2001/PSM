@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -18,8 +19,7 @@ SSH_CONFIG_HOST = "runpod-psm"
 SSH_BIN = "ssh.exe" if os.name == "nt" else "ssh"
 SCP_BIN = "scp.exe" if os.name == "nt" else "scp"
 SSH_KEY_PATH = os.path.expanduser("~/.ssh/id_ed25519")
-# RunPod proxy SSH user suffix: {pod_id}-{suffix}@ssh.runpod.io (set RUNPOD_SSH_PROXY_SUFFIX if it changes).
-SSH_PROXY_SUFFIX = os.environ.get("RUNPOD_SSH_PROXY_SUFFIX", "64411407")
+SSH_CACHE_PATH = Path(os.environ.get("RUNPOD_SSH_CACHE", "psm-model/checkpoints/.runpod-ssh-cache.json"))
 
 # RunPod secret named HF_TOKEN → injected as HF_TOKEN env at pod start.
 HF_TOKEN_SECRET_REF = "{{ RUNPOD_SECRET_HF_TOKEN }}"
@@ -167,26 +167,110 @@ AUTOSTART_CMD = (
 )
 
 
-def _pod_ssh_target(pod: dict) -> dict[str, str]:
-    pod_id = str(pod.get("id", ""))
+def _fetch_pod(pod_id: str) -> dict:
+    return _rest("GET", f"/pods/{pod_id}")
+
+
+def _ssh_cache_load() -> dict[str, str]:
+    if not SSH_CACHE_PATH.exists():
+        return {}
+    try:
+        data = json.loads(SSH_CACHE_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return {str(key): str(value) for key, value in data.items()}
+
+
+def _ssh_cache_save(pod_id: str, pod_host_id: str) -> None:
+    cache = _ssh_cache_load()
+    cache[pod_id] = pod_host_id
+    SSH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SSH_CACHE_PATH.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _graphql_pod_details(pod_id: str) -> dict[str, object]:
+    query = (
+        "query PodSsh($podId: String!) {"
+        " pod(input: { podId: $podId }) {"
+        " id machine { podHostId }"
+        " runtime { ports { ip isIpPublic privatePort publicPort type } }"
+        " } }"
+    )
+    try:
+        data = _graphql(query, {"podId": pod_id})
+    except urllib.error.HTTPError:
+        return {}
+    pod = data.get("pod") or {}
+    return pod if isinstance(pod, dict) else {}
+
+
+def _resolve_pod_host_id(pod_id: str, pod: dict, *, proxy_user: str | None = None) -> str | None:
+    if proxy_user:
+        return proxy_user.strip()
+    cached = _ssh_cache_load().get(pod_id)
+    if cached:
+        return cached
+    gql = _graphql_pod_details(pod_id)
+    machine = gql.get("machine") if isinstance(gql.get("machine"), dict) else {}
+    pod_host_id = machine.get("podHostId")
+    if isinstance(pod_host_id, str) and pod_host_id.strip():
+        return pod_host_id.strip()
+    rest_machine = pod.get("machine") if isinstance(pod.get("machine"), dict) else {}
+    pod_host_id = rest_machine.get("podHostId")
+    if isinstance(pod_host_id, str) and pod_host_id.strip():
+        return pod_host_id.strip()
+    return None
+
+
+def _direct_tcp_target(pod: dict) -> dict[str, str] | None:
     public_ip = str(pod.get("publicIp") or "").strip()
     port_mappings = pod.get("portMappings") or {}
     ssh_port = port_mappings.get("22") or port_mappings.get(22)
-    if public_ip and ssh_port:
-        return {
-            "mode": "direct-tcp",
-            "host": public_ip,
-            "port": str(ssh_port),
-            "user": "root",
-            "command": f"ssh -i {SSH_KEY_PATH} root@{public_ip} -p {ssh_port}",
-        }
+    if not public_ip or not ssh_port:
+        return None
+    return {
+        "mode": "direct-tcp",
+        "host": public_ip,
+        "port": str(ssh_port),
+        "user": "root",
+        "command": f"{SSH_BIN} -i {SSH_KEY_PATH} root@{public_ip} -p {ssh_port}",
+        "pod_id": str(pod.get("id", "")),
+    }
+
+
+def _proxy_target(pod_host_id: str, *, pod_id: str) -> dict[str, str]:
     return {
         "mode": "proxy",
         "host": "ssh.runpod.io",
         "port": "22",
-        "user": f"{pod_id}-{SSH_PROXY_SUFFIX}",
-        "command": f"ssh -i {SSH_KEY_PATH} {pod_id}-{SSH_PROXY_SUFFIX}@ssh.runpod.io",
+        "user": pod_host_id,
+        "command": f"{SSH_BIN} -i {SSH_KEY_PATH} {pod_host_id}@ssh.runpod.io",
+        "pod_id": pod_id,
     }
+
+
+def _pod_ssh_targets(pod_id: str, *, proxy_user: str | None = None) -> list[dict[str, str]]:
+    pod = _fetch_pod(pod_id)
+    targets: list[dict[str, str]] = []
+    pod_host_id = _resolve_pod_host_id(pod_id, pod, proxy_user=proxy_user)
+    if pod_host_id:
+        targets.append(_proxy_target(pod_host_id, pod_id=pod_id))
+    direct = _direct_tcp_target(pod)
+    if direct is not None:
+        targets.append(direct)
+    if not targets:
+        raise SystemExit(
+            json.dumps(
+                {
+                    "error": "no_ssh_targets",
+                    "pod_id": pod_id,
+                    "hint": "Pass --proxy-user from the pod Connect tab (e.g. znq...-64411407) or enable GraphQL API access for podHostId.",
+                    "pod": pod,
+                },
+                indent=2,
+            )
+        )
+    return targets
 
 
 def _write_ssh_config(host_alias: str, target: dict[str, str], *, proxy_target: dict[str, str] | None = None) -> Path:
@@ -213,8 +297,10 @@ def _write_ssh_config(host_alias: str, target: dict[str, str], *, proxy_target: 
     lines = existing.splitlines()
     out: list[str] = []
     skipping = False
+    skip_hosts = {host_alias, f"{host_alias}-proxy"}
     for line in lines:
-        if line.strip() == f"Host {host_alias}":
+        host_line = line.strip()
+        if host_line in {f"Host {name}" for name in skip_hosts}:
             skipping = True
             continue
         if skipping and line.startswith("Host "):
@@ -228,25 +314,44 @@ def _write_ssh_config(host_alias: str, target: dict[str, str], *, proxy_target: 
     return config_path
 
 
+def cmd_ssh_info(args: argparse.Namespace) -> int:
+    targets = _pod_ssh_targets(args.pod_id, proxy_user=args.proxy_user or None)
+    pod = _fetch_pod(args.pod_id)
+    pod_host_id = _resolve_pod_host_id(args.pod_id, pod, proxy_user=args.proxy_user or None)
+    if pod_host_id:
+        _ssh_cache_save(args.pod_id, pod_host_id)
+    report = {
+        "pod_id": args.pod_id,
+        "pod_name": pod.get("name"),
+        "pod_host_id": pod_host_id,
+        "public_ip": pod.get("publicIp"),
+        "port_mappings": pod.get("portMappings"),
+        "targets": targets,
+        "recommended": targets[0],
+    }
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def cmd_ssh_config(args: argparse.Namespace) -> int:
-    pods = _rest("GET", "/pods")
-    pod = next((item for item in pods if item.get("id") == args.pod_id), None)
-    if pod is None:
-        raise SystemExit(f"pod not found: {args.pod_id}")
-    target = _pod_ssh_target(pod)
-    proxy = _proxy_ssh_target(str(pod.get("id", "")))
-    config_path = _write_ssh_config(args.host_alias, target, proxy_target=proxy)
+    targets = _pod_ssh_targets(args.pod_id, proxy_user=args.proxy_user or None)
+    pod = _fetch_pod(args.pod_id)
+    direct = next((item for item in targets if item["mode"] == "direct-tcp"), targets[0])
+    proxy = next((item for item in targets if item["mode"] == "proxy"), None)
+    pod_host_id = _resolve_pod_host_id(args.pod_id, pod, proxy_user=args.proxy_user or None)
+    if pod_host_id:
+        _ssh_cache_save(args.pod_id, pod_host_id)
+    config_path = _write_ssh_config(args.host_alias, direct, proxy_target=proxy)
     print(
         json.dumps(
             {
                 "pod_id": pod.get("id"),
                 "pod_name": pod.get("name"),
-                "ssh_mode": target["mode"],
-                "ssh_command": target["command"],
+                "pod_host_id": pod_host_id,
                 "ssh_config": str(config_path),
                 "host_alias": args.host_alias,
-                "public_ip": pod.get("publicIp"),
-                "port_mappings": pod.get("portMappings"),
+                "proxy_host_alias": f"{args.host_alias}-proxy",
+                "targets": targets,
             },
             indent=2,
         )
@@ -255,20 +360,16 @@ def cmd_ssh_config(args: argparse.Namespace) -> int:
 
 
 def cmd_wait_ssh(args: argparse.Namespace) -> int:
-    import time
-
-    deadline = time.time() + args.timeout_sec
-    last: dict | None = None
-    while time.time() < deadline:
-        pod = _rest("GET", f"/pods/{args.pod_id}")
-        last = pod
-        target = _pod_ssh_target(pod)
-        if target["mode"] == "direct-tcp":
-            cmd_ssh_config(argparse.Namespace(pod_id=args.pod_id, host_alias=args.host_alias))
-            return 0
-        time.sleep(args.poll_sec)
-    print(json.dumps({"event": "timeout", "pod": last}, indent=2), file=sys.stderr)
-    return 1
+    try:
+        _wait_pod_ssh_endpoint(
+            args.pod_id,
+            timeout_sec=args.timeout_sec,
+            poll_sec=args.poll_sec,
+            proxy_user=args.proxy_user or None,
+        )
+        return 0
+    except SystemExit:
+        return 1
 
 
 def _ssh_endpoint(
@@ -283,17 +384,8 @@ def _ssh_endpoint(
     return [host_alias]
 
 
-def _proxy_ssh_target(pod_id: str) -> dict[str, str]:
-    return {
-        "mode": "proxy",
-        "host": "ssh.runpod.io",
-        "port": "22",
-        "user": f"{pod_id}-{SSH_PROXY_SUFFIX}",
-        "command": f"ssh -i {SSH_KEY_PATH} {pod_id}-{SSH_PROXY_SUFFIX}@ssh.runpod.io",
-    }
-
-
 def _ssh_probe(target: dict[str, str]) -> bool:
+    # RunPod proxy SSH requires a PTY; remote one-liners fail — pipe a tiny script instead.
     probe = subprocess.run(
         [
             SSH_BIN,
@@ -301,9 +393,7 @@ def _ssh_probe(target: dict[str, str]) -> bool:
             "-i",
             SSH_KEY_PATH,
             "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=15",
+            "ConnectTimeout=20",
             "-o",
             "StrictHostKeyChecking=accept-new",
             *_ssh_endpoint(
@@ -312,27 +402,46 @@ def _ssh_probe(target: dict[str, str]) -> bool:
                 port=target["port"],
                 user=target["user"],
             ),
-            "echo",
-            "ssh-ready",
+            "bash",
+            "-s",
         ],
+        input="echo ssh-ready\nexit\n",
         capture_output=True,
         text=True,
-        timeout=25,
+        timeout=90,
     )
-    return probe.returncode == 0 and "ssh-ready" in probe.stdout
+    ok = probe.returncode == 0 and "ssh-ready" in probe.stdout
+    if ok and target.get("mode") == "proxy" and target.get("pod_id"):
+        _ssh_cache_save(str(target["pod_id"]), str(target["user"]))
+    return ok
 
 
-def _wait_pod_ssh_endpoint(pod_id: str, *, timeout_sec: int = 420, poll_sec: int = 10) -> dict[str, str]:
+def _wait_pod_ssh_endpoint(
+    pod_id: str,
+    *,
+    timeout_sec: int = 420,
+    poll_sec: int = 10,
+    proxy_user: str | None = None,
+) -> dict[str, str]:
     import time
 
     deadline = time.time() + timeout_sec
     last: dict | None = None
     while time.time() < deadline:
-        pod = _rest("GET", f"/pods/{pod_id}")
-        last = pod
-        cmd_ssh_config(argparse.Namespace(pod_id=pod_id, host_alias=SSH_CONFIG_HOST))
-        candidates = [_proxy_ssh_target(pod_id), _pod_ssh_target(pod)]
-        for target in candidates:
+        last = _fetch_pod(pod_id)
+        try:
+            targets = _pod_ssh_targets(pod_id, proxy_user=proxy_user)
+        except SystemExit:
+            time.sleep(poll_sec)
+            continue
+        cmd_ssh_config(
+            argparse.Namespace(
+                pod_id=pod_id,
+                host_alias=SSH_CONFIG_HOST,
+                proxy_user=proxy_user or "",
+            )
+        )
+        for target in targets:
             if _ssh_probe(target):
                 return target
         time.sleep(poll_sec)
@@ -361,18 +470,17 @@ def _wait_ssh_shell(
                 "-i",
                 SSH_KEY_PATH,
                 "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
+                "ConnectTimeout=20",
                 "-o",
                 "StrictHostKeyChecking=accept-new",
                 *_ssh_endpoint(host_alias, host=host, port=port, user=user),
-                "echo",
-                "ssh-ready",
+                "bash",
+                "-s",
             ],
+            input="echo ssh-ready\nexit\n",
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=90,
         )
         if probe.returncode == 0 and "ssh-ready" in probe.stdout:
             print(
@@ -427,24 +535,138 @@ def _ssh_run_script(
     ):
         print(f"SSH not ready on {host or host_alias} after {ssh_ready_timeout_sec}s", file=sys.stderr)
         return 255
-    env_prefix = ""
+    body = script_path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     if extra_env:
-        parts = [f"{key}={value}" for key, value in extra_env.items()]
-        env_prefix = " ".join(parts) + " "
-    command = f"{env_prefix}bash -s"
-    with script_path.open("r", encoding="utf-8") as stdin_file:
-        result = subprocess.run(
-            [SSH_BIN, "-tt", "-i", SSH_KEY_PATH, *_ssh_endpoint(host_alias, host=host, port=port, user=user), command],
-            stdin=stdin_file,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-        )
-    if result.stdout:
-        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
-    if result.stderr:
-        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-    return result.returncode
+        exports = "\n".join(f"export {key}={value}" for key, value in extra_env.items())
+        body = f"{exports}\n{body}"
+    encoded = base64.b64encode(body.encode("utf-8")).decode("ascii")
+    # RunPod proxy SSH ignores remote argv; pipe through bash -s. Chunk base64 — one-line printf stalls on PTY.
+    chunk_lines = [encoded[index : index + 120] for index in range(0, len(encoded), 120)]
+    heredoc = "\n".join(chunk_lines)
+    stdin = (
+        "cat > /tmp/psm-remote.b64 <<'PSM_B64_EOF'\n"
+        f"{heredoc}\n"
+        "PSM_B64_EOF\n"
+        "base64 -d /tmp/psm-remote.b64 | bash\n"
+        "exit\n"
+    )
+    proc = subprocess.Popen(
+        [
+            SSH_BIN,
+            "-tt",
+            "-i",
+            SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+            "bash",
+            "-s",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    assert proc.stdin is not None
+    proc.stdin.write(stdin)
+    proc.stdin.close()
+    assert proc.stdout is not None
+    import time
+
+    deadline = time.time() + timeout_sec
+    while True:
+        if proc.poll() is not None:
+            remainder = proc.stdout.read()
+            if remainder:
+                print(remainder, end="" if remainder.endswith("\n") else "\n")
+            break
+        if time.time() > deadline:
+            proc.kill()
+            print(f"SSH eval timed out after {timeout_sec}s", file=sys.stderr)
+            return 124
+        line = proc.stdout.readline()
+        if line:
+            print(line, end="" if line.endswith("\n") else "\n")
+        elif proc.poll() is not None:
+            break
+        else:
+            time.sleep(0.05)
+    return proc.returncode if proc.returncode is not None else 124
+
+
+def _ssh_pull_dir(
+    host_alias: str,
+    remote_path: str,
+    local_path: Path,
+    *,
+    host: str | None = None,
+    port: str | None = None,
+    user: str = "root",
+) -> int:
+    """Tar+base64 over bash -s — works when RunPod proxy blocks scp."""
+    import tarfile
+    import tempfile
+
+    local_path.mkdir(parents=True, exist_ok=True)
+    pull_cmd = (
+        f"if [[ -d '{remote_path}' ]]; then\n"
+        "echo PSM_PULL_BEGIN\n"
+        f"tar -C '{remote_path}' -czf - . | base64 -w0\n"
+        "echo\n"
+        "echo PSM_PULL_END\n"
+        "else\n"
+        "echo PSM_PULL_MISSING\n"
+        "fi"
+    )
+    result = subprocess.run(
+        [
+            SSH_BIN,
+            "-tt",
+            "-i",
+            SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+            "bash",
+            "-s",
+        ],
+        input=f"{pull_cmd}\nexit\n",
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        return result.returncode
+    if "PSM_PULL_MISSING" in result.stdout:
+        print(f"remote dir missing or empty: {remote_path}", file=sys.stderr)
+        return 1
+    begin = result.stdout.find("PSM_PULL_BEGIN")
+    end = result.stdout.find("PSM_PULL_END")
+    if begin < 0 or end < 0 or end <= begin:
+        print("could not find pull markers in ssh output", file=sys.stderr)
+        return 1
+    payload = "".join(result.stdout[begin + len("PSM_PULL_BEGIN") : end].split())
+    try:
+        raw = base64.b64decode(payload, validate=False)
+    except Exception as exc:
+        print(f"could not decode pulled archive: {exc}", file=sys.stderr)
+        return 1
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+        tmp.write(raw)
+        tmp_path = Path(tmp.name)
+    try:
+        with tarfile.open(tmp_path, "r:gz") as archive:
+            archive.extractall(local_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return 0
 
 
 def _scp_from_pod(
@@ -464,21 +686,27 @@ def _scp_from_pod(
             capture_output=True,
             text=True,
         )
-        if result.stdout:
-            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.returncode == 0:
+            if result.stdout:
+                print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+            return 0
         if result.stderr:
             print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-        return result.returncode
+        print("scp failed; falling back to ssh tar pull", file=sys.stderr)
+        return _ssh_pull_dir(host_alias, remote_path, local_path, host=host, port=port, user=user)
     result = subprocess.run(
         [SCP_BIN, "-r", "-i", SSH_KEY_PATH, remote_target, str(local_path)],
         capture_output=True,
         text=True,
     )
-    if result.stdout:
-        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    if result.returncode == 0:
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        return 0
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-    return result.returncode
+    print("scp failed; falling back to ssh tar pull", file=sys.stderr)
+    return _ssh_pull_dir(host_alias, remote_path, local_path, host=host, port=port, user=user)
 
 
 def cmd_eval_gates(args: argparse.Namespace) -> int:
@@ -490,8 +718,13 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
     ssh_host: str | None = None
     ssh_port: str | None = None
     ssh_user = "root"
+    proxy_user = args.proxy_user or None
     if args.pod_id and not args.deploy:
-        target = _wait_pod_ssh_endpoint(args.pod_id, timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec))
+        target = _wait_pod_ssh_endpoint(
+            args.pod_id,
+            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
+            proxy_user=proxy_user,
+        )
         ssh_host = target["host"]
         ssh_port = target["port"]
         ssh_user = target["user"]
@@ -514,7 +747,11 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
         pod_id = str(data.get("id", ""))
         if not pod_id:
             raise SystemExit("deploy did not return pod id")
-        target = _wait_pod_ssh_endpoint(pod_id, timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec))
+        target = _wait_pod_ssh_endpoint(
+            pod_id,
+            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
+            proxy_user=proxy_user,
+        )
         ssh_host = target["host"]
         ssh_port = target["port"]
         ssh_user = target["user"]
@@ -533,7 +770,7 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
         timeout_sec=args.timeout_sec,
         extra_env=extra_env,
         ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
-        skip_ssh_wait=bool(args.deploy),
+        skip_ssh_wait=bool(args.deploy or args.pod_id),
     )
 
     remote_report = "/workspace/PSM/psm-model/checkpoints/gate-eval"
@@ -674,14 +911,25 @@ def main() -> int:
     )
     deploy.set_defaults(func=cmd_deploy)
 
-    ssh_cfg = sub.add_parser("ssh-config", help="Write ~/.ssh/config runpod-psm from pod TCP/proxy endpoints")
+    ssh_info = sub.add_parser("ssh-info", help="Print fresh SSH targets from RunPod API for a pod")
+    ssh_info.add_argument("pod_id")
+    ssh_info.add_argument(
+        "--proxy-user",
+        default="",
+        help="Proxy SSH user from Connect tab (e.g. znq...-64411407). Cached after first success.",
+    )
+    ssh_info.set_defaults(func=cmd_ssh_info)
+
+    ssh_cfg = sub.add_parser("ssh-config", help="Write ~/.ssh/config runpod-psm from fresh pod API data")
     ssh_cfg.add_argument("pod_id")
     ssh_cfg.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    ssh_cfg.add_argument("--proxy-user", default="", help="Proxy SSH user from Connect tab if GraphQL podHostId is unavailable.")
     ssh_cfg.set_defaults(func=cmd_ssh_config)
 
-    wait_ssh = sub.add_parser("wait-ssh", help="Poll pod until direct TCP SSH is mapped")
+    wait_ssh = sub.add_parser("wait-ssh", help="Poll pod until SSH accepts connections")
     wait_ssh.add_argument("pod_id")
     wait_ssh.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    wait_ssh.add_argument("--proxy-user", default="", help="Proxy SSH user from Connect tab if needed.")
     wait_ssh.add_argument("--timeout-sec", type=int, default=180)
     wait_ssh.add_argument("--poll-sec", type=int, default=5)
     wait_ssh.set_defaults(func=cmd_wait_ssh)
@@ -699,6 +947,11 @@ def main() -> int:
     eval_gates.add_argument("--volume-gb", type=int, default=40)
     eval_gates.add_argument("--container-disk-gb", type=int, default=20)
     eval_gates.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    eval_gates.add_argument(
+        "--proxy-user",
+        default="",
+        help="Proxy SSH user from Connect tab (pod_id-suffix@ssh.runpod.io). Required if GraphQL podHostId is unavailable.",
+    )
     eval_gates.add_argument("--device", default="cuda", help="Eval device passed to psm_model (cuda recommended on pod).")
     eval_gates.add_argument("--expanded", action="store_true", help="Also run full-model eval on expanded probe (920 rows).")
     eval_gates.add_argument(

@@ -1,6 +1,6 @@
 # PSM 50M — end of day handoff (2026-06-06)
 
-**Read first tomorrow:** this file → [session-log.md](session-log.md) → [training-playbook.md](training-playbook.md).
+**Read first tomorrow:** this file → [session-log.md](session-log.md) → [runpod-ssh-ops.md](runpod-ssh-ops.md) → [training-playbook.md](training-playbook.md).
 
 Training is **stopped**. RunPod pod **deleted**. Passing weights are on **HuggingFace** only (local checkpoints may be stale or absent).
 
@@ -42,11 +42,11 @@ hf download chkrishna2001/psm-50m-mixed-v1-run `
 ```powershell
 $env:PYTHONPATH = 'psm-model\src'
 
-# Gate 3 — must pass before any psm-core wiring
+# Gate 3 — must pass before any psm-core wiring (--output-format tagged required; empty .meta.json defaults to json)
 .\.venv\Scripts\python.exe -m psm_model.eval_checkpoint `
   psm-model\checkpoints\real-v3-50m-full-v2.pt `
   psm-model\data\probes\direct_probes.jsonl `
-  --device cpu
+  --device cpu --output-format tagged
 
 # Gate 2 — action model still valid
 .\.venv\Scripts\python.exe -m psm_model.gate_checkpoint `

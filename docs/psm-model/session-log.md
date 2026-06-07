@@ -192,3 +192,32 @@ python -m psm_model.action_smoke psm-model/checkpoints/<ckpt>.pt psm-model/data/
 ### Handoff
 
 - [2026-06-06-end-of-day-handoff.md](2026-06-06-end-of-day-handoff.md)
+
+## 2026-06-07 — Gate 4 wiring + RunPod SSH fixes (pod deleted)
+
+### Gate status
+
+| Gate | Result | Where verified |
+|------|--------|----------------|
+| **3 Full StorageDecision** | **PASS** | CPU local + CUDA RunPod (`gate-eval/gate3-full-direct.json`) |
+| **2 Phase 1 action** | **PASS** | CUDA RunPod (`gate2-phase1-action.json`, expanded 0.853) |
+| **4 Product / psm-core** | **PASS** | `psm-memory remember --psm-model` → `promote_semantic` + DB write |
+
+### RunPod / SSH
+
+- Fixed `runpod_ctl.py`: proxy SSH requires piped `bash -s` + chunked base64 heredoc (remote argv ignored).
+- GPU eval one-shot PASS; reports in `psm-model/checkpoints/gate-eval/summary.json`.
+- Eval pod `znq97fgibrg758` deleted after pull.
+- Ops cheat sheet: [runpod-ssh-ops.md](runpod-ssh-ops.md).
+
+### psm-core integration fixes
+
+- `extractStoragePayload`: parse last JSON line in prompt (not schema example `{`).
+- `PsmModelRuntime`: stdin to `remember_cli` (Windows `ENAMETOOLONG`).
+- `remember_cli`: assistant-only → `User:` mapping; drop auto `source_timestamp` on non-temporal text.
+
+### Open / minor
+
+- `pip install numpy` in `.venv` (warning only).
+- Gate 4 expanded probe (920 rows) not run locally yet; use `eval-gates --expanded` on RunPod.
+- `scp` via proxy still broken; tar-pull fallback in `runpod_ctl.py` (verify on next deploy).
