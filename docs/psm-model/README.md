@@ -4,9 +4,10 @@ Single entry point for training the generative PSM storage model (`psm-model` pa
 
 ## Read first
 
-1. [2026-06-04-end-of-day-handoff.md](2026-06-04-end-of-day-handoff.md) — **resume here** after a break (checkpoints, commands, LoCoMo/REALTALK data map)
-2. [training-playbook.md](training-playbook.md) — gates, commands, checkpoint denylist, local/HF/Colab workflow
-3. [session-log.md](session-log.md) — rolling log of runs and gate results
+1. [2026-06-06-end-of-day-handoff.md](2026-06-06-end-of-day-handoff.md) — **resume here** (Gate 2+3 PASS, HF checkpoints, Gate 4 next)
+2. [2026-06-04-end-of-day-handoff.md](2026-06-04-end-of-day-handoff.md) — historical mixed-v1 era + LoCoMo/REALTALK data map
+3. [training-playbook.md](training-playbook.md) — gates, commands, checkpoint denylist, local/HF/Colab workflow
+4. [session-log.md](session-log.md) — rolling log of runs and gate results
 
 ## Product context (repo root)
 

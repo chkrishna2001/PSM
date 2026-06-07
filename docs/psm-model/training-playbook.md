@@ -137,7 +137,7 @@ Only after Gate 2 passes. Resume from Gate-2 checkpoint only.
   psm-model\data\curriculum\psm-50m-full-storage-v1-filtered.jsonl `
   --out psm-model\checkpoints\real-v3-50m-full-v1.pt `
   --resume psm-model\checkpoints\real-v3-50m-action-scratch-v1.pt `
-  --steps 3000 --batch-size 1 --preset 50m `
+  --steps 12800 --batch-size 1 --preset 50m `
   --output-format tagged --sampling action_balanced `
   --device auto --cuda-memory-fraction 0.5 `
   --save-every 200

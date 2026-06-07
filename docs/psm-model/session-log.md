@@ -137,3 +137,58 @@ python -m psm_model.action_smoke psm-model/checkpoints/<ckpt>.pt psm-model/data/
 - **SSH:** `ssh -p 29016 root@103.196.86.82` (update `~/.ssh/config` `runpod-psm` when pod changes).
 - **Kickoff on pod:** `hf download chkrishna2001/psm-50m-action-mixed-v1 runpod/runpod_remote_kickoff.sh --local-dir /tmp && bash /tmp/runpod/runpod_remote_kickoff.sh`
 - **Resume:** step-7600 → `real-v3-50m-action-mixed-v2.pt`, target 12k steps, `--manual-probe` logged every 200 steps.
+
+## 2026-06-06 — RunPod IMAGE_AUTH_ERROR (resolved)
+
+- **Failed pod:** `reh84ziwwkgkj3` used `chkrishna2001/psm-50m-train:latest` — image was **never pushed** to Docker Hub → RunPod stopped pod (no charge after stop).
+- **Fix:** all deploys now use stock `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`; bootstrap via HF dataset `runpod/` scripts.
+- **Active pod:** `br27u2fbf2d73n` (`psm-mixed-v2`), template `mo1fjgnycd`, proxy SSH `br27u2fbf2d73n-644120ec@ssh.runpod.io`, `~/.ssh/config` host `runpod-psm`.
+
+## 2026-06-06 — mixed-v2 training running (RunPod)
+
+- **Pod:** `br27u2fbf2d73n`, RTX 4090, tmux `psm-mixed-v2`, HF sync tmux `psm-sync` (every 10 min).
+- **Resume:** step-7600 → `real-v3-50m-action-mixed-v2.pt`, target 12k steps.
+- **Probe @ 7800:** expanded **0.799**, manual **0.80** (manual gate threshold met), collapse **0.30**.
+- **Probe @ 9800:** expanded **0.853**, manual **0.80** — **Gate 2 PASS** (`gate_checkpoint --mode phase1-action`).
+- **Best checkpoint:** `real-v3-50m-action-mixed-v2-step-009800.pt`
+- **Gate 3:** resumed step-9800 → `--steps 12800` (absolute), tagged full-storage curriculum, **complete @ step 12800**.
+- **Output:** `real-v3-50m-full-v2.pt` — HF sync via `psm-sync` tmux.
+
+## 2026-06-06 — Gate 3 complete (RunPod `br27u2fbf2d73n`, pod deleted)
+
+### Gate status (end of session)
+
+| Gate | Checkpoint | Result |
+|------|------------|--------|
+| **2 Phase 1 action** | `real-v3-50m-action-mixed-v2-step-009800.pt` | **PASS** — expanded 0.853, manual 0.80 |
+| **3 Full StorageDecision** | `real-v3-50m-full-v2-step-022800.pt` → `real-v3-50m-full-v2.pt` | **PASS** — `direct_probes` 100% all metrics |
+| **4 Product / psm-core** | — | **Next** — Gate 3 model-only pass met; wiring deferred |
+
+### Gate 3 training arc
+
+1. **12800** (full-storage only): `eval_checkpoint` **FAIL** — 0% parse/schema; garbage tagged output (`A:-`, wrong actions).
+2. **16800** (extended +4000 steps): **FAIL** — 20% parse (`dated_event` only).
+3. **Probe-anchor curriculum** built on pod: `psm-50m-full-storage-v2-probe-anchor.jsonl` = 25,257 filtered storage + **2,500** rows (`direct_probes.jsonl` × 500 copies, 6 probe cases).
+4. Resumed 16800 → 25000 on probe-anchor curriculum.
+5. **22800:** `eval_checkpoint` **PASS** — parse/schema/action/memory/facts all **1.0** on 5 `direct_probes`.
+6. **22999:** training died mid-save; `step-023000.pt` corrupt (134 MB vs ~631 MB). GPU idle ~8+ min before noticed.
+7. Promoted **step-22800** → `real-v3-50m-full-v2.pt`; stopped further training (gate already passed).
+
+### HF + pod
+
+- **Model repo:** `chkrishna2001/psm-50m-mixed-v1-run`
+- **Uploaded & verified:** `real-v3-50m-full-v2.pt`, `real-v3-50m-full-v2-step-022800.pt` (+ tokenizers), ~631 MB each.
+- **HF pitfall:** commit rate limit (128/hour) during bulk `sync_training_to_hf.py`; user completed upload manually.
+- **Pod:** `psm-mixed-v2` `br27u2fbf2d73n` stopped then **deleted** (no GPU billing).
+
+### Three-stage product map (updated)
+
+| Stage | Gate | Status |
+|-------|------|--------|
+| **1. Categorize** | Gate 2 | **PASS** @ step-9800 action checkpoint |
+| **2. Consolidate / full StorageDecision** | Gate 3 | **PASS** @ step-22800 full checkpoint |
+| **3. Recall / product** | Gate 4 + psm-core | **Tomorrow** — broader eval, integration |
+
+### Handoff
+
+- [2026-06-06-end-of-day-handoff.md](2026-06-06-end-of-day-handoff.md)
