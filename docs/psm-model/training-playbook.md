@@ -199,20 +199,41 @@ After eval, bucket parse vs action vs content failures:
 
 RunPod `runpod_eval_gates.sh` writes `gate4-failure-analysis.json` automatically when expanded eval runs.
 
-### Training (resume @ step-22800)
+### Training (production path — `gate4-train-v1`)
 
-Curriculum: `build_gate4_curriculum` = full-storage filtered + direct probes ×500 + expanded ×8 + ignore oversample ×4.
+Curriculum: `build_gate4_train_v1` — **no 25k base dilution**:
+
+| Slice | Source | Default weight |
+|-------|--------|----------------|
+| Expanded full DSL | `expanded-probe-v1-filtered.jsonl` ×40 | ~60% |
+| Parse drills | `generate_direct_behavior_curriculum` promote/store ×25 | ~25% |
+| Stratified real | promote/store sample from `full-storage-v1-filtered` (max 2500) | ~15% |
+| Direct anchors | `direct_probes.jsonl` ×500 | regression guard |
+
+Resume: `real-v3-50m-full-v2-step-022800.pt` (Gate 3 pass). Train with `--output-format tagged`, heavier `promote_semantic` / `store_episodic` span weights.
 
 ```powershell
 python psm-model\scripts\runpod_ctl.py train-gate4 --deploy `
-  --target-steps 28000 `
+  --target-steps 36000 `
+  --resume-checkpoint psm-model/checkpoints/real-v3-50m-full-v2-step-022800.pt `
   --proxy-user <pod_id>-<suffix> `
   --timeout-sec 28800
 ```
 
-Resume checkpoint: `real-v3-50m-full-v2-step-022800.pt` (Gate 3 pass). `--steps` is absolute — 28000 = +5200 from 22800.
+Local curriculum build:
 
-After training: upload new checkpoints to HF, then `eval-gates --expanded`.
+```powershell
+$env:PYTHONPATH='psm-model\src'
+.\.venv\Scripts\python.exe -m psm_model.build_gate4_train_v1 `
+  psm-model\data\curriculum\psm-50m-gate4-train-v1.jsonl `
+  --direct-probes psm-model\data\probes\direct_probes.jsonl `
+  --expanded-probes psm-model\data\direct-behavior-v1\expanded-probe-v1-filtered.jsonl `
+  --stratified-source psm-model\data\curriculum\psm-50m-full-storage-v1-filtered.jsonl
+```
+
+Milestones during training: `parse_valid_rate` ≥ 0.90 on expanded full eval before chasing content metrics. `--target-steps` is absolute (36000 = +13200 from 22800).
+
+After training: `upload-gate4`, then `eval-gates --expanded`. Legacy dilution curriculum: `--curriculum-builder legacy`.
 
 ### Product smoke (additional, not gated in CI yet)
 

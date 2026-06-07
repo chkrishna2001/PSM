@@ -245,3 +245,38 @@ Expanded eval completed without crash. Strict direct-probe thresholds (1.0) were
 - **tmux:** session `psm-gate4`, log `/tmp/psm-gate4-train.log`, metrics `real-v3-50m-full-v2-gate4.metrics.jsonl`
 - **Probe during train:** expanded every 400 steps; direct probes as manual-probe sanity check
 - **Note:** first deploy failed on stale `/workspace/PSM` clone; fixed bootstrap + restarted successfully
+
+### Post-train eval @ step-28000 (CUDA, pod `jk2bodseapigvi`)
+
+| Gate | Result |
+|------|--------|
+| Gate 3 direct probes | **PASS** (100% all metrics) |
+| Gate 2 action + smoke | **PASS** |
+| Gate 4 expanded (913 rows) | **FAIL** — action **0.49**, parse **0.62**, facts_exact **0.34**, memory_content **0.33** |
+
+Improved vs pre-train baseline (action 0.36, parse 0.58) but still far from ship bar (action ≥0.85, parse ≥0.95). Reports pull failed (SCP/tar); full JSON in eval terminal log.
+
+### Round 2 complete @ step-32000
+
+- Training finished; uploaded step-032000 + promoted `full-v2.pt` to HF.
+- Post-train eval (CUDA): Gate 3 **PASS**, Gate 4 expanded **FAIL** — action **0.51**, parse **0.60** (vs 0.49/0.62 @28k; still below ship bar).
+- Pod `jk2bodseapigvi` deleted after eval.
+
+### Round 2 training (resume @28000 → 32000)
+
+- Upload: `runpod_upload_gate4.sh` / `train-gate4 --upload-first`
+- Heavier curriculum: expanded ×12, ignore extra ×6
+- Pod: `jk2bodseapigvi` / proxy `jk2bodseapigvi-644115c2`
+
+## 2026-06-07 — Gate 4 production curriculum (`gate4-train-v1`)
+
+**Decision:** Stop diluting with 25k full-storage base. Train eval-aligned full DSL first.
+
+- **New builder:** `psm_model.build_gate4_train_v1` — expanded-probe ×40 + parse drills (promote/store) ×25 + stratified promote/store from full-storage (max 2500) + direct anchors ×500.
+- **Resume:** `real-v3-50m-full-v2-step-022800.pt` (Gate 3 pass), target **36000** (+13200 steps).
+- **Train flags:** `--output-format tagged`, promote/store span weight 8, eval every 200 steps (action-prefix probe).
+- **Ship bar unchanged:** Gate 4 expanded — parse/schema ≥0.95, action ≥0.85.
+
+```powershell
+python psm-model\scripts\runpod_ctl.py train-gate4 --deploy --target-steps 36000 --proxy-user <pod>-<suffix>
+```

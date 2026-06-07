@@ -514,6 +514,17 @@ def _wait_ssh_shell(
     return False
 
 
+def _ssh_stream_print(line: str) -> None:
+    try:
+        print(line, end="" if line.endswith("\n") else "\n")
+    except UnicodeEncodeError:
+        safe = line.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(
+            sys.stdout.encoding or "utf-8",
+            errors="replace",
+        )
+        print(safe, end="" if safe.endswith("\n") else "\n")
+
+
 def _ssh_run_script(
     host_alias: str,
     script_path: Path,
@@ -568,6 +579,8 @@ def _ssh_run_script(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
     assert proc.stdin is not None
@@ -581,7 +594,7 @@ def _ssh_run_script(
         if proc.poll() is not None:
             remainder = proc.stdout.read()
             if remainder:
-                print(remainder, end="" if remainder.endswith("\n") else "\n")
+                _ssh_stream_print(remainder)
             break
         if time.time() > deadline:
             proc.kill()
@@ -589,7 +602,7 @@ def _ssh_run_script(
             return 124
         line = proc.stdout.readline()
         if line:
-            print(line, end="" if line.endswith("\n") else "\n")
+            _ssh_stream_print(line)
         elif proc.poll() is not None:
             break
         else:
@@ -799,16 +812,15 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
     return rc
 
 
-def cmd_train_gate4(args: argparse.Namespace) -> int:
-    script_path = Path(__file__).resolve().parent / "runpod_train_gate4.sh"
-    if not script_path.exists():
-        raise SystemExit(f"missing train script: {script_path}")
-
+def _resolve_train_pod_ssh(
+    args: argparse.Namespace,
+    *,
+    proxy_user: str | None,
+) -> tuple[str, str | None, str | None, str]:
     pod_id = args.pod_id
     ssh_host: str | None = None
     ssh_port: str | None = None
     ssh_user = "root"
-    proxy_user = args.proxy_user or None
     if args.pod_id and not args.deploy:
         target = _wait_pod_ssh_endpoint(
             args.pod_id,
@@ -820,6 +832,7 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         ssh_user = target["user"]
         pod_id = args.pod_id
         print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
+        return pod_id, ssh_host, ssh_port, ssh_user
 
     if args.deploy:
         deploy_args = argparse.Namespace(
@@ -847,11 +860,76 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         ssh_user = target["user"]
         print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
 
+    return pod_id, ssh_host, ssh_port, ssh_user
+
+
+def cmd_upload_gate4(args: argparse.Namespace) -> int:
+    upload_path = Path(__file__).resolve().parent / "runpod_upload_gate4.sh"
+    if not upload_path.exists():
+        raise SystemExit(f"missing upload script: {upload_path}")
+
+    proxy_user = args.proxy_user or None
+    if not args.pod_id and not args.deploy:
+        raise SystemExit("upload-gate4 requires --pod-id or --deploy")
+
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+    return _ssh_run_script(
+        args.host_alias,
+        upload_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=args.timeout_sec,
+        extra_env={"KEEP_LOCAL": str(args.keep_local)},
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=bool(args.deploy or args.pod_id),
+    )
+
+
+def cmd_train_gate4(args: argparse.Namespace) -> int:
+    script_path = Path(__file__).resolve().parent / "runpod_train_gate4.sh"
+    if not script_path.exists():
+        raise SystemExit(f"missing train script: {script_path}")
+
+    proxy_user = args.proxy_user or None
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+
+    if args.upload_first:
+        upload_path = Path(__file__).resolve().parent / "runpod_upload_gate4.sh"
+        if not upload_path.exists():
+            raise SystemExit(f"missing upload script: {upload_path}")
+        upload_rc = _ssh_run_script(
+            args.host_alias,
+            upload_path,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            timeout_sec=min(args.timeout_sec, 7200),
+            extra_env={"KEEP_LOCAL": str(args.upload_keep_local)},
+            ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+            skip_ssh_wait=bool(args.deploy or args.pod_id),
+        )
+        if upload_rc != 0:
+            print(f"HF upload failed (exit {upload_rc})", file=sys.stderr)
+            return upload_rc
+
     extra_env = {
         "PSM_TRAIN_DEVICE": args.device,
         "TARGET_STEPS": str(args.target_steps),
         "RESUME_CHECKPOINT": args.resume_checkpoint,
         "TOKENIZER": args.tokenizer,
+        "ABORT_AFTER_STEP": str(args.abort_after_step),
+        "GATE4_CURRICULUM_BUILDER": args.curriculum_builder,
+        "GATE4_CURRICULUM": "psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl"
+        if args.curriculum_builder == "v1"
+        else "psm-model/data/curriculum/psm-50m-full-storage-v4-gate4.jsonl",
+        "DIRECT_COPIES": str(args.direct_copies),
+        "EXPANDED_COPIES": str(args.expanded_copies),
+        "DRILL_ROWS_PER_ACTION": str(args.drill_rows_per_action),
+        "DRILL_COPIES": str(args.drill_copies),
+        "STRATIFIED_MAX": str(args.stratified_max),
+        "IGNORE_EXTRA_COPIES": str(args.ignore_extra_copies),
+        "EVAL_EVERY": str(args.eval_every),
     }
     rc = _ssh_run_script(
         args.host_alias,
@@ -1087,17 +1165,39 @@ def main() -> int:
     train_gate4.add_argument(
         "--target-steps",
         type=int,
-        default=28000,
-        help="Absolute training step target (resume @22800 → +5200 steps).",
+        default=32000,
+        help="Absolute training step target (v1 default: 36000 = +13200 from step 22800).",
     )
     train_gate4.add_argument(
         "--resume-checkpoint",
         default="psm-model/checkpoints/real-v3-50m-full-v2-step-022800.pt",
+        help="Gate 3 pass checkpoint; clean base for gate4-train-v1 curriculum.",
     )
     train_gate4.add_argument(
         "--tokenizer",
         default="psm-model/checkpoints/real-v3-50m-full-v2-step-022800.tokenizer.json",
     )
+    train_gate4.add_argument("--upload-first", action="store_true", help="Sync checkpoints to HF before training.")
+    train_gate4.add_argument(
+        "--upload-keep-local",
+        type=int,
+        default=1,
+        help="How many latest step checkpoints to upload (default 1 = latest only).",
+    )
+    train_gate4.add_argument(
+        "--curriculum-builder",
+        choices=("v1", "legacy"),
+        default="v1",
+        help="v1 = expanded-full dominant (production path); legacy = full-storage base dilution.",
+    )
+    train_gate4.add_argument("--direct-copies", type=int, default=500)
+    train_gate4.add_argument("--expanded-copies", type=int, default=40, help="v1: copies per expanded-probe row.")
+    train_gate4.add_argument("--drill-rows-per-action", type=int, default=120)
+    train_gate4.add_argument("--drill-copies", type=int, default=25)
+    train_gate4.add_argument("--stratified-max", type=int, default=2500)
+    train_gate4.add_argument("--ignore-extra-copies", type=int, default=6, help="legacy builder only.")
+    train_gate4.add_argument("--eval-every", type=int, default=200)
+    train_gate4.add_argument("--abort-after-step", type=int, default=30000)
     train_gate4.add_argument("--wait-ssh", type=int, default=300, metavar="SEC")
     train_gate4.add_argument("--timeout-sec", type=int, default=28800, help="SSH training session timeout (8h default).")
     train_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
@@ -1112,6 +1212,23 @@ def main() -> int:
         help="Delete pod after training completes (not recommended — upload checkpoints first).",
     )
     train_gate4.set_defaults(func=cmd_train_gate4)
+
+    upload_gate4 = sub.add_parser("upload-gate4", help="Upload latest Gate 4 checkpoints to HF")
+    upload_gate4.add_argument("--pod-id", default="", help="Existing pod id.")
+    upload_gate4.add_argument("--deploy", action="store_true")
+    upload_gate4.add_argument("--name", default="psm-train-gate4")
+    upload_gate4.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    upload_gate4.add_argument("--template", default="")
+    upload_gate4.add_argument("--gpu", default="NVIDIA GeForce RTX 4090")
+    upload_gate4.add_argument("--volume-gb", type=int, default=40)
+    upload_gate4.add_argument("--container-disk-gb", type=int, default=20)
+    upload_gate4.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    upload_gate4.add_argument("--proxy-user", default="")
+    upload_gate4.add_argument("--wait-ssh", type=int, default=120)
+    upload_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=120)
+    upload_gate4.add_argument("--timeout-sec", type=int, default=7200)
+    upload_gate4.add_argument("--keep-local", type=int, default=1, help="Upload N latest step checkpoints.")
+    upload_gate4.set_defaults(func=cmd_upload_gate4)
 
     args = parser.parse_args()
     return args.func(args)
