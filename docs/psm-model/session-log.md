@@ -234,3 +234,14 @@ After commit `942b711` (context overflow skip + token-budget filter):
 Expanded eval completed without crash. Strict direct-probe thresholds (1.0) were applied in that run; product path on 5 probes still passes.
 
 **2026-06-07 (later):** Codified Gate 4 bar in `psm_model.gates.EXPANDED_PROBE_THRESHOLDS` (action ≥0.85, parse/schema ≥0.95, content/facts ≥0.50). `eval_checkpoint --gate-mode expanded` and `analyze_eval_report` bucket failures (parse / action / content). Current full model still **FAIL** vs expanded bar — resume training from step-22800 with expanded + ignore-heavy curriculum until Gate 4 passes.
+
+## 2026-06-07 — Gate 4 training started (pod `jk2bodseapigvi`)
+
+- **Proxy SSH:** `jk2bodseapigvi-644115c2@ssh.runpod.io`
+- **Direct TCP:** `root@213.173.110.93 -p 12473`
+- **Command:** `runpod_ctl.py train-gate4 --pod-id jk2bodseapigvi --proxy-user jk2bodseapigvi-644115c2 --target-steps 28000`
+- **Resume:** `real-v3-50m-full-v2-step-022800.pt` → absolute target **28000** (+5200 steps)
+- **Curriculum:** `psm-50m-full-storage-v4-gate4.jsonl` — 35,901 rows (25,257 base + 2,500 direct anchor + 7,360 expanded + 784 ignore extra)
+- **tmux:** session `psm-gate4`, log `/tmp/psm-gate4-train.log`, metrics `real-v3-50m-full-v2-gate4.metrics.jsonl`
+- **Probe during train:** expanded every 400 steps; direct probes as manual-probe sanity check
+- **Note:** first deploy failed on stale `/workspace/PSM` clone; fixed bootstrap + restarted successfully

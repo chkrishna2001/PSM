@@ -20,10 +20,19 @@ apt-get update -qq
 apt-get install -y -qq git tmux >/dev/null 2>&1 || true
 pip install -q huggingface_hub hf_transfer numpy
 
-mkdir -p "$ROOT"
 if [[ ! -d "$ROOT/psm-model/src" ]]; then
-  echo "Cloning PSM repo..."
-  git clone --depth 1 "$GIT_URL" "$ROOT"
+  if [[ -d "$ROOT/.git" ]]; then
+    echo "Updating existing PSM repo..."
+    git -C "$ROOT" pull --ff-only || true
+  fi
+  if [[ ! -d "$ROOT/psm-model/src" ]]; then
+    echo "Cloning PSM repo..."
+    if [[ -d "$ROOT" ]] && [[ -n "$(ls -A "$ROOT" 2>/dev/null || true)" ]]; then
+      mv "$ROOT" "${ROOT}.stale.$(date +%s)" 2>/dev/null || rm -rf "$ROOT"
+    fi
+    mkdir -p "$(dirname "$ROOT")"
+    git clone --depth 1 "$GIT_URL" "$ROOT"
+  fi
 fi
 cd "$ROOT"
 git pull --ff-only || true
@@ -187,28 +196,51 @@ PY
 }
 build_curriculum
 
-echo "--- training ---"
-python3 -m psm_model.train \
-  "$CURRICULUM" \
-  --out psm-model/checkpoints/real-v3-50m-full-v2.pt \
-  --resume "$RESUME" \
-  --tokenizer "$TOK" \
-  --steps "$TARGET_STEPS" \
-  --batch-size 1 \
-  --preset 50m \
-  --output-format tagged \
-  --sampling action_balanced \
-  --device "$DEVICE" \
-  --save-every 200 \
-  --metrics-out psm-model/checkpoints/real-v3-50m-full-v2-gate4.metrics.jsonl \
-  --action-span-weight ignore=8 \
-  --action-span-weight promote_semantic=4 \
-  --action-span-weight store_episodic=2 \
-  --action-span-weight flag_conflict=3 \
-  --eval-every 400 \
-  --probe psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
-  --manual-probe psm-model/data/probes/direct_probes.jsonl \
-  --abort-after-step 24000 \
-  --collapse-threshold 0.90
+echo "--- training (tmux session psm-gate4) ---"
+TRAIN_LOG="/tmp/psm-gate4-train.log"
+TRAIN_DONE="/tmp/psm-gate4.done"
+rm -f "$TRAIN_DONE"
+tmux kill-session -t psm-gate4 2>/dev/null || true
+tmux new-session -d -s psm-gate4 bash -lc "
+  set -euo pipefail
+  cd '$ROOT'
+  export PYTHONPATH=psm-model/src
+  python3 -m psm_model.train \
+    '$CURRICULUM' \
+    --out psm-model/checkpoints/real-v3-50m-full-v2.pt \
+    --resume '$RESUME' \
+    --tokenizer '$TOK' \
+    --steps '$TARGET_STEPS' \
+    --batch-size 1 \
+    --preset 50m \
+    --output-format tagged \
+    --sampling action_balanced \
+    --device '$DEVICE' \
+    --save-every 200 \
+    --metrics-out psm-model/checkpoints/real-v3-50m-full-v2-gate4.metrics.jsonl \
+    --action-span-weight ignore=8 \
+    --action-span-weight promote_semantic=4 \
+    --action-span-weight store_episodic=2 \
+    --action-span-weight flag_conflict=3 \
+    --eval-every 400 \
+    --probe psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
+    --manual-probe psm-model/data/probes/direct_probes.jsonl \
+    --abort-after-step 24000 \
+    --collapse-threshold 0.90 \
+    2>&1 | tee '$TRAIN_LOG'
+  echo done > '$TRAIN_DONE'
+"
+
+sleep 2
+tail -n 20 -f "$TRAIN_LOG" &
+TAIL_PID=$!
+while [[ ! -f "$TRAIN_DONE" ]]; do
+  if ! tmux has-session -t psm-gate4 2>/dev/null; then
+    echo "tmux session psm-gate4 ended unexpectedly" >&2
+    break
+  fi
+  sleep 30
+done
+wait "$TAIL_PID" 2>/dev/null || true
 
 echo "=== Gate 4 train done $(date -u +%H:%M:%SZ) ==="
