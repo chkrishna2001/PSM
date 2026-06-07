@@ -6,6 +6,7 @@ ROOT="${PSM_REPO_ROOT:-/workspace/PSM}"
 MODEL_REPO="${PSM_HF_MODEL_REPO:-chkrishna2001/psm-50m-mixed-v1-run}"
 RUN_STEM="${RUN_STEM:-real-v3-50m-full-v2}"
 KEEP_LOCAL="${KEEP_LOCAL:-2}"
+UPLOAD_ALL="${UPLOAD_ALL:-0}"
 
 cd "$ROOT"
 pip install -q huggingface_hub hf_transfer 2>/dev/null || true
@@ -28,6 +29,7 @@ export HF_UPLOAD_REPO="$MODEL_REPO"
 export HF_UPLOAD_ROOT="$ROOT"
 export HF_UPLOAD_STEM="$RUN_STEM"
 export HF_KEEP_LOCAL="$KEEP_LOCAL"
+export HF_UPLOAD_ALL="$UPLOAD_ALL"
 
 python3 - <<'PY'
 import json
@@ -43,6 +45,7 @@ repo_id = os.environ["HF_UPLOAD_REPO"]
 root = Path(os.environ["HF_UPLOAD_ROOT"])
 run_stem = os.environ["HF_UPLOAD_STEM"]
 keep_local = int(os.environ["HF_KEEP_LOCAL"])
+upload_all = os.environ.get("HF_UPLOAD_ALL", "0") == "1"
 api = HfApi()
 manifest_path = root / "psm-model/checkpoints/.hf_sync_manifest.json"
 manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
@@ -63,19 +66,26 @@ def sig(path: Path) -> str:
     stat = path.stat()
     return f"{stat.st_size}:{int(stat.st_mtime)}"
 
+upload_targets = steps if upload_all else steps[-keep_local:]
 uploaded = []
-for step_path in steps:
+errors = []
+for step_path in upload_targets:
     for path in related(step_path):
         remote = path.relative_to(root).as_posix()
         if manifest.get(remote) == sig(path):
             continue
-        api.upload_file(
-            path_or_fileobj=str(path),
-            path_in_repo=remote,
-            repo_id=repo_id,
-            repo_type="model",
-            commit_message=f"sync {remote}",
-        )
+        try:
+            api.upload_file(
+                path_or_fileobj=str(path),
+                path_in_repo=remote,
+                repo_id=repo_id,
+                repo_type="model",
+                commit_message=f"sync {remote}",
+            )
+        except Exception as exc:  # noqa: BLE001 — log and continue (e.g. HF storage limit)
+            errors.append({"remote": remote, "error": str(exc)})
+            print(json.dumps({"event": "upload_error", "remote": remote, "error": str(exc)}))
+            continue
         manifest[remote] = sig(path)
         uploaded.append({"remote": remote, "bytes": path.stat().st_size})
         print(json.dumps({"event": "uploaded", "remote": remote, "bytes": path.stat().st_size}))
@@ -92,13 +102,18 @@ for name in (
     remote = path.relative_to(root).as_posix()
     if manifest.get(remote) == sig(path):
         continue
-    api.upload_file(
-        path_or_fileobj=str(path),
-        path_in_repo=remote,
-        repo_id=repo_id,
-        repo_type="model",
-        commit_message=f"sync {remote}",
-    )
+    try:
+        api.upload_file(
+            path_or_fileobj=str(path),
+            path_in_repo=remote,
+            repo_id=repo_id,
+            repo_type="model",
+            commit_message=f"sync {remote}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        errors.append({"remote": remote, "error": str(exc)})
+        print(json.dumps({"event": "upload_error", "remote": remote, "error": str(exc)}))
+        continue
     manifest[remote] = sig(path)
     uploaded.append({"remote": remote, "bytes": path.stat().st_size})
     print(json.dumps({"event": "uploaded", "remote": remote, "bytes": path.stat().st_size}))
@@ -125,11 +140,13 @@ print(
             "kept_local_steps": sorted(keep_steps),
             "uploaded_count": len(uploaded),
             "deleted_count": len(deleted),
+            "error_count": len(errors),
         },
         sort_keys=True,
     )
 )
 PY
+# Always prune + report resume even if some HF uploads failed (e.g. private storage limit).
 
 df -h /workspace || true
 LATEST=$(ls -1 "$CKPT_DIR"/${RUN_STEM}-step-*.pt 2>/dev/null | sort -t- -k3 -n | tail -1 || true)

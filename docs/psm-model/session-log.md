@@ -295,3 +295,35 @@ python psm-model\scripts\runpod_ctl.py train-gate4 --deploy --target-steps 36000
 - **tmux:** `psm-gate4`, log `/tmp/psm-gate4-train.log`, metrics `real-v3-50m-full-v2-gate4.metrics.jsonl`
 - **GPU:** RTX 4090, torch 2.4.1+cu124
 - **Note:** first kickoff hit broken `/workspace/PSM` clone; fixed bootstrap in `runpod_train_gate4.sh` (fresh clone when `psm-model/src` missing).
+
+## 2026-06-07 — Gate 4 v1 complete @ step-36000 (pod `zya02byfyqquyr`, deleted)
+
+### Training
+
+- Resumed @ **35000** after disk-full corrupt `step-035200`; pruned ~60 local checkpoints.
+- Finished absolute target **36000** on RTX 4090 (~8 min final segment).
+- HF sync: `psm-gate4-sync` every 600s; steps **35600**, **36000** on `chkrishna2001/psm-50m-mixed-v1-run`.
+- **22 nano-psm HF repos deleted** (`delete_nano_psm_hf.py` + `o hftoken`) — private storage freed.
+
+### Gate 4 expanded eval @ step-36000 (CUDA, 913 rows)
+
+| Metric | Result | Bar |
+|--------|--------|-----|
+| action_accuracy | **0.848** | ≥0.85 |
+| parse_valid_rate | **0.852** | ≥0.95 |
+| schema_valid_rate | **0.852** | ≥0.95 |
+
+**FAIL** — but major jump from 32k (action 0.51, parse 0.60). Failure mode: **135 parse fails** (105 `promote_semantic`), **4** wrong-action.
+
+Gate 3 direct + Gate 2 action/smoke: **PASS**.
+
+Reports: `gate4-*-step-36000.json` (local or terminal log `860687`). `runpod_ctl.py --full-checkpoint` + `PSM_EVAL_FULL_CKPT` added.
+
+### Incidents
+
+- Accidental second `eval-gates` run orphaned `eval_checkpoint` on pod; killed via `pkill`.
+- **Pod deleted** end of day — no RunPod billing overnight.
+
+### Next
+
+See [2026-06-07-end-of-day-handoff.md](2026-06-07-end-of-day-handoff.md): **gate4-train-v2** (parse-heavy + failure-mined drills), resume 36k → 40k, one eval, target parse/schema ≥95%.

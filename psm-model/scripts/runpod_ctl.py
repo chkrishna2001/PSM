@@ -946,6 +946,8 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
         "PSM_EVAL_DEVICE": args.device,
         "PSM_EVAL_EXPANDED": "1" if args.expanded else "0",
     }
+    if args.full_checkpoint:
+        extra_env["PSM_EVAL_FULL_CKPT"] = args.full_checkpoint
     rc = _ssh_run_script(
         args.host_alias,
         script_path,
@@ -1080,14 +1082,33 @@ def cmd_recover_gate4(args: argparse.Namespace) -> int:
         "SAVE_EVERY": str(args.save_every),
         "SYNC_INTERVAL_SEC": "600",
     }
+    prune_path = Path(__file__).resolve().parent / "runpod_prune_gate4.sh"
+    prune_result = _ssh_run_script(
+        args.host_alias,
+        prune_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=600,
+        extra_env={"KEEP_LOCAL": str(args.keep_local)},
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+        capture_output=True,
+    )
+    if isinstance(prune_result, tuple):
+        prune_rc, prune_output = prune_result
+    else:
+        prune_rc, prune_output = prune_result, ""
+    resume_checkpoint, resume_step = _parse_resume_checkpoint(prune_output)
+
     upload_result = _ssh_run_script(
         args.host_alias,
         upload_path,
         host=ssh_host,
         port=ssh_port,
         user=ssh_user,
-        timeout_sec=min(args.timeout_sec, 7200),
-        extra_env=shared_env,
+        timeout_sec=min(args.timeout_sec, 1800),
+        extra_env={**shared_env, "UPLOAD_ALL": "0"},
         ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
         skip_ssh_wait=True,
         capture_output=True,
@@ -1096,12 +1117,28 @@ def cmd_recover_gate4(args: argparse.Namespace) -> int:
         upload_rc, upload_output = upload_result
     else:
         upload_rc, upload_output = upload_result, ""
-    if upload_rc != 0:
-        return upload_rc
-
-    resume_checkpoint, resume_step = _parse_resume_checkpoint(upload_output)
+    upload_resume, upload_step = _parse_resume_checkpoint(upload_output)
+    if upload_resume:
+        resume_checkpoint, resume_step = upload_resume, upload_step
+    if prune_rc != 0 and not resume_checkpoint:
+        return prune_rc if isinstance(prune_rc, int) else prune_rc[0]
+    if upload_rc != 0 and not resume_checkpoint:
+        return upload_rc if isinstance(upload_rc, int) else upload_rc[0]
     if not resume_checkpoint:
         raise SystemExit("upload-gate4 did not report RESUME_CHECKPOINT; cannot resume training")
+    if upload_rc != 0:
+        print(
+            json.dumps(
+                {
+                    "event": "upload_partial_failure",
+                    "upload_rc": upload_rc,
+                    "resume_checkpoint": resume_checkpoint,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
     tokenizer = f"{resume_checkpoint.removesuffix('.pt')}.tokenizer.json" if resume_checkpoint.endswith(".pt") else ""
     print(
         json.dumps(
@@ -1411,6 +1448,11 @@ def main() -> int:
     )
     eval_gates.add_argument("--device", default="cuda", help="Eval device passed to psm_model (cuda recommended on pod).")
     eval_gates.add_argument("--expanded", action="store_true", help="Also run full-model eval on expanded probe (920 rows).")
+    eval_gates.add_argument(
+        "--full-checkpoint",
+        default="",
+        help="Full-model checkpoint path under repo (default: promoted real-v3-50m-full-v2.pt).",
+    )
     eval_gates.add_argument(
         "--wait-ssh",
         type=int,

@@ -10,7 +10,7 @@ DEVICE="${PSM_EVAL_DEVICE:-cuda}"
 OUT_DIR="${PSM_EVAL_OUT:-psm-model/checkpoints/gate-eval}"
 RUN_EXPANDED="${PSM_EVAL_EXPANDED:-0}"
 
-FULL_CKPT="psm-model/checkpoints/real-v3-50m-full-v2.pt"
+FULL_CKPT="${PSM_EVAL_FULL_CKPT:-psm-model/checkpoints/real-v3-50m-full-v2.pt}"
 ACTION_CKPT="psm-model/checkpoints/real-v3-50m-action-mixed-v2-step-009800.pt"
 
 echo "=== PSM gate eval $(date -u +%Y-%m-%dT%H:%M:%SZ) device=$DEVICE ==="
