@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from psm_model.eval_generation import evaluate_model_rows
-from psm_model.gates import gate_report
+from psm_model.gates import gate_report, thresholds_for_gate_mode
 from psm_model.generate import load_checkpoint_metadata
 from psm_model.model import TinyDecoderModel
 from psm_model.tokenizer import ByteTokenizer, load_tokenizer
@@ -20,6 +20,7 @@ def evaluate_checkpoint(
     max_new_tokens: int = 1200,
     device: str = "cpu",
     force_action_head: bool = False,
+    gate_mode: str = "direct",
 ) -> dict[str, object]:
     import torch
 
@@ -47,7 +48,8 @@ def evaluate_checkpoint(
             "device": str(device_obj),
             "force_action_head": force_action_head,
             "tokenizer_vocab_size": tokenizer.vocab_size,
-            "gate": gate_report(report),
+            "gate_mode": gate_mode,
+            "gate": gate_report(report, thresholds_for_gate_mode(gate_mode)),
         }
     )
     return report
@@ -61,6 +63,12 @@ def main() -> int:
     parser.add_argument("--max-new-tokens", type=int, default=1200)
     parser.add_argument("--device", default="cpu", help="Evaluation device: cpu, cuda, or auto.")
     parser.add_argument("--force-action-head", action="store_true", help="Use the auxiliary action head to force the generated action prefix.")
+    parser.add_argument(
+        "--gate-mode",
+        default="direct",
+        choices=["direct", "expanded"],
+        help="Gate 3 uses direct (1.0 on all metrics). Gate 4 expanded probe uses relaxed expanded thresholds.",
+    )
     args = parser.parse_args()
 
     report = evaluate_checkpoint(
@@ -70,6 +78,7 @@ def main() -> int:
         max_new_tokens=args.max_new_tokens,
         device=args.device,
         force_action_head=args.force_action_head,
+        gate_mode=args.gate_mode,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["gate"]["passed"] else 1

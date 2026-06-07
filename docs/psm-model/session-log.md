@@ -219,5 +219,18 @@ python -m psm_model.action_smoke psm-model/checkpoints/<ckpt>.pt psm-model/data/
 ### Open / minor
 
 - `pip install numpy` in `.venv` (warning only).
-- Gate 4 expanded probe (920 rows) not run locally yet; use `eval-gates --expanded` on RunPod.
 - `scp` via proxy still broken; tar-pull fallback in `runpod_ctl.py` (verify on next deploy).
+
+## 2026-06-07 — Gate 4 expanded eval (pod `xxguvuvmwbf2oz`, deleted)
+
+After commit `942b711` (context overflow skip + token-budget filter):
+
+| Eval | Result |
+|------|--------|
+| Gate 3 direct probes | **PASS** (CUDA) |
+| Gate 2 action + smoke | **PASS** (CUDA) |
+| Gate 4 expanded (913/920 rows, 7 dropped >1536 tok) | **FAIL** — action 0.36, parse 0.58, facts_exact 0.25 |
+
+Expanded eval completed without crash. Strict direct-probe thresholds (1.0) were applied in that run; product path on 5 probes still passes.
+
+**2026-06-07 (later):** Codified Gate 4 bar in `psm_model.gates.EXPANDED_PROBE_THRESHOLDS` (action ≥0.85, parse/schema ≥0.95, content/facts ≥0.50). `eval_checkpoint --gate-mode expanded` and `analyze_eval_report` bucket failures (parse / action / content). Current full model still **FAIL** vs expanded bar — resume training from step-22800 with expanded + ignore-heavy curriculum until Gate 4 passes.

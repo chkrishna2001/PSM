@@ -123,7 +123,13 @@ if [[ "$RUN_EXPANDED" == "1" ]]; then
   run_eval gate4-full-expanded \
     -m psm_model.eval_checkpoint \
     "$FULL_CKPT" "$EXPANDED_PROBE" \
-    --device "$DEVICE" --output-format tagged || EXPANDED_RC=$?
+    --device "$DEVICE" --output-format tagged --gate-mode expanded || EXPANDED_RC=$?
+  if [[ -f "$OUT_DIR/gate4-full-expanded.json" ]]; then
+    run_eval gate4-failure-analysis \
+      -m psm_model.analyze_eval_report \
+      "$OUT_DIR/gate4-full-expanded.json" \
+      --gate-mode expanded || true
+  fi
 fi
 
 python3 - <<PY

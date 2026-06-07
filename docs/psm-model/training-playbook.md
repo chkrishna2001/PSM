@@ -151,9 +151,58 @@ Only after Gate 2 passes. Resume from Gate-2 checkpoint only.
 
 Pass: direct probes exact on all metrics (see `psm_model.gates`).
 
-## Gate 4 — Product
+## Gate 4 — Expanded product bar
 
-Do **not** wire into `psm-core` until Gate 3 model-only generation passes. `safe_generate` remains an optional experiment bridge.
+Gate 3 (`direct_probes`, 5 rows) proves the full StorageDecision head on canonical cases. Gate 4 is the **ship bar** on the budget-filtered expanded probe (~913 rows, prompts ≤1536 tokens).
+
+**Do not** set `psmModel.enabled: true` by default until Gate 4 passes. `--psm-model` on `remember` remains opt-in for probe-shaped smoke.
+
+### Eval (GPU — RunPod)
+
+```powershell
+python psm-model\scripts\runpod_ctl.py eval-gates --deploy --expanded --delete-after `
+  --proxy-user <pod_id>-<suffix> --pull-reports psm-model\checkpoints\gate-eval
+```
+
+Gate 4 uses `--gate-mode expanded` (see `psm_model.gates.EXPANDED_PROBE_THRESHOLDS`).
+
+### Pass criteria (`EXPANDED_PROBE_THRESHOLDS`)
+
+| Metric | Minimum |
+|--------|---------|
+| `parse_valid_rate` | 0.95 |
+| `schema_valid_rate` | 0.95 |
+| `action_accuracy` | 0.85 |
+| `memory_type_accuracy` | 0.70 |
+| `memory_content_exact_rate` | 0.50 |
+| `fact_count_accuracy` | 0.70 |
+| `facts_exact_rate` | 0.50 |
+
+Local repro (slow on CPU):
+
+```powershell
+$env:PYTHONPATH='psm-model\src'
+.\.venv\Scripts\python.exe -m psm_model.eval_checkpoint `
+  psm-model\checkpoints\real-v3-50m-full-v2.pt `
+  psm-model\data\direct-behavior-v1\expanded-probe-v1-filtered.jsonl `
+  --device cuda --output-format tagged --gate-mode expanded
+```
+
+### Failure analysis
+
+After eval, bucket parse vs action vs content failures:
+
+```powershell
+.\.venv\Scripts\python.exe -m psm_model.analyze_eval_report `
+  psm-model\checkpoints\gate-eval\gate4-full-expanded.json --gate-mode expanded
+```
+
+RunPod `runpod_eval_gates.sh` writes `gate4-failure-analysis.json` automatically when expanded eval runs.
+
+### Product smoke (additional, not gated in CI yet)
+
+- Manual full-output smoke: `match_rate` ≥ 0.80 on `manual-probe.jsonl`
+- 20–30 real-chat `remember --psm-model` E2E cases with parse-failure → ignore/repair
 
 ## Colab (after Gate 2)
 
