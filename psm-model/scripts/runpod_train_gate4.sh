@@ -105,6 +105,21 @@ PY
 
 build_curriculum() {
   if [[ "$CURRICULUM_BUILDER" == "v2" ]]; then
+    for module in build_gate4_train_v2 mine_gate4_parse_failures; do
+      if ! python3 -c "import psm_model.${module}" 2>/dev/null; then
+        echo "Fetching psm_model.${module} from $DATASET_REPO..."
+        hf download "$DATASET_REPO" "psm-code/${module}.py" \
+          --repo-type dataset --local-dir /tmp/psm-gate4-code || true
+        if [[ -f "/tmp/psm-gate4-code/psm-code/${module}.py" ]]; then
+          cp "/tmp/psm-gate4-code/psm-code/${module}.py" "psm-model/src/psm_model/${module}.py"
+        fi
+      fi
+    done
+    if ! python3 -c "import psm_model.build_gate4_train_v2" 2>/dev/null; then
+      echo "psm_model.build_gate4_train_v2 unavailable after HF fetch" >&2
+      exit 1
+    fi
+
     PARSE_REPAIR="${GATE4_PARSE_REPAIR:-psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl}"
     EVAL_REPORT="${GATE4_EVAL_REPORT:-}"
     REPAIR_SOURCE="${GATE4_REPAIR_SOURCE:-psm-model/data/direct-behavior-v1/expanded-probe-v1-budget.jsonl}"
