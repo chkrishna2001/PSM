@@ -9,6 +9,8 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -854,6 +856,67 @@ def _ssh_pull_dir(
     return 0
 
 
+def _ssh_push_dir(
+    host_alias: str,
+    local_path: Path,
+    remote_path: str,
+    *,
+    host: str | None = None,
+    port: str | None = None,
+    user: str = "root",
+) -> int:
+    """Push a local directory to the pod via tar+base64 over bash -s."""
+    if not local_path.is_dir():
+        print(f"local dir missing: {local_path}", file=sys.stderr)
+        return 1
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        with tarfile.open(tmp_path, "w:gz") as archive:
+            archive.add(local_path, arcname=".")
+        encoded = base64.b64encode(tmp_path.read_bytes()).decode("ascii")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    chunk_lines = [encoded[index : index + 120] for index in range(0, len(encoded), 120)]
+    heredoc = "\n".join(chunk_lines)
+    push_cmd = (
+        f"mkdir -p '{remote_path}'\n"
+        "cat > /tmp/psm-push.b64 <<'PSM_PUSH_EOF'\n"
+        f"{heredoc}\n"
+        "PSM_PUSH_EOF\n"
+        f"base64 -d /tmp/psm-push.b64 | tar -C '{remote_path}' -xzf -\n"
+        "echo PSM_PUSH_OK\n"
+    )
+    result = subprocess.run(
+        [
+            SSH_BIN,
+            "-tt",
+            "-i",
+            SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+            "bash",
+            "-s",
+        ],
+        input=f"{push_cmd}\nexit\n",
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    if result.returncode != 0:
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        return result.returncode
+    if "PSM_PUSH_OK" not in result.stdout:
+        print("remote push did not confirm PSM_PUSH_OK", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _scp_from_pod(
     host_alias: str,
     remote_path: str,
@@ -1219,6 +1282,22 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
             print(f"HF upload failed (exit {upload_rc})", file=sys.stderr)
             return upload_rc
 
+    if args.sync_src:
+        repo_root = Path(__file__).resolve().parents[2]
+        src_dir = repo_root / "psm-model" / "src"
+        remote_src = "/workspace/PSM/psm-model/src"
+        print(f"Syncing {src_dir} -> pod:{remote_src}", file=sys.stderr)
+        push_rc = _ssh_push_dir(
+            args.host_alias,
+            src_dir,
+            remote_src,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if push_rc != 0:
+            print(f"warning: src sync failed (exit {push_rc}); pod may use stale git checkout", file=sys.stderr)
+
     extra_env = {
         "PSM_TRAIN_DEVICE": args.device,
         "TARGET_STEPS": str(args.target_steps),
@@ -1515,6 +1594,12 @@ def main() -> int:
     train_gate4.add_argument(
         "--tokenizer",
         default="psm-model/checkpoints/real-v3-50m-full-v2-step-036000.tokenizer.json",
+    )
+    train_gate4.add_argument(
+        "--sync-src",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Tar-sync local psm-model/src to pod before training (default: on).",
     )
     train_gate4.add_argument("--upload-first", action="store_true", help="Sync checkpoints to HF before training.")
     train_gate4.add_argument(
