@@ -8,12 +8,11 @@ DATASET_REPO="${PSM_HF_DATASET_REPO:-chkrishna2001/psm-50m-action-mixed-v1}"
 GIT_URL="${PSM_GIT_URL:-https://github.com/chkrishna2001/PSM.git}"
 DEVICE="${PSM_TRAIN_DEVICE:-cuda}"
 
-RESUME="${RESUME_CHECKPOINT:-psm-model/checkpoints/real-v3-50m-full-v2-step-022800.pt}"
-TOK="${TOKENIZER:-psm-model/checkpoints/real-v3-50m-full-v2-step-022800.tokenizer.json}"
-# Gate 3 pass @22800 is the clean resume base for eval-aligned v1 curriculum.
-TARGET_STEPS="${TARGET_STEPS:-36000}"
-CURRICULUM="${GATE4_CURRICULUM:-psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl}"
-CURRICULUM_BUILDER="${GATE4_CURRICULUM_BUILDER:-v1}"
+RESUME="${RESUME_CHECKPOINT:-psm-model/checkpoints/real-v3-50m-full-v2-step-036000.pt}"
+TOK="${TOKENIZER:-psm-model/checkpoints/real-v3-50m-full-v2-step-036000.tokenizer.json}"
+TARGET_STEPS="${TARGET_STEPS:-40000}"
+CURRICULUM="${GATE4_CURRICULUM:-psm-model/data/curriculum/psm-50m-gate4-train-v2.jsonl}"
+CURRICULUM_BUILDER="${GATE4_CURRICULUM_BUILDER:-v2}"
 SAVE_EVERY="${SAVE_EVERY:-400}"
 KEEP_LOCAL="${KEEP_LOCAL:-2}"
 SYNC_INTERVAL_SEC="${SYNC_INTERVAL_SEC:-600}"
@@ -105,6 +104,56 @@ if torch.cuda.is_available():
 PY
 
 build_curriculum() {
+  if [[ "$CURRICULUM_BUILDER" == "v2" ]]; then
+    PARSE_REPAIR="${GATE4_PARSE_REPAIR:-psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl}"
+    EVAL_REPORT="${GATE4_EVAL_REPORT:-}"
+    REPAIR_SOURCE="${GATE4_REPAIR_SOURCE:-psm-model/data/direct-behavior-v1/expanded-probe-v1-budget.jsonl}"
+    EXPANDED_BUDGET="$REPAIR_SOURCE"
+
+    if [[ ! -f "$EXPANDED_BUDGET" && -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl ]]; then
+      echo "Building expanded token-budget JSONL for parse-repair mining..."
+      python3 -m psm_model.filter_by_token_budget \
+        psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
+        "$EXPANDED_BUDGET" \
+        --tokenizer "$TOK" \
+        --max-tokens 1536 \
+        --output-format tagged
+    fi
+
+    if [[ ! -f "$PARSE_REPAIR" ]]; then
+      echo "Downloading parse-repair pack from $DATASET_REPO..."
+      hf download "$DATASET_REPO" curriculum/gate4-parse-repair-step-36000.jsonl \
+        --repo-type dataset --local-dir psm-model/data || true
+      if [[ -f psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl ]]; then
+        PARSE_REPAIR="psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl"
+      fi
+    fi
+
+    BUILD_ARGS=(
+      "$CURRICULUM"
+      --direct-probes psm-model/data/probes/direct_probes.jsonl
+      --expanded-probes psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl
+      --stratified-source psm-model/data/curriculum/psm-50m-full-storage-v1-filtered.jsonl
+      --direct-copies "${DIRECT_COPIES:-500}"
+      --expanded-copies "${EXPANDED_COPIES:-25}"
+      --drill-rows-per-action "${DRILL_ROWS_PER_ACTION:-120}"
+      --drill-copies "${DRILL_COPIES:-50}"
+      --stratified-max "${STRATIFIED_MAX:-1500}"
+      --repair-copies "${REPAIR_COPIES:-3}"
+    )
+
+    if [[ -f "$PARSE_REPAIR" ]]; then
+      BUILD_ARGS+=(--parse-repair "$PARSE_REPAIR")
+    elif [[ -n "$EVAL_REPORT" && -f "$EVAL_REPORT" && -f "$REPAIR_SOURCE" ]]; then
+      BUILD_ARGS+=(--eval-report "$EVAL_REPORT" --repair-source "$REPAIR_SOURCE" --parse-repair "$PARSE_REPAIR")
+    else
+      echo "gate4-train-v2 requires parse-repair pack or eval report + budget source" >&2
+      exit 1
+    fi
+
+    python3 -m psm_model.build_gate4_train_v2 "${BUILD_ARGS[@]}"
+    return
+  fi
   if [[ "$CURRICULUM_BUILDER" == "v1" ]]; then
     if python3 -c "import psm_model.build_gate4_train_v1" 2>/dev/null; then
       python3 -m psm_model.build_gate4_train_v1 "$CURRICULUM" \

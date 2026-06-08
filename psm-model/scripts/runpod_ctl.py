@@ -37,9 +37,10 @@ DEFAULT_MIN_VRAM_GB = 12
 
 # Cheapest-first preference order for --auto-gpu (GraphQL stockStatus must not be None).
 PSM_GPU_PREFERENCES = (
+    "NVIDIA L4",
+    "NVIDIA RTX A5000",
     "NVIDIA GeForce RTX 3090",
     "NVIDIA GeForce RTX 4080",
-    "NVIDIA L4",
     "NVIDIA GeForce RTX 4090",
 )
 
@@ -1225,9 +1226,14 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "TOKENIZER": args.tokenizer,
         "ABORT_AFTER_STEP": str(args.abort_after_step),
         "GATE4_CURRICULUM_BUILDER": args.curriculum_builder,
-        "GATE4_CURRICULUM": "psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl"
-        if args.curriculum_builder == "v1"
-        else "psm-model/data/curriculum/psm-50m-full-storage-v4-gate4.jsonl",
+        "GATE4_CURRICULUM": {
+            "v1": "psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl",
+            "v2": "psm-model/data/curriculum/psm-50m-gate4-train-v2.jsonl",
+            "legacy": "psm-model/data/curriculum/psm-50m-full-storage-v4-gate4.jsonl",
+        }[args.curriculum_builder],
+        "GATE4_PARSE_REPAIR": args.parse_repair,
+        "GATE4_EVAL_REPORT": args.eval_report,
+        "GATE4_REPAIR_SOURCE": args.repair_source,
         "DIRECT_COPIES": str(args.direct_copies),
         "EXPANDED_COPIES": str(args.expanded_copies),
         "DRILL_ROWS_PER_ACTION": str(args.drill_rows_per_action),
@@ -1498,17 +1504,17 @@ def main() -> int:
     train_gate4.add_argument(
         "--target-steps",
         type=int,
-        default=32000,
-        help="Absolute training step target (v1 default: 36000 = +13200 from step 22800).",
+        default=40000,
+        help="Absolute training step target (v2 default: 40000 = +4000 from step 36000).",
     )
     train_gate4.add_argument(
         "--resume-checkpoint",
-        default="psm-model/checkpoints/real-v3-50m-full-v2-step-022800.pt",
-        help="Gate 3 pass checkpoint; clean base for gate4-train-v1 curriculum.",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-036000.pt",
+        help="Gate 4 v2 resume checkpoint (step 36000 expanded eval base).",
     )
     train_gate4.add_argument(
         "--tokenizer",
-        default="psm-model/checkpoints/real-v3-50m-full-v2-step-022800.tokenizer.json",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-036000.tokenizer.json",
     )
     train_gate4.add_argument("--upload-first", action="store_true", help="Sync checkpoints to HF before training.")
     train_gate4.add_argument(
@@ -1522,18 +1528,34 @@ def main() -> int:
     train_gate4.add_argument("--sync-interval-sec", type=int, default=600, help="HF sync + prune interval during training.")
     train_gate4.add_argument(
         "--curriculum-builder",
-        choices=("v1", "legacy"),
-        default="v1",
-        help="v1 = expanded-full dominant (production path); legacy = full-storage base dilution.",
+        choices=("v1", "v2", "legacy"),
+        default="v2",
+        help="v2 = parse-heavy + failure repair (production path); v1 = expanded-full dominant; legacy = full-storage dilution.",
     )
     train_gate4.add_argument("--direct-copies", type=int, default=500)
-    train_gate4.add_argument("--expanded-copies", type=int, default=40, help="v1: copies per expanded-probe row.")
+    train_gate4.add_argument("--expanded-copies", type=int, default=25, help="v2: copies per expanded-probe row (v1 default: 40).")
     train_gate4.add_argument("--drill-rows-per-action", type=int, default=120)
-    train_gate4.add_argument("--drill-copies", type=int, default=25)
-    train_gate4.add_argument("--stratified-max", type=int, default=2500)
+    train_gate4.add_argument("--drill-copies", type=int, default=50, help="v2 default: 50 (v1 default: 25).")
+    train_gate4.add_argument("--stratified-max", type=int, default=1500, help="v2 default: 1500 (v1 default: 2500).")
+    train_gate4.add_argument("--repair-copies", type=int, default=3, help="v2: copies per mined parse-failure row.")
+    train_gate4.add_argument(
+        "--parse-repair",
+        default="psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl",
+        help="Pre-mined parse-repair JSONL (downloaded from HF if missing on pod).",
+    )
+    train_gate4.add_argument(
+        "--eval-report",
+        default="",
+        help="Optional full Gate 4 eval JSON to mine parse failures on pod if repair pack missing.",
+    )
+    train_gate4.add_argument(
+        "--repair-source",
+        default="psm-model/data/direct-behavior-v1/expanded-probe-v1-budget.jsonl",
+        help="Gold probe JSONL for on-pod parse-repair mining.",
+    )
     train_gate4.add_argument("--ignore-extra-copies", type=int, default=6, help="legacy builder only.")
     train_gate4.add_argument("--eval-every", type=int, default=200)
-    train_gate4.add_argument("--abort-after-step", type=int, default=30000)
+    train_gate4.add_argument("--abort-after-step", type=int, default=38000)
     train_gate4.add_argument("--wait-ssh", type=int, default=300, metavar="SEC")
     train_gate4.add_argument("--timeout-sec", type=int, default=28800, help="SSH training session timeout (8h default).")
     train_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
