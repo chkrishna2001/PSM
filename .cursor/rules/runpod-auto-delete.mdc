@@ -1,0 +1,24 @@
+---
+description: Delete idle RunPod pods without waiting for user confirmation
+alwaysApply: true
+---
+
+# RunPod pod lifecycle (Gate 4)
+
+## Upload policy (every training run)
+
+1. **Upload all step checkpoints to HF** every 120s during training (`UPLOAD_ALL=1`, batch commits).
+2. **Never delete local** step files until `.pt` + `.tokenizer.json` + `.meta.json` are on HF (manifest match).
+3. **After expanded eval:** registry picks best → **keep best only** locally + on HF (`GATE4_KEEP_BEST_ONLY=1`); prune regressed/non-best from HF.
+4. **Final sync must pass** (`GATE4_FINAL_SYNC=1`) + `verify-hf` on pod before train script exits.
+
+## Delete policy (every delete path)
+
+- **`train-gate4`:** Pull registry from pod → verify best step has **all 3 files** on HF → only then delete pod.
+- **`delete-pod` / `delete-all`:** Block if registry best checkpoint is missing any HF file. Use `--force-delete-pod` only to override.
+- **Scripts:** Always sync `psm-model/scripts/` to pod at train start (upload script must exist).
+
+## General
+
+- All GPU training/eval/LoCoMo on RunPod only; never local CUDA.
+- LoCoMo deferred until Gate 4 parse ≥95%.

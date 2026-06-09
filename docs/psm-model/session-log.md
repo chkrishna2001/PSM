@@ -327,3 +327,40 @@ Reports: `gate4-*-step-36000.json` (local or terminal log `860687`). `runpod_ctl
 ### Next
 
 See [2026-06-07-end-of-day-handoff.md](2026-06-07-end-of-day-handoff.md): **gate4-train-v2** (parse-heavy + failure-mined drills), resume 36k → 40k, one eval, target parse/schema ≥95%.
+
+## 2026-06-08 — Gate 4 v4 train + eval @ 45600 (pod `bllek0twl70y3j`, deleted)
+
+### Status
+
+- **Nothing running** — all RunPod pods deleted; no billing.
+- **LoCoMo 25 cancelled/deferred** — was queued in tmux `psm-locomo`; pod deleted before ingest started.
+
+### Training
+
+- Pod `bllek0twl70y3j` / `psm-gate4-v4`, RTX 2000 Ada.
+- v4 curriculum; resume **41600 → 45600** (repair lineage — not ideal base).
+- Training completed; checkpoints **42000–45600** on pod volume.
+
+### Gate 4 expanded eval @ step 45600 (CUDA, 913 rows)
+
+| Metric | Result | Bar |
+|--------|--------|-----|
+| parse_valid_rate | **0.881** | ≥0.95 |
+| schema_valid_rate | **0.881** | ≥0.95 |
+| action_accuracy | **0.881** | ≥0.85 |
+
+**FAIL** — action passes; parse/schema short by ~7 pts. Eval runtime ~65–84 min (913 serial GPU decodes).
+
+Report: `psm-model/checkpoints/gate-eval/gate4-full-expanded-step-045600.json` (extracted from terminal log `551512`). HF: `curriculum/gate4-full-expanded-step-45600.json`.
+
+### Incidents
+
+- HF final sync **failed** — `runpod_upload_gate4.sh` missing on pod.
+- Pod **auto-deleted** after ctl session — **42000/45600 `.pt` lost** (again).
+- HF sprawl prune: **42** intermediate checkpoints removed (18k–41k).
+- Delete gate added to `runpod_ctl.py` (block delete until target `.pt` on HF).
+- `runpod_locomo.sh` added; `GATE4_LOCOMO_AFTER=1` optional hook — not used tomorrow until parse passes.
+
+### Next
+
+See [2026-06-08-end-of-day-handoff.md](2026-06-08-end-of-day-handoff.md): resume HF **36000 → 42000** v4, upload before delete, LoCoMo deferred.

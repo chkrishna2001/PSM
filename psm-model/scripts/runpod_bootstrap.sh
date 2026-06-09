@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="${PSM_REPO_ROOT:-/workspace/PSM}"
-MODEL_REPO="${PSM_HF_MODEL_REPO:-chkrishna2001/psm-50m-mixed-v1-run}"
+MODEL_REPO="${PSM_HF_MODEL_REPO:-subbu83/psm-50m-mixed-v1-run}"
 DATASET_REPO="${PSM_HF_DATASET_REPO:-chkrishna2001/psm-50m-action-mixed-v1}"
 GIT_URL="${PSM_GIT_URL:-https://github.com/chkrishna2001/PSM.git}"
 
@@ -42,7 +42,7 @@ if [[ -n "${HF_TOKEN:-}" ]]; then
 fi
 
 if [[ -z "${HF_TOKEN:-}" ]]; then
-  echo "HF_TOKEN not set (expect RunPod secret: HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}); skipping HF download."
+  echo "HF_TOKEN not set (expect RunPod secret: HF_TOKEN_C={{ RUNPOD_SECRET_HF_TOKEN_C }}); skipping HF download."
   exit 0
 fi
 

@@ -10,6 +10,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($UseGpu) {
+    Write-Error "Local GPU is disabled (-UseGpu). Use RunPod for GPU training/eval/LoCoMo runs."
+    exit 1
+}
+
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $serverExe = "C:\Users\chkri\source\repos\llama.cpp\build\bin\Release\llama-server.exe"
 $log = Join-Path $root "benchmark\locomo\results\llama-server.log"
@@ -26,9 +31,7 @@ $args = @(
 
 if ($UseGpu) {
     $args += @("-ngl", "999")
-}
-
-$server = Start-Process `
+} `
     -FilePath $serverExe `
     -ArgumentList $args `
     -WorkingDirectory $root `

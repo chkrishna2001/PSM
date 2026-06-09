@@ -29,6 +29,8 @@ If GPU layers are unsupported by the local build/runtime, remove `-ngl 999`.
 
 ## Ingest
 
+**GPU policy:** All CUDA training/eval and GPU LoCoMo runs use **RunPod** (`runpod_ctl.py`). Local scripts in this folder are **CPU-only**.
+
 Smoke test first:
 
 ```powershell
@@ -44,24 +46,18 @@ benchmark\locomo\run-ingest.ps1 -BatchSize 4
 
 The default DB is `benchmark\locomo\results\locomo-psm-memory.db`.
 
-Use `-UseGpu` to pass `-ngl 999` to llama.cpp. The current observed run loaded on CPU; a CUDA-enabled llama.cpp build/runtime should show CUDA buffers in `benchmark\locomo\results\llama-server.err.log`.
+Use `-UseGpu` is **disabled locally** (RunPod only for GPU llama.cpp).
 
 ## Ingest With node-llama-cpp
 
-This path uses the Node runtime directly and asks `node-llama-cpp` to select GPU automatically:
+Local path is **CPU-only** (`-Gpu false -GpuLayers 0`). For GPU LoCoMo ingest, use RunPod.
 
 ```powershell
 npm run build
-benchmark\locomo\run-ingest-node.ps1 -Limit 25 -Gpu auto -GpuLayers auto
+benchmark\locomo\run-ingest-node.ps1 -Limit 25 -Gpu false -GpuLayers 0
 ```
 
-For a full run:
-
-```powershell
-benchmark\locomo\run-ingest-node.ps1 -Gpu auto -GpuLayers auto
-```
-
-If CUDA is available through `node-llama-cpp`, startup logs should show CUDA as the selected backend and a positive model GPU layer count.
+For GPU LoCoMo ingest/eval, use a RunPod pod (see `psm-model/scripts/runpod_ctl.py`).
 
 ## Evaluate
 

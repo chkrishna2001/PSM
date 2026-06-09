@@ -19,6 +19,7 @@
     "locomo:ingest": "node dist/benchmark/locomo/src/ingest.js",
     "locomo:ingest-nano": "node dist/benchmark/locomo/src/ingest-nano.js",
     "locomo:ingest-node": "node dist/benchmark/locomo/src/ingest-node.js",
+    "locomo:ingest-psm-model": "node dist/benchmark/locomo/src/ingest-psm-model.js",
     "locomo:report": "node dist/benchmark/locomo/src/report.js",
     "ft:sources": "node nano-psm/data-pipeline/src/prepare-external-sources.mjs",
     "ft:inspect:local": "node nano-psm/data-pipeline/src/inspect-local-psm-sources.mjs",

@@ -558,13 +558,22 @@ def train_texts(
 
 
 def resolve_device(device: str, torch: Any | None = None) -> Any:
+    from psm_model.device_policy import enforce_local_device_policy
+
     torch = torch or _torch()
+    device = enforce_local_device_policy(device, context="resolve_device")
     requested = device.lower()
     if requested == "auto":
-        requested = "cuda" if torch.cuda.is_available() else "cpu"
+        requested = "cuda" if torch.cuda.is_available() and allow_local_gpu() else "cpu"
     if requested == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA was requested but torch.cuda.is_available() is false")
     return torch.device(requested)
+
+
+def allow_local_gpu() -> bool:
+    from psm_model.device_policy import allow_local_gpu as _allow_local_gpu
+
+    return _allow_local_gpu()
 
 
 def configure_cuda_memory_fraction(torch: Any, device: Any, fraction: float) -> None:

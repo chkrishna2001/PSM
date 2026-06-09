@@ -15,6 +15,7 @@ ACTION_CKPT="psm-model/checkpoints/real-v3-50m-action-mixed-v2-step-009800.pt"
 
 echo "=== PSM gate eval $(date -u +%Y-%m-%dT%H:%M:%SZ) device=$DEVICE ==="
 
+export PSM_RUNPOD=1
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq git >/dev/null 2>&1 || true

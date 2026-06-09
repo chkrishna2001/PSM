@@ -25,8 +25,12 @@ SCP_BIN = "scp.exe" if os.name == "nt" else "scp"
 SSH_KEY_PATH = os.path.expanduser("~/.ssh/id_ed25519")
 SSH_CACHE_PATH = Path(os.environ.get("RUNPOD_SSH_CACHE", "psm-model/checkpoints/.runpod-ssh-cache.json"))
 
-# RunPod secret named HF_TOKEN → injected as HF_TOKEN env at pod start.
-HF_TOKEN_SECRET_REF = "{{ RUNPOD_SECRET_HF_TOKEN }}"
+# RunPod secret HF_TOKEN_C (subbu83) → injected as HF_TOKEN env at pod start.
+HF_TOKEN_SECRET_REF = "{{ RUNPOD_SECRET_HF_TOKEN_C }}"
+
+# Model checkpoints (private storage). Dataset/bootstrap stays on chkrishna2001 until migrated.
+DEFAULT_HF_MODEL_REPO = "subbu83/psm-50m-mixed-v1-run"
+DEFAULT_HF_DATASET_REPO = "chkrishna2001/psm-50m-action-mixed-v1"
 
 # Custom image chkrishna2001/psm-50m-train:latest is NOT on Docker Hub — use stock PyTorch only.
 STOCK_PYTORCH_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
@@ -73,8 +77,8 @@ DEFAULT_TEMPLATE = {
         "HF_TOKEN": HF_TOKEN_SECRET_REF,
         "PYTHONPATH": "psm-model/src",
         "PSM_REPO_ROOT": "/workspace/PSM",
-        "PSM_HF_MODEL_REPO": "chkrishna2001/psm-50m-mixed-v1-run",
-        "PSM_HF_DATASET_REPO": "chkrishna2001/psm-50m-action-mixed-v1",
+        "PSM_HF_MODEL_REPO": DEFAULT_HF_MODEL_REPO,
+        "PSM_HF_DATASET_REPO": DEFAULT_HF_DATASET_REPO,
     },
 }
 
@@ -284,7 +288,90 @@ def cmd_stop_pod(args: argparse.Namespace) -> int:
     return 0
 
 
+def _delete_pod_unless_kept(args: argparse.Namespace, pod_id: str, rc: int, *, job: str) -> None:
+    if not pod_id or getattr(args, "keep_pod", False):
+        return
+    if rc == 255:
+        print(f"Skipping pod delete because {job} never started (pod {pod_id} left running).", file=sys.stderr)
+        return
+    if getattr(args, "force_delete_pod", False):
+        print(f"Force-deleting pod {pod_id} after {job} (--force-delete-pod).", file=sys.stderr)
+        _rest("DELETE", f"/pods/{pod_id}")
+        return
+    missing = _gate4_missing_hf_checkpoints(getattr(args, "required_hf_steps", None))
+    if missing:
+        print(
+            f"BLOCKING pod delete after {job}: checkpoint .pt not on HF: {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        print(f"Pod {pod_id} left running. Run upload-gate4 --pod-id {pod_id} then delete manually.", file=sys.stderr)
+        return
+    print(f"Deleting pod {pod_id} after {job}...")
+    _rest("DELETE", f"/pods/{pod_id}")
+
+
+def _hf_model_file_exists(repo_id: str, path_in_repo: str) -> bool:
+    try:
+        from huggingface_hub import file_exists
+
+        return bool(file_exists(path_in_repo, repo_id=repo_id, repo_type="model"))
+    except Exception:
+        return False
+
+
+def _gate4_best_steps_for_verify() -> list[int]:
+    registry_path = Path(__file__).resolve().parents[1] / "checkpoints" / "gate4-checkpoint-registry.json"
+    if not registry_path.exists():
+        return []
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        best = registry.get("best") or {}
+        if best.get("step") is not None:
+            return [int(best["step"])]
+    except json.JSONDecodeError:
+        pass
+    return []
+
+
+def _gate4_missing_hf_checkpoints(required_steps: list[int] | None) -> list[str]:
+    """Return remote paths for required step checkpoints missing from HF (pt + tokenizer + meta)."""
+    repo_id = os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO)
+    run_stem = "real-v3-50m-full-v2"
+    steps: set[int] = set(required_steps or [])
+    registry_path = Path(__file__).resolve().parents[1] / "checkpoints" / "gate4-checkpoint-registry.json"
+    if registry_path.exists():
+        try:
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            best = registry.get("best") or {}
+            if best.get("step") is not None:
+                steps.add(int(best["step"]))
+        except json.JSONDecodeError:
+            pass
+    if not steps:
+        return []
+    try:
+        from psm_model.gate4_checkpoint_registry import verify_hf_steps
+
+        return verify_hf_steps(repo_id=repo_id, run_stem=run_stem, steps=steps)
+    except Exception:
+        missing: list[str] = []
+        for step in sorted(steps):
+            for suffix in (".pt", ".tokenizer.json", ".meta.json"):
+                remote = f"psm-model/checkpoints/{run_stem}-step-{step:06d}{suffix}"
+                if not _hf_model_file_exists(repo_id, remote):
+                    missing.append(remote)
+        return missing
+
+
 def cmd_delete_pod(args: argparse.Namespace) -> int:
+    missing = _gate4_missing_hf_checkpoints(getattr(args, "required_hf_steps", None))
+    if missing and not getattr(args, "force_delete_pod", False):
+        print(
+            f"BLOCKING pod delete: checkpoint files not on HF: {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        print("Run upload-gate4 or use --force-delete-pod to override.", file=sys.stderr)
+        return 1
     result = _rest("DELETE", f"/pods/{args.pod_id}")
     print(json.dumps(result, indent=2))
     return 0
@@ -300,6 +387,13 @@ def cmd_stop_all(_: argparse.Namespace) -> int:
 
 
 def cmd_delete_all(_: argparse.Namespace) -> int:
+    missing = _gate4_missing_hf_checkpoints(None)
+    if missing:
+        print(
+            f"BLOCKING delete-all: checkpoint files not on HF: {', '.join(missing)}",
+            file=sys.stderr,
+        )
+        return 1
     pods = _rest("GET", "/pods")
     for pod in pods:
         print(f"Deleting {pod['id']} ({pod.get('name')})...")
@@ -313,7 +407,7 @@ def cmd_create_template(args: argparse.Namespace) -> int:
         spec["imageName"] = args.image
     spec["name"] = args.name
     spec["readme"] = (
-        "PSM 50M training image. Requires RunPod secret HF_TOKEN "
+        "PSM 50M training image. Requires RunPod secret HF_TOKEN_C "
         f"(env HF_TOKEN={HF_TOKEN_SECRET_REF}). Bootstrap pulls checkpoints/data from HF on start."
     )
     try:
@@ -1040,12 +1134,7 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
         else:
             print(json.dumps({"pulled_reports": str(local_report.resolve())}, indent=2))
 
-    if args.delete_after and pod_id:
-        if rc == 255:
-            print(f"Skipping pod delete because eval never started (pod {pod_id} left running).", file=sys.stderr)
-        else:
-            print(f"Deleting pod {pod_id}...")
-            _rest("DELETE", f"/pods/{pod_id}")
+    _delete_pod_unless_kept(args, pod_id, rc, job="eval")
 
     return rc
 
@@ -1242,6 +1331,15 @@ def cmd_upload_gate4(args: argparse.Namespace) -> int:
         raise SystemExit("upload-gate4 requires --pod-id or --deploy")
 
     pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+    upload_env: dict[str, str] = {
+        "KEEP_LOCAL": str(args.keep_local),
+        "PSM_HF_MODEL_REPO": os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO),
+        "UPLOAD_ALL": os.environ.get("UPLOAD_ALL", "0"),
+        "GATE4_PINNED_STEPS": os.environ.get("GATE4_PINNED_STEPS", "42000"),
+    }
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        upload_env["HF_TOKEN"] = hf_token
     return _ssh_run_script(
         args.host_alias,
         upload_path,
@@ -1249,7 +1347,7 @@ def cmd_upload_gate4(args: argparse.Namespace) -> int:
         port=ssh_port,
         user=ssh_user,
         timeout_sec=args.timeout_sec,
-        extra_env={"KEEP_LOCAL": str(args.keep_local)},
+        extra_env=upload_env,
         ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
         skip_ssh_wait=bool(args.deploy or args.pod_id),
     )
@@ -1298,6 +1396,22 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         if push_rc != 0:
             print(f"warning: src sync failed (exit {push_rc}); pod may use stale git checkout", file=sys.stderr)
 
+    repo_root = Path(__file__).resolve().parents[2]
+    scripts_dir = repo_root / "psm-model" / "scripts"
+    if scripts_dir.is_dir():
+        remote_scripts = "/workspace/PSM/psm-model/scripts"
+        print(f"Syncing {scripts_dir} -> pod:{remote_scripts}", file=sys.stderr)
+        scripts_rc = _ssh_push_dir(
+            args.host_alias,
+            scripts_dir,
+            remote_scripts,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if scripts_rc != 0:
+            print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
     extra_env = {
         "PSM_TRAIN_DEVICE": args.device,
         "TARGET_STEPS": str(args.target_steps),
@@ -1308,6 +1422,9 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "GATE4_CURRICULUM": {
             "v1": "psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl",
             "v2": "psm-model/data/curriculum/psm-50m-gate4-train-v2.jsonl",
+            "v3": "psm-model/data/curriculum/psm-50m-gate4-train-v3.jsonl",
+            "v4": "psm-model/data/curriculum/psm-50m-gate4-train-v4.jsonl",
+            "micro": "psm-model/data/curriculum/psm-50m-gate4-train-micro.jsonl",
             "legacy": "psm-model/data/curriculum/psm-50m-full-storage-v4-gate4.jsonl",
         }[args.curriculum_builder],
         "GATE4_PARSE_REPAIR": args.parse_repair,
@@ -1323,6 +1440,7 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "SAVE_EVERY": str(args.save_every),
         "KEEP_LOCAL": str(args.keep_local),
         "SYNC_INTERVAL_SEC": str(args.sync_interval_sec),
+        "GATE4_EVAL_AFTER": "1" if args.eval_after else "0",
     }
     rc = _ssh_run_script(
         args.host_alias,
@@ -1349,12 +1467,18 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         if scp_rc != 0:
             print("warning: could not pull gate4 metrics", file=sys.stderr)
 
-    if args.delete_after and pod_id:
-        if rc == 255:
-            print(f"Skipping pod delete because training never started (pod {pod_id} left running).", file=sys.stderr)
-        else:
-            print(f"Deleting pod {pod_id}...")
-            _rest("DELETE", f"/pods/{pod_id}")
+    local_ckpt_dir = Path(__file__).resolve().parents[1] / "checkpoints"
+    _scp_from_pod(
+        args.host_alias,
+        "/workspace/PSM/psm-model/checkpoints/gate4-checkpoint-registry.json",
+        local_ckpt_dir,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+    )
+
+    args.required_hf_steps = _gate4_best_steps_for_verify() or [int(args.target_steps)]
+    _delete_pod_unless_kept(args, pod_id, rc, job="training")
 
     return rc
 
@@ -1365,8 +1489,8 @@ def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
         "HF_TOKEN": HF_TOKEN_SECRET_REF,
         "PYTHONPATH": "psm-model/src",
         "PSM_REPO_ROOT": "/workspace/PSM",
-        "PSM_HF_MODEL_REPO": "chkrishna2001/psm-50m-mixed-v1-run",
-        "PSM_HF_DATASET_REPO": "chkrishna2001/psm-50m-action-mixed-v1",
+        "PSM_HF_MODEL_REPO": DEFAULT_HF_MODEL_REPO,
+        "PSM_HF_DATASET_REPO": DEFAULT_HF_DATASET_REPO,
         "PSM_SYNC_GIT": "1",
     }
     payload: dict[str, object] = {
@@ -1400,8 +1524,8 @@ def cmd_deploy(args: argparse.Namespace) -> int:
         "HF_TOKEN": HF_TOKEN_SECRET_REF,
         "PYTHONPATH": "psm-model/src",
         "PSM_REPO_ROOT": "/workspace/PSM",
-        "PSM_HF_MODEL_REPO": "chkrishna2001/psm-50m-mixed-v1-run",
-        "PSM_HF_DATASET_REPO": "chkrishna2001/psm-50m-action-mixed-v1",
+        "PSM_HF_MODEL_REPO": DEFAULT_HF_MODEL_REPO,
+        "PSM_HF_DATASET_REPO": DEFAULT_HF_DATASET_REPO,
         "PSM_SYNC_GIT": "1",
     }
     data = _rest("POST", "/pods", _deploy_payload(args))
@@ -1450,6 +1574,11 @@ def main() -> int:
 
     delete = sub.add_parser("delete-pod", help="Terminate one pod by id")
     delete.add_argument("pod_id")
+    delete.add_argument(
+        "--force-delete-pod",
+        action="store_true",
+        help="Delete even if Gate 4 best checkpoint is not fully on HF (dangerous).",
+    )
     delete.set_defaults(func=cmd_delete_pod)
 
     sub.add_parser("delete-all", help="Terminate all pods").set_defaults(func=cmd_delete_all)
@@ -1557,7 +1686,8 @@ def main() -> int:
         default="psm-model/checkpoints/gate-eval",
         help="Local directory to scp gate-eval JSON reports into (empty to skip).",
     )
-    eval_gates.add_argument("--delete-after", action="store_true", help="Delete the pod after eval (use with --deploy).")
+    eval_gates.add_argument("--keep-pod", action="store_true", help="Keep pod running after eval (default: delete when --pod-id is set).")
+    eval_gates.add_argument("--delete-after", action="store_true", help=argparse.SUPPRESS)
     eval_gates.set_defaults(func=cmd_eval_gates)
 
     train_gate4 = sub.add_parser(
@@ -1583,13 +1713,13 @@ def main() -> int:
     train_gate4.add_argument(
         "--target-steps",
         type=int,
-        default=40000,
-        help="Absolute training step target (v2 default: 40000 = +4000 from step 36000).",
+        default=42000,
+        help="Absolute training step target (recovery default: re-train 36000→42000).",
     )
     train_gate4.add_argument(
         "--resume-checkpoint",
         default="psm-model/checkpoints/real-v3-50m-full-v2-step-036000.pt",
-        help="Gate 4 v2 resume checkpoint (step 36000 expanded eval base).",
+        help="Gate 4 resume checkpoint (recovery: 36000 is best on HF from v2 lineage).",
     )
     train_gate4.add_argument(
         "--tokenizer",
@@ -1610,22 +1740,22 @@ def main() -> int:
     )
     train_gate4.add_argument("--save-every", type=int, default=400)
     train_gate4.add_argument("--keep-local", type=int, default=2, help="Pod disk: retain N step checkpoints locally.")
-    train_gate4.add_argument("--sync-interval-sec", type=int, default=600, help="HF sync + prune interval during training.")
+    train_gate4.add_argument("--sync-interval-sec", type=int, default=120, help="HF sync interval during training (upload all steps).")
     train_gate4.add_argument(
         "--curriculum-builder",
-        choices=("v1", "v2", "legacy"),
-        default="v2",
-        help="v2 = parse-heavy + failure repair (production path); v1 = expanded-full dominant; legacy = full-storage dilution.",
+        choices=("v1", "v2", "v3", "v4", "micro", "legacy"),
+        default="v4",
+        help="v4 = production (expanded ×100 + complete-tag drills, resume 42k); v3/v2/micro = prior experiments.",
     )
-    train_gate4.add_argument("--direct-copies", type=int, default=500)
-    train_gate4.add_argument("--expanded-copies", type=int, default=25, help="v2: copies per expanded-probe row (v1 default: 40).")
+    train_gate4.add_argument("--direct-copies", type=int, default=300)
+    train_gate4.add_argument("--expanded-copies", type=int, default=100, help="v4: copies per expanded-budget row.")
     train_gate4.add_argument("--drill-rows-per-action", type=int, default=120)
     train_gate4.add_argument("--drill-copies", type=int, default=50, help="v2 default: 50 (v1 default: 25).")
     train_gate4.add_argument("--stratified-max", type=int, default=1500, help="v2 default: 1500 (v1 default: 2500).")
-    train_gate4.add_argument("--repair-copies", type=int, default=3, help="v2: copies per mined parse-failure row.")
+    train_gate4.add_argument("--repair-copies", type=int, default=1, help="v4: light repair from 42k failures.")
     train_gate4.add_argument(
         "--parse-repair",
-        default="psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl",
+        default="psm-model/data/curriculum/gate4-parse-repair-step-42000.jsonl",
         help="Pre-mined parse-repair JSONL (downloaded from HF if missing on pod).",
     )
     train_gate4.add_argument(
@@ -1639,8 +1769,14 @@ def main() -> int:
         help="Gold probe JSONL for on-pod parse-repair mining.",
     )
     train_gate4.add_argument("--ignore-extra-copies", type=int, default=6, help="legacy builder only.")
-    train_gate4.add_argument("--eval-every", type=int, default=200)
-    train_gate4.add_argument("--abort-after-step", type=int, default=38000)
+    train_gate4.add_argument("--eval-every", type=int, default=0, help="Mid-train probe eval interval (0 = off).")
+    train_gate4.add_argument("--abort-after-step", type=int, default=60000)
+    train_gate4.add_argument(
+        "--eval-after",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run expanded Gate 4 eval on target checkpoint after training (default: on).",
+    )
     train_gate4.add_argument("--wait-ssh", type=int, default=300, metavar="SEC")
     train_gate4.add_argument("--timeout-sec", type=int, default=28800, help="SSH training session timeout (8h default).")
     train_gate4.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
@@ -1649,10 +1785,16 @@ def main() -> int:
         default="",
         help="Local path to directory for metrics jsonl pull after training (empty to skip).",
     )
+    train_gate4.add_argument("--keep-pod", action="store_true", help="Keep pod running after training (default: delete when --pod-id is set).")
+    train_gate4.add_argument(
+        "--force-delete-pod",
+        action="store_true",
+        help="Delete pod even if production checkpoint .pt is missing from HF (dangerous).",
+    )
     train_gate4.add_argument(
         "--delete-after",
         action="store_true",
-        help="Delete pod after training completes (not recommended — upload checkpoints first).",
+        help=argparse.SUPPRESS,
     )
     train_gate4.set_defaults(func=cmd_train_gate4)
 

@@ -79,8 +79,8 @@ export function defaultPsmConfig(): PsmConfig {
     },
     runtime: {
       contextSize: 4096,
-      gpu: "auto",
-      gpuLayers: "auto"
+      gpu: "cpu",
+      gpuLayers: "0"
     },
     psmModel: {
       enabled: false,
