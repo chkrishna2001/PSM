@@ -17,6 +17,7 @@ SAVE_EVERY="${SAVE_EVERY:-400}"
 KEEP_LOCAL="${KEEP_LOCAL:-2}"
 SYNC_INTERVAL_SEC="${SYNC_INTERVAL_SEC:-120}"
 UPLOAD_ALL="${UPLOAD_ALL:-1}"
+STRUCTURAL_LOSS_WEIGHT="${STRUCTURAL_LOSS_WEIGHT:-1}"
 RESUME_STEP="$(basename "$RESUME" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
 
 echo "=== PSM Gate 4 train $(date -u +%Y-%m-%dT%H:%M:%SZ) device=$DEVICE target=$TARGET_STEPS resume_step=$RESUME_STEP ==="
@@ -329,7 +330,7 @@ build_curriculum() {
       --direct-copies "${DIRECT_COPIES:-20}" \
       --drill-rows-per-action "${DRILL_ROWS_PER_ACTION:-120}" \
       --drill-copies "${DRILL_COPIES:-5}" \
-      --repair-copies "${REPAIR_COPIES:-25}"
+      --repair-copies "${REPAIR_COPIES:-12}"
     return
   fi
   if [[ "$CURRICULUM_BUILDER" == "v3" ]]; then
@@ -657,6 +658,12 @@ PY
 }
 build_curriculum
 
+if [[ "$CURRICULUM_BUILDER" == "micro" ]]; then
+  STRUCTURAL_LOSS_WEIGHT="${STRUCTURAL_LOSS_WEIGHT:-8}"
+  PROMOTE_SPAN_WEIGHT="${PROMOTE_SPAN_WEIGHT:-4}"
+  echo "micro train: structural_loss=$STRUCTURAL_LOSS_WEIGHT promote_span=$PROMOTE_SPAN_WEIGHT"
+fi
+
 RUN_STEM="real-v3-50m-full-v2"
 export GATE4_PINNED_STEPS="${RESUME_STEP}"
 SYNC_CMD="cd '$ROOT' && export UPLOAD_ALL=${UPLOAD_ALL} KEEP_LOCAL=$KEEP_LOCAL GATE4_PINNED_STEPS='$RESUME_STEP' PSM_HF_MODEL_REPO='$MODEL_REPO' PSM_HF_DATASET_REPO='$DATASET_REPO' && while true; do sleep $SYNC_INTERVAL_SEC; bash psm-model/scripts/runpod_upload_gate4.sh 2>&1 | tee -a psm-model/checkpoints/gate4-sync.log; done"
@@ -672,7 +679,7 @@ tmux kill-session -t psm-gate4 2>/dev/null || true
 tmux new-session -d -s psm-gate4 bash -lc "
   set -euo pipefail
   cd '$ROOT'
-  export PYTHONPATH=psm-model/src
+  export PSM_RUNPOD=1 PYTHONPATH=psm-model/src
   python3 -m psm_model.train \
     '$CURRICULUM' \
     --out psm-model/checkpoints/real-v3-50m-full-v2.pt \
@@ -687,9 +694,10 @@ tmux new-session -d -s psm-gate4 bash -lc "
     --save-every '$SAVE_EVERY' \
     --metrics-out psm-model/checkpoints/real-v3-50m-full-v2-gate4.metrics.jsonl \
     --action-span-weight ignore=4 \
-    --action-span-weight promote_semantic=8 \
+    --action-span-weight promote_semantic='${PROMOTE_SPAN_WEIGHT:-8}' \
     --action-span-weight store_episodic=8 \
     --action-span-weight flag_conflict=3 \
+    --structural-loss-weight '${STRUCTURAL_LOSS_WEIGHT}' \
     --eval-every '${EVAL_EVERY:-200}' \
     --probe psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
     --manual-probe psm-model/data/probes/direct_probes.jsonl \

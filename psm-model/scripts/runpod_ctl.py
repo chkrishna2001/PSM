@@ -676,6 +676,150 @@ def _ssh_probe(target: dict[str, str]) -> bool:
     return ok
 
 
+def _proxy_ssh_triplet(proxy_user: str) -> tuple[str, str, str]:
+    """RunPod proxy: user is pod_id-suffix, host is ssh.runpod.io."""
+    return "ssh.runpod.io", "22", proxy_user.split("@", 1)[0]
+
+
+def _resolve_pod_ssh(
+    args: argparse.Namespace,
+    *,
+    proxy_user: str | None,
+) -> tuple[str, str | None, str | None, str]:
+    """Prefer --proxy-user (instant). Fall back to _wait_pod_ssh_endpoint (slow, often flaky)."""
+    pod_id = str(getattr(args, "pod_id", "") or "")
+    if pod_id and not getattr(args, "deploy", False) and proxy_user and "@" in proxy_user:
+        ssh_host, ssh_port, ssh_user = _proxy_ssh_triplet(proxy_user)
+        print(
+            json.dumps(
+                {
+                    "event": "using_ssh_endpoint",
+                    "mode": "proxy",
+                    "host": ssh_host,
+                    "port": ssh_port,
+                    "user": ssh_user,
+                },
+                indent=2,
+            )
+        )
+        return pod_id, ssh_host, ssh_port, ssh_user
+
+    if pod_id and not getattr(args, "deploy", False):
+        target = _wait_pod_ssh_endpoint(
+            pod_id,
+            timeout_sec=max(getattr(args, "wait_ssh", 180), getattr(args, "ssh_ready_timeout_sec", 300)),
+            proxy_user=proxy_user,
+        )
+        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
+        return pod_id, target["host"], target["port"], target["user"]
+
+    if getattr(args, "deploy", False):
+        _apply_auto_gpu(args)
+        deploy_args = argparse.Namespace(
+            name=args.name,
+            image=args.image,
+            template=args.template,
+            gpu=args.gpu,
+            volume_gb=args.volume_gb,
+            container_disk_gb=args.container_disk_gb,
+            autostart=False,
+            wait_ssh=0,
+        )
+        data = _rest("POST", "/pods", _deploy_payload(deploy_args))
+        print(json.dumps(data, indent=2))
+        pod_id = str(data.get("id", ""))
+        if not pod_id:
+            raise SystemExit("deploy did not return pod id")
+        target = _wait_pod_ssh_endpoint(
+            pod_id,
+            timeout_sec=max(getattr(args, "wait_ssh", 180), getattr(args, "ssh_ready_timeout_sec", 300)),
+            proxy_user=proxy_user,
+        )
+        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
+        return pod_id, target["host"], target["port"], target["user"]
+
+    return pod_id, None, None, "root"
+
+
+def _verify_pod_job(
+    host_alias: str,
+    *,
+    host: str | None,
+    port: str | None,
+    user: str,
+    tmux_session: str,
+    process_pattern: str,
+    label: str,
+) -> bool:
+    """Confirm tmux session + GPU process exist within ~15s. Prevents silent idle-pod launches."""
+    import time
+
+    checks = (
+        f"tmux has-session -t {tmux_session} 2>/dev/null && echo TMUX_OK || echo TMUX_MISSING\n"
+        f"pgrep -af '{process_pattern}' | grep -v tmux | head -1 || echo PROC_MISSING\n"
+        "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader 2>/dev/null || echo GPU_NA\n"
+    )
+    for attempt in range(3):
+        proc = subprocess.run(
+            [
+                SSH_BIN,
+                "-tt",
+                "-i",
+                SSH_KEY_PATH,
+                "-o",
+                "ConnectTimeout=20",
+                *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+                "bash",
+                "-s",
+            ],
+            input=f"{checks}exit\n",
+            capture_output=True,
+            text=True,
+            timeout=45,
+            encoding="utf-8",
+            errors="replace",
+        )
+        out = proc.stdout
+        if "TMUX_OK" in out and "PROC_MISSING" not in out:
+            for line in out.splitlines():
+                if any(k in line for k in ("TMUX_", "PROC_", "%", "MiB", process_pattern)):
+                    print(f"verify {label}: {line.strip()}", file=sys.stderr)
+            return True
+        time.sleep(5)
+    print(f"verify {label}: FAILED — no tmux/{process_pattern} on pod", file=sys.stderr)
+    return False
+
+
+def _push_repo_files_via_tar(
+    host_alias: str,
+    repo_root: Path,
+    rel_paths: list[str],
+    remote_root: str,
+    *,
+    host: str | None,
+    port: str | None,
+    user: str,
+) -> int:
+    """Tar-push specific repo files (SCP/subsystem fails on RunPod proxy)."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle = Path(tmp) / "bundle"
+        bundle.mkdir()
+        for rel in rel_paths:
+            local = repo_root / rel
+            if not local.is_file():
+                print(f"skip missing artifact: {local}", file=sys.stderr)
+                continue
+            dest = bundle / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(local.read_bytes())
+        if not any(bundle.rglob("*")):
+            return 0
+        print(f"tar-push {len(rel_paths)} file(s) -> pod:{remote_root}", file=sys.stderr)
+        return _ssh_push_dir(host_alias, bundle, remote_root, host=host, port=port, user=user)
+
+
 def _wait_pod_ssh_endpoint(
     pod_id: str,
     *,
@@ -968,6 +1112,8 @@ def _ssh_push_dir(
     try:
         with tarfile.open(tmp_path, "w:gz") as archive:
             archive.add(local_path, arcname=".")
+        size_mb = tmp_path.stat().st_size / (1024 * 1024)
+        print(f"pushing {local_path} ({size_mb:.1f} MB tar) -> {remote_path}", file=sys.stderr, flush=True)
         encoded = base64.b64encode(tmp_path.read_bytes()).decode("ascii")
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -1011,6 +1157,55 @@ def _ssh_push_dir(
     return 0
 
 
+def _scp_to_pod(
+    host_alias: str,
+    local_path: Path,
+    remote_path: str,
+    *,
+    host: str | None = None,
+    port: str | None = None,
+    user: str = "root",
+) -> int:
+    if not local_path.is_file():
+        print(f"local file missing: {local_path}", file=sys.stderr)
+        return 1
+    remote_parent = str(Path(remote_path).parent).replace("\\", "/")
+    mkdir_rc = subprocess.run(
+        [
+            SSH_BIN,
+            "-i",
+            SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+            f"mkdir -p '{remote_parent}'",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if mkdir_rc.returncode != 0:
+        if mkdir_rc.stderr:
+            print(mkdir_rc.stderr, file=sys.stderr, end="" if mkdir_rc.stderr.endswith("\n") else "\n")
+        return mkdir_rc.returncode
+    if host and port:
+        result = subprocess.run(
+            [SCP_BIN, "-P", str(port), "-i", SSH_KEY_PATH, str(local_path), f"{user}@{host}:{remote_path}"],
+            capture_output=True,
+            text=True,
+        )
+    else:
+        result = subprocess.run(
+            [SCP_BIN, "-i", SSH_KEY_PATH, str(local_path), f"{host_alias}:{remote_path}"],
+            capture_output=True,
+            text=True,
+        )
+    if result.returncode != 0 and result.stderr:
+        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+    return result.returncode
+
+
 def _scp_from_pod(
     host_alias: str,
     remote_path: str,
@@ -1052,26 +1247,17 @@ def _scp_from_pod(
 
 
 def cmd_eval_gates(args: argparse.Namespace) -> int:
-    script_path = Path(__file__).resolve().parent / "runpod_eval_gates.sh"
+    scripts_dir = Path(__file__).resolve().parent
+    warm_pod = getattr(args, "warm_pod", True) and bool(args.pod_id) and not args.deploy
+    if warm_pod:
+        script_path = scripts_dir / "runpod_start_gate4_eval_only.sh"
+    else:
+        script_path = scripts_dir / "runpod_eval_gates.sh"
     if not script_path.exists():
         raise SystemExit(f"missing eval script: {script_path}")
 
-    pod_id = args.pod_id
-    ssh_host: str | None = None
-    ssh_port: str | None = None
-    ssh_user = "root"
     proxy_user = args.proxy_user or None
-    if args.pod_id and not args.deploy:
-        target = _wait_pod_ssh_endpoint(
-            args.pod_id,
-            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
-            proxy_user=proxy_user,
-        )
-        ssh_host = target["host"]
-        ssh_port = target["port"]
-        ssh_user = target["user"]
-        pod_id = args.pod_id
-        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_pod_ssh(args, proxy_user=proxy_user)
 
     if args.deploy:
         _apply_auto_gpu(args)
@@ -1100,23 +1286,48 @@ def cmd_eval_gates(args: argparse.Namespace) -> int:
         ssh_user = target["user"]
         print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
 
+    repo_root = Path(__file__).resolve().parents[2]
+    scripts_src = repo_root / "psm-model" / "scripts"
+    if scripts_src.is_dir():
+        print(f"Syncing {scripts_src} -> pod:/workspace/PSM/psm-model/scripts", file=sys.stderr)
+        _ssh_push_dir(
+            args.host_alias,
+            scripts_src,
+            "/workspace/PSM/psm-model/scripts",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+
     extra_env = {
         "PSM_EVAL_DEVICE": args.device,
         "PSM_EVAL_EXPANDED": "1" if args.expanded else "0",
     }
     if args.full_checkpoint:
         extra_env["PSM_EVAL_FULL_CKPT"] = args.full_checkpoint
+    start_timeout = 180 if warm_pod else args.timeout_sec
     rc = _ssh_run_script(
         args.host_alias,
         script_path,
         host=ssh_host,
         port=ssh_port,
         user=ssh_user,
-        timeout_sec=args.timeout_sec,
+        timeout_sec=start_timeout,
         extra_env=extra_env,
         ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
-        skip_ssh_wait=bool(args.deploy or args.pod_id),
+        skip_ssh_wait=True,
     )
+    if rc == 0 and warm_pod and args.expanded:
+        if not _verify_pod_job(
+            args.host_alias,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            tmux_session="psm-gate4-eval",
+            process_pattern="psm_model.eval_checkpoint",
+            label="gate4-eval",
+        ):
+            return 1
 
     remote_report = "/workspace/PSM/psm-model/checkpoints/gate-eval"
     if args.pull_reports:
@@ -1144,51 +1355,7 @@ def _resolve_train_pod_ssh(
     *,
     proxy_user: str | None,
 ) -> tuple[str, str | None, str | None, str]:
-    pod_id = args.pod_id
-    ssh_host: str | None = None
-    ssh_port: str | None = None
-    ssh_user = "root"
-    if args.pod_id and not args.deploy:
-        target = _wait_pod_ssh_endpoint(
-            args.pod_id,
-            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
-            proxy_user=proxy_user,
-        )
-        ssh_host = target["host"]
-        ssh_port = target["port"]
-        ssh_user = target["user"]
-        pod_id = args.pod_id
-        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
-        return pod_id, ssh_host, ssh_port, ssh_user
-
-    if args.deploy:
-        _apply_auto_gpu(args)
-        deploy_args = argparse.Namespace(
-            name=args.name,
-            image=args.image,
-            template=args.template,
-            gpu=args.gpu,
-            volume_gb=args.volume_gb,
-            container_disk_gb=args.container_disk_gb,
-            autostart=False,
-            wait_ssh=0,
-        )
-        data = _rest("POST", "/pods", _deploy_payload(deploy_args))
-        print(json.dumps(data, indent=2))
-        pod_id = str(data.get("id", ""))
-        if not pod_id:
-            raise SystemExit("deploy did not return pod id")
-        target = _wait_pod_ssh_endpoint(
-            pod_id,
-            timeout_sec=max(args.wait_ssh, args.ssh_ready_timeout_sec),
-            proxy_user=proxy_user,
-        )
-        ssh_host = target["host"]
-        ssh_port = target["port"]
-        ssh_user = target["user"]
-        print(json.dumps({"event": "using_ssh_endpoint", **target}, indent=2))
-
-    return pod_id, ssh_host, ssh_port, ssh_user
+    return _resolve_pod_ssh(args, proxy_user=proxy_user)
 
 
 def _parse_resume_checkpoint(upload_output: str) -> tuple[str, str]:
@@ -1353,10 +1520,32 @@ def cmd_upload_gate4(args: argparse.Namespace) -> int:
     )
 
 
+def _apply_micro_train_defaults(args: argparse.Namespace) -> None:
+    if args.curriculum_builder != "micro":
+        return
+    if args.structural_loss_weight == 1.0:
+        args.structural_loss_weight = 8.0
+    if args.eval_every == 0:
+        args.eval_every = 200
+    if args.repair_copies == 1:
+        args.repair_copies = 12
+    if args.direct_copies == 300:
+        args.direct_copies = 20
+    if not args.eval_report:
+        args.eval_report = "psm-model/checkpoints/gate-eval/gate4-full-expanded-step-042000.json"
+
+
 def cmd_train_gate4(args: argparse.Namespace) -> int:
-    script_path = Path(__file__).resolve().parent / "runpod_train_gate4.sh"
+    scripts_dir = Path(__file__).resolve().parent
+    warm_pod = getattr(args, "warm_pod", True) and bool(args.pod_id) and not args.deploy
+    if warm_pod:
+        script_path = scripts_dir / "runpod_start_gate4_train_only.sh"
+    else:
+        script_path = scripts_dir / "runpod_train_gate4.sh"
     if not script_path.exists():
         raise SystemExit(f"missing train script: {script_path}")
+
+    _apply_micro_train_defaults(args)
 
     proxy_user = args.proxy_user or None
     pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
@@ -1380,8 +1569,8 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
             print(f"HF upload failed (exit {upload_rc})", file=sys.stderr)
             return upload_rc
 
-    if args.sync_src:
-        repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[2]
+    if args.sync_src and not warm_pod:
         src_dir = repo_root / "psm-model" / "src"
         remote_src = "/workspace/PSM/psm-model/src"
         print(f"Syncing {src_dir} -> pod:{remote_src}", file=sys.stderr)
@@ -1395,8 +1584,8 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         )
         if push_rc != 0:
             print(f"warning: src sync failed (exit {push_rc}); pod may use stale git checkout", file=sys.stderr)
-
-    repo_root = Path(__file__).resolve().parents[2]
+    elif args.sync_src and warm_pod:
+        print("warm-pod: skipping full src sync (use --no-warm-pod for cold bootstrap)", file=sys.stderr)
     scripts_dir = repo_root / "psm-model" / "scripts"
     if scripts_dir.is_dir():
         remote_scripts = "/workspace/PSM/psm-model/scripts"
@@ -1411,6 +1600,19 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         )
         if scripts_rc != 0:
             print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
+    if args.curriculum_builder == "micro":
+        micro_files = [rel for rel in (args.eval_report, args.parse_repair) if rel]
+        if micro_files:
+            _push_repo_files_via_tar(
+                args.host_alias,
+                repo_root,
+                micro_files,
+                "/workspace/PSM",
+                host=ssh_host,
+                port=ssh_port,
+                user=ssh_user,
+            )
 
     extra_env = {
         "PSM_TRAIN_DEVICE": args.device,
@@ -1436,23 +1638,48 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "DRILL_COPIES": str(args.drill_copies),
         "STRATIFIED_MAX": str(args.stratified_max),
         "IGNORE_EXTRA_COPIES": str(args.ignore_extra_copies),
+        "REPAIR_COPIES": str(args.repair_copies),
+        "STRUCTURAL_LOSS_WEIGHT": str(args.structural_loss_weight),
+        "PROMOTE_SPAN_WEIGHT": "4" if args.curriculum_builder == "micro" else "8",
         "EVAL_EVERY": str(args.eval_every),
         "SAVE_EVERY": str(args.save_every),
         "KEEP_LOCAL": str(args.keep_local),
         "SYNC_INTERVAL_SEC": str(args.sync_interval_sec),
         "GATE4_EVAL_AFTER": "1" if args.eval_after else "0",
+        "PSM_HF_MODEL_REPO": os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO),
     }
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        extra_env["HF_TOKEN"] = hf_token
+    resume_step = ""
+    for part in Path(args.resume_checkpoint).stem.split("-"):
+        if part.isdigit():
+            resume_step = part
+    if resume_step:
+        extra_env["GATE4_PINNED_STEPS"] = resume_step
+    start_timeout = 300 if warm_pod else args.timeout_sec
     rc = _ssh_run_script(
         args.host_alias,
         script_path,
         host=ssh_host,
         port=ssh_port,
         user=ssh_user,
-        timeout_sec=args.timeout_sec,
+        timeout_sec=start_timeout,
         extra_env=extra_env,
         ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
-        skip_ssh_wait=bool(args.deploy or args.pod_id),
+        skip_ssh_wait=True,
     )
+    if rc == 0 and warm_pod:
+        if not _verify_pod_job(
+            args.host_alias,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            tmux_session="psm-gate4",
+            process_pattern="psm_model.train",
+            label="gate4-train",
+        ):
+            return 1
 
     if args.pull_metrics:
         local_metrics = Path(args.pull_metrics)
@@ -1658,7 +1885,13 @@ def main() -> int:
     eval_gates.add_argument(
         "--proxy-user",
         default="",
-        help="Proxy SSH user from Connect tab (pod_id-suffix@ssh.runpod.io). Required if GraphQL podHostId is unavailable.",
+        help="Proxy SSH user from Connect tab (pod_id-suffix@ssh.runpod.io). Required for existing pods.",
+    )
+    eval_gates.add_argument(
+        "--warm-pod",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Existing pod: skip bootstrap, tmux eval-only, verify GPU (default: on when --pod-id).",
     )
     eval_gates.add_argument("--device", default="cuda", help="Eval device passed to psm_model (cuda recommended on pod).")
     eval_gates.add_argument("--expanded", action="store_true", help="Also run full-model eval on expanded probe (920 rows).")
@@ -1707,7 +1940,13 @@ def main() -> int:
     train_gate4.add_argument(
         "--proxy-user",
         default="",
-        help="Proxy SSH user from Connect tab (pod_id-suffix@ssh.runpod.io).",
+        help="Proxy SSH user from Connect tab (pod_id-suffix@ssh.runpod.io). Required for existing pods.",
+    )
+    train_gate4.add_argument(
+        "--warm-pod",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Existing pod: skip bootstrap/src sync, tmux train-only, verify GPU (default: on when --pod-id).",
     )
     train_gate4.add_argument("--device", default="cuda")
     train_gate4.add_argument(
@@ -1752,7 +1991,13 @@ def main() -> int:
     train_gate4.add_argument("--drill-rows-per-action", type=int, default=120)
     train_gate4.add_argument("--drill-copies", type=int, default=50, help="v2 default: 50 (v1 default: 25).")
     train_gate4.add_argument("--stratified-max", type=int, default=1500, help="v2 default: 1500 (v1 default: 2500).")
-    train_gate4.add_argument("--repair-copies", type=int, default=1, help="v4: light repair from 42k failures.")
+    train_gate4.add_argument("--repair-copies", type=int, default=1, help="micro: 12; v4: light repair from 42k failures.")
+    train_gate4.add_argument(
+        "--structural-loss-weight",
+        type=float,
+        default=1.0,
+        help="Tagged DSL structural loss multiplier (micro default: 8).",
+    )
     train_gate4.add_argument(
         "--parse-repair",
         default="psm-model/data/curriculum/gate4-parse-repair-step-42000.jsonl",
