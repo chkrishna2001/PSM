@@ -364,3 +364,29 @@ Report: `psm-model/checkpoints/gate-eval/gate4-full-expanded-step-045600.json` (
 ### Next
 
 See [2026-06-08-end-of-day-handoff.md](2026-06-08-end-of-day-handoff.md): resume HF **36000 → 42000** v4, upload before delete, LoCoMo deferred.
+
+## 2026-06-09 — Micro v2/v3 on pod `6c9efizq1aoocf` (deleted)
+
+### Status
+
+- **Nothing running** — pod deleted EOD; HF **42000** + **42400** triples on `subbu83/psm-50m-mixed-v1-run`.
+- LoCoMo deferred until parse ≥95%.
+
+### Micro runs (all resume 42k)
+
+| Target | structural_loss | Parse | Action | Parse fails |
+|--------|-----------------|-------|--------|-------------|
+| 42800 (v2) | 4 | 86.3% | 86.3% | 125 |
+| 42400 (v3) | 2 | 87.6% | 87.5% | 113 |
+
+**Best remains 42k baseline: 88.2% parse** — micro steps did not beat it.
+
+### Ops fixes
+
+- Poll scripts: target-step file check (not `ls | tail -1`); `poll_pod_gpu.py` exits on idle.
+- `pod_hf_push_steps.py` for HF upload when `runpod_upload_gate4.sh` has CRLF on pod.
+- Warm launch scripts: `launch_micro_v3_now.py`, `launch_gate4_eval_now.py --checkpoint`, `pull_eval_step.py`.
+
+### Next
+
+See [2026-06-09-end-of-day-handoff.md](2026-06-09-end-of-day-handoff.md): micro v4 from 42k, mine 42400 failures, fact-format drills.

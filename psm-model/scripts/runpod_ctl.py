@@ -759,7 +759,8 @@ def _verify_pod_job(
         f"pgrep -af '{process_pattern}' | grep -v tmux | head -1 || echo PROC_MISSING\n"
         "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader 2>/dev/null || echo GPU_NA\n"
     )
-    for attempt in range(3):
+    time.sleep(8)
+    for attempt in range(4):
         proc = subprocess.run(
             [
                 SSH_BIN,
@@ -1602,7 +1603,7 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
             print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
 
     if args.curriculum_builder == "micro":
-        micro_files = [rel for rel in (args.eval_report, args.parse_repair) if rel]
+        micro_files = [rel for rel in (args.eval_report, args.parse_repair, args.curriculum) if rel]
         if micro_files:
             _push_repo_files_via_tar(
                 args.host_alias,
@@ -1621,7 +1622,8 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "TOKENIZER": args.tokenizer,
         "ABORT_AFTER_STEP": str(args.abort_after_step),
         "GATE4_CURRICULUM_BUILDER": args.curriculum_builder,
-        "GATE4_CURRICULUM": {
+        "GATE4_CURRICULUM": args.curriculum
+        or {
             "v1": "psm-model/data/curriculum/psm-50m-gate4-train-v1.jsonl",
             "v2": "psm-model/data/curriculum/psm-50m-gate4-train-v2.jsonl",
             "v3": "psm-model/data/curriculum/psm-50m-gate4-train-v3.jsonl",
@@ -1657,6 +1659,8 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
             resume_step = part
     if resume_step:
         extra_env["GATE4_PINNED_STEPS"] = resume_step
+    if args.curriculum:
+        extra_env["SKIP_CURRICULUM_BUILD"] = "1"
     start_timeout = 300 if warm_pod else args.timeout_sec
     rc = _ssh_run_script(
         args.host_alias,
@@ -1980,6 +1984,11 @@ def main() -> int:
     train_gate4.add_argument("--save-every", type=int, default=400)
     train_gate4.add_argument("--keep-local", type=int, default=2, help="Pod disk: retain N step checkpoints locally.")
     train_gate4.add_argument("--sync-interval-sec", type=int, default=120, help="HF sync interval during training (upload all steps).")
+    train_gate4.add_argument(
+        "--curriculum",
+        default="",
+        help="Override curriculum JSONL path (warm-pod: use pre-built file on pod).",
+    )
     train_gate4.add_argument(
         "--curriculum-builder",
         choices=("v1", "v2", "v3", "v4", "micro", "legacy"),

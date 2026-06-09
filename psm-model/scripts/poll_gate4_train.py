@@ -4,12 +4,13 @@ import subprocess
 import sys
 import time
 
-PROXY = "juj6ykjygnjujl-64411dc8@ssh.runpod.io"
+PROXY = "6c9efizq1aoocf-64411022@ssh.runpod.io"
 KEY = r"C:\Users\chkri\.ssh\id_ed25519"
 
-stdin = """\
-latest=$(ls -1 /workspace/PSM/psm-model/checkpoints/real-v3-50m-full-v2-step-*.pt 2>/dev/null | tail -1)
-echo "LATEST=$latest"
+def _stdin(target_step: int) -> str:
+    ckpt = f"/workspace/PSM/psm-model/checkpoints/real-v3-50m-full-v2-step-{target_step:06d}.pt"
+    return f"""\
+test -f '{ckpt}' && echo TARGET_CKPT_OK || echo TARGET_CKPT_MISSING
 test -f /tmp/psm-gate4.done && echo DONE
 pgrep -af 'python3 -m psm_model.train' >/dev/null || echo NO_TRAIN
 exit
@@ -42,26 +43,26 @@ def main() -> None:
                 "bash",
                 "-s",
             ],
-            input=stdin,
+            input=_stdin(args.target_step),
             capture_output=True,
             text=True,
             timeout=60,
             encoding="utf-8",
             errors="replace",
         )
-        latest = ""
+        ckpt_ok = False
         done = False
         no_train = False
         for line in proc.stdout.splitlines():
             line = line.strip()
-            if line.startswith("LATEST="):
-                latest = line.split("=", 1)[1]
+            if line == "TARGET_CKPT_OK":
+                ckpt_ok = True
             if line == "DONE":
                 done = True
             if line == "NO_TRAIN":
                 no_train = True
-        print(latest, "DONE" if done else "running", "NO_TRAIN" if no_train else "train_active", flush=True)
-        if target_tag in latest and (done or no_train):
+        print(target_tag if ckpt_ok else "missing", "DONE" if done else "running", "NO_TRAIN" if no_train else "train_active", flush=True)
+        if ckpt_ok and (done or no_train):
             print("READY_FOR_EVAL", flush=True)
             sys.exit(0)
         time.sleep(args.poll_sec)

@@ -13,7 +13,7 @@ import runpod_ctl as ctl  # noqa: E402
 PROXY_USER = "6c9efizq1aoocf-64411022"
 SSH_HOST = "ssh.runpod.io"
 SSH_PORT = "22"
-CKPT = "psm-model/checkpoints/real-v3-50m-full-v2-step-043400.pt"
+DEFAULT_CKPT = "psm-model/checkpoints/real-v3-50m-full-v2-step-043400.pt"
 
 
 def _ssh_status() -> str:
@@ -47,6 +47,17 @@ def _ssh_status() -> str:
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--checkpoint",
+        default=DEFAULT_CKPT,
+        help="Full checkpoint path on pod (relative to /workspace/PSM)",
+    )
+    args = parser.parse_args()
+    ckpt = args.checkpoint
+
     scripts = REPO / "psm-model" / "scripts"
     print("Pushing scripts...", flush=True)
     rc = ctl._ssh_push_dir(
@@ -63,8 +74,9 @@ def main() -> int:
     script = REPO / "psm-model" / "scripts" / "runpod_start_gate4_eval_only.sh"
     extra_env = {
         "PSM_EVAL_DEVICE": "cuda",
-        "PSM_EVAL_FULL_CKPT": CKPT,
+        "PSM_EVAL_FULL_CKPT": ckpt,
     }
+    print(f"Eval checkpoint: {ckpt}", flush=True)
     print("Starting eval tmux...", flush=True)
     rc = ctl._ssh_run_script(
         ctl.SSH_CONFIG_HOST,

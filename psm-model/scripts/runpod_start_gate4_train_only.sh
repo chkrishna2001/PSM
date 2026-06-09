@@ -25,7 +25,7 @@ RESUME_STEP="$(basename "$RESUME" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
 
 echo "=== start gate4 train-only $(date -u +%Y-%m-%dT%H:%M:%SZ) builder=$CURRICULUM_BUILDER resume=$RESUME_STEP target=$TARGET_STEPS ==="
 
-if [[ "$CURRICULUM_BUILDER" == "micro" ]]; then
+if [[ "$CURRICULUM_BUILDER" == "micro" && "${SKIP_CURRICULUM_BUILD:-0}" != "1" ]]; then
   EVAL_REPORT="${GATE4_EVAL_REPORT:-psm-model/checkpoints/gate-eval/gate4-full-expanded-step-042000.json}"
   if [[ ! -f "$EVAL_REPORT" && -f psm-model/checkpoints/gate-eval/gate4-full-expanded.json ]]; then
     EVAL_REPORT="psm-model/checkpoints/gate-eval/gate4-full-expanded.json"
@@ -88,8 +88,8 @@ tmux new-session -d -s psm-gate4 bash -lc "
   echo done > '$TRAIN_DONE'
 "
 
-sleep 3
-tmux ls
+sleep 8
+tmux ls 2>/dev/null || true
 echo "--- train log head ---"
 head -5 "$TRAIN_LOG" 2>/dev/null || true
 echo "--- train log tail ---"
