@@ -314,7 +314,9 @@ def _hf_model_file_exists(repo_id: str, path_in_repo: str) -> bool:
     try:
         from huggingface_hub import file_exists
 
-        return bool(file_exists(path_in_repo, repo_id=repo_id, repo_type="model"))
+        # Signature is file_exists(repo_id, filename); passing the path first
+        # raised TypeError and made every check a false negative.
+        return bool(file_exists(repo_id, path_in_repo, repo_type="model"))
     except Exception:
         return False
 
@@ -928,6 +930,47 @@ def _ssh_stream_print(line: str) -> None:
             errors="replace",
         )
         print(safe, end="" if safe.endswith("\n") else "\n")
+
+
+def _ssh_run_bash(
+    host_alias: str,
+    command: str,
+    *,
+    host: str | None = None,
+    port: str | None = None,
+    user: str = "root",
+    timeout_sec: int = 60,
+    skip_ssh_wait: bool = False,
+) -> int:
+    """Run a one-liner on the pod (proxy-safe)."""
+    if not skip_ssh_wait and not _wait_ssh_shell(
+        host_alias, host=host, port=port, user=user, timeout_sec=timeout_sec
+    ):
+        return 255
+    proc = subprocess.run(
+        [
+            SSH_BIN,
+            "-tt",
+            "-i",
+            SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+            "bash",
+            "-lc",
+            command,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout_sec,
+    )
+    if proc.stdout:
+        _ssh_stream_print(proc.stdout)
+    if proc.stderr:
+        _ssh_stream_print(proc.stderr)
+    return proc.returncode
 
 
 def _ssh_run_script(
@@ -1642,6 +1685,9 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
         "IGNORE_EXTRA_COPIES": str(args.ignore_extra_copies),
         "REPAIR_COPIES": str(args.repair_copies),
         "STRUCTURAL_LOSS_WEIGHT": str(args.structural_loss_weight),
+        "BATCH_SIZE": str(args.batch_size),
+        "LEARNING_RATE": str(args.learning_rate),
+        "MIN_LEARNING_RATE": str(args.min_learning_rate),
         "PROMOTE_SPAN_WEIGHT": "4" if args.curriculum_builder == "micro" else "8",
         "EVAL_EVERY": str(args.eval_every),
         "SAVE_EVERY": str(args.save_every),
@@ -1653,6 +1699,9 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
     hf_token = os.environ.get("HF_TOKEN", "").strip()
     if hf_token:
         extra_env["HF_TOKEN"] = hf_token
+    dataset_hf_token = os.environ.get("DATASET_HF_TOKEN", "").strip()
+    if dataset_hf_token:
+        extra_env["DATASET_HF_TOKEN"] = dataset_hf_token
     resume_step = ""
     for part in Path(args.resume_checkpoint).stem.split("-"):
         if part.isdigit():
@@ -2006,6 +2055,24 @@ def main() -> int:
         type=float,
         default=1.0,
         help="Tagged DSL structural loss multiplier (micro default: 8).",
+    )
+    train_gate4.add_argument(
+        "--batch-size",
+        type=int,
+        default=1,
+        help="Training batch size. A5000 24GB fits 16-32 for the 50m preset at ctx 2048.",
+    )
+    train_gate4.add_argument(
+        "--learning-rate",
+        type=float,
+        default=3e-4,
+        help="Base learning rate (cosine-decayed over absolute steps; see --min-learning-rate).",
+    )
+    train_gate4.add_argument(
+        "--min-learning-rate",
+        type=float,
+        default=0.0,
+        help="Cosine floor. Set equal to --learning-rate for a constant LR (recommended when resuming near target).",
     )
     train_gate4.add_argument(
         "--parse-repair",

@@ -18,6 +18,9 @@ KEEP_LOCAL="${KEEP_LOCAL:-2}"
 SYNC_INTERVAL_SEC="${SYNC_INTERVAL_SEC:-120}"
 UPLOAD_ALL="${UPLOAD_ALL:-1}"
 STRUCTURAL_LOSS_WEIGHT="${STRUCTURAL_LOSS_WEIGHT:-1}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+LEARNING_RATE="${LEARNING_RATE:-3e-4}"
+MIN_LEARNING_RATE="${MIN_LEARNING_RATE:-0}"
 RESUME_STEP="$(basename "$RESUME" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
 
 echo "=== PSM Gate 4 train $(date -u +%Y-%m-%dT%H:%M:%SZ) device=$DEVICE target=$TARGET_STEPS resume_step=$RESUME_STEP ==="
@@ -49,7 +52,7 @@ else
 fi
 
 for gate4_script in runpod_upload_gate4.sh runpod_locomo.sh; do
-  hf download "$DATASET_REPO" "psm-code/${gate4_script}" \
+  HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "psm-code/${gate4_script}" \
     --repo-type dataset --local-dir /tmp/psm-gate4-scripts 2>/dev/null || true
   if [[ -f "/tmp/psm-gate4-scripts/psm-code/${gate4_script}" ]]; then
     mkdir -p psm-model/scripts
@@ -60,15 +63,17 @@ if [[ ! -f psm-model/scripts/runpod_upload_gate4.sh ]]; then
   echo "FATAL: runpod_upload_gate4.sh missing (HF psm-code sync failed)" >&2
   exit 1
 fi
+# Windows script-sync leaves CRLF; bash rejects `set -o pipefail` with \r suffix.
+sed -i 's/\r$//' psm-model/scripts/*.sh 2>/dev/null || true
 chmod +x psm-model/scripts/runpod_upload_gate4.sh
-for gate4_module in gate4_checkpoint_registry; do
-  if ! python3 -c "import psm_model.${gate4_module}" 2>/dev/null; then
-    hf download "$DATASET_REPO" "psm-code/${gate4_module}.py" \
-      --repo-type dataset --local-dir /tmp/psm-gate4-code 2>/dev/null || true
-    if [[ -f "/tmp/psm-gate4-code/psm-code/${gate4_module}.py" ]]; then
-      mkdir -p psm-model/src/psm_model
-      cp "/tmp/psm-gate4-code/psm-code/${gate4_module}.py" "psm-model/src/psm_model/${gate4_module}.py"
-    fi
+# HF psm-code/ staging is source of truth for these modules (clone may be stale:
+# local fixes are pushed there before launch, not necessarily committed to git).
+for gate4_module in gate4_checkpoint_registry eval_generation; do
+  HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "psm-code/${gate4_module}.py" \
+    --repo-type dataset --local-dir /tmp/psm-gate4-code 2>/dev/null || true
+  if [[ -f "/tmp/psm-gate4-code/psm-code/${gate4_module}.py" ]]; then
+    mkdir -p psm-model/src/psm_model
+    cp "/tmp/psm-gate4-code/psm-code/${gate4_module}.py" "psm-model/src/psm_model/${gate4_module}.py"
   fi
 done
 
@@ -109,7 +114,7 @@ fi
 
 if [[ ! -f psm-model/data/curriculum/psm-50m-full-storage-v1-filtered.jsonl ]]; then
   echo "Downloading full-storage curriculum..."
-  hf download "$DATASET_REPO" curriculum/psm-50m-full-storage-v1-filtered.jsonl \
+  HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/psm-50m-full-storage-v1-filtered.jsonl \
     --repo-type dataset --local-dir psm-model/data || true
 fi
 
@@ -118,7 +123,7 @@ for rel in \
   psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
   psm-model/data/direct-behavior-v1/manual-probe.jsonl; do
   if [[ ! -f "$rel" ]]; then
-    hf download "$DATASET_REPO" \
+    HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" \
       data/probes/direct_probes.jsonl \
       data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
       data/direct-behavior-v1/manual-probe.jsonl \
@@ -130,7 +135,7 @@ for rel in \
   psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
   psm-model/data/direct-behavior-v1/manual-probe.jsonl; do
   if [[ ! -f "$rel" ]]; then
-    hf download "$DATASET_REPO" \
+    HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" \
       probes/direct_probes.jsonl \
       probes/expanded-probe-v1-filtered.jsonl \
       probes/manual-probe.jsonl \
@@ -152,7 +157,7 @@ build_curriculum() {
     for module in build_gate4_train_v4 build_gate4_complete_tag_drills build_gate4_fact_format_drills mine_gate4_parse_failures; do
       if ! python3 -c "import psm_model.${module}" 2>/dev/null; then
         echo "Fetching psm_model.${module} from $DATASET_REPO..."
-        hf download "$DATASET_REPO" "psm-code/${module}.py" \
+        HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "psm-code/${module}.py" \
           --repo-type dataset --local-dir /tmp/psm-gate4-code || true
         if [[ -f "/tmp/psm-gate4-code/psm-code/${module}.py" ]]; then
           cp "/tmp/psm-gate4-code/psm-code/${module}.py" "psm-model/src/psm_model/${module}.py"
@@ -165,11 +170,12 @@ build_curriculum() {
     fi
 
     if [[ ! -f "$CURRICULUM" ]]; then
-      echo "Downloading prebuilt v4 curriculum from $DATASET_REPO..."
-      hf download "$DATASET_REPO" curriculum/psm-50m-gate4-train-v4.jsonl \
+      CURRICULUM_BASE="$(basename "$CURRICULUM")"
+      echo "Downloading prebuilt curriculum $CURRICULUM_BASE from $DATASET_REPO..."
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "curriculum/$CURRICULUM_BASE" \
         --repo-type dataset --local-dir psm-model/data || true
-      if [[ -f psm-model/data/curriculum/psm-50m-gate4-train-v4.jsonl ]]; then
-        CURRICULUM="psm-model/data/curriculum/psm-50m-gate4-train-v4.jsonl"
+      if [[ -f "psm-model/data/curriculum/$CURRICULUM_BASE" ]]; then
+        CURRICULUM="psm-model/data/curriculum/$CURRICULUM_BASE"
       fi
     fi
     if [[ -f "$CURRICULUM" && "${GATE4_FORCE_REBUILD:-0}" != "1" ]]; then
@@ -197,14 +203,14 @@ build_curriculum() {
     EVAL_REPORT="${GATE4_EVAL_REPORT:-psm-model/checkpoints/gate-eval/gate4-full-expanded-step-42000.json}"
     REPAIR_SOURCE="${GATE4_REPAIR_SOURCE:-$EXPANDED_BUDGET}"
     if [[ ! -f "$EVAL_REPORT" ]]; then
-      hf download "$DATASET_REPO" curriculum/gate4-full-expanded-step-42000.json \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/gate4-full-expanded-step-42000.json \
         --repo-type dataset --local-dir psm-model/data/curriculum || true
       if [[ -f psm-model/data/curriculum/gate4-full-expanded-step-42000.json ]]; then
         EVAL_REPORT="psm-model/data/curriculum/gate4-full-expanded-step-42000.json"
       fi
     fi
     if [[ ! -f "$PARSE_REPAIR" ]]; then
-      hf download "$DATASET_REPO" curriculum/gate4-parse-repair-step-42000.jsonl \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/gate4-parse-repair-step-42000.jsonl \
         --repo-type dataset --local-dir psm-model/data || true
       if [[ -f psm-model/data/curriculum/gate4-parse-repair-step-42000.jsonl ]]; then
         PARSE_REPAIR="psm-model/data/curriculum/gate4-parse-repair-step-42000.jsonl"
@@ -235,7 +241,7 @@ build_curriculum() {
     for module in build_gate4_train_v2 mine_gate4_parse_failures; do
       if ! python3 -c "import psm_model.${module}" 2>/dev/null; then
         echo "Fetching psm_model.${module} from $DATASET_REPO..."
-        hf download "$DATASET_REPO" "psm-code/${module}.py" \
+        HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "psm-code/${module}.py" \
           --repo-type dataset --local-dir /tmp/psm-gate4-code || true
         if [[ -f "/tmp/psm-gate4-code/psm-code/${module}.py" ]]; then
           cp "/tmp/psm-gate4-code/psm-code/${module}.py" "psm-model/src/psm_model/${module}.py"
@@ -264,7 +270,7 @@ build_curriculum() {
 
     if [[ ! -f "$PARSE_REPAIR" ]]; then
       echo "Downloading parse-repair pack from $DATASET_REPO..."
-      hf download "$DATASET_REPO" curriculum/gate4-parse-repair-step-36000.jsonl \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/gate4-parse-repair-step-36000.jsonl \
         --repo-type dataset --local-dir psm-model/data || true
       if [[ -f psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl ]]; then
         PARSE_REPAIR="psm-model/data/curriculum/gate4-parse-repair-step-36000.jsonl"
@@ -309,7 +315,7 @@ build_curriculum() {
         --output-format tagged
     fi
     if [[ ! -f "$EVAL_REPORT" ]]; then
-      hf download "$DATASET_REPO" curriculum/gate4-full-expanded-step-40000.json \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/gate4-full-expanded-step-40000.json \
         --repo-type dataset --local-dir psm-model/data/curriculum || true
       if [[ -f psm-model/data/curriculum/gate4-full-expanded-step-40000.json ]]; then
         EVAL_REPORT="psm-model/data/curriculum/gate4-full-expanded-step-40000.json"
@@ -317,7 +323,7 @@ build_curriculum() {
     fi
     for module in build_gate4_parse_repair_micro mine_gate4_parse_failures; do
       if ! python3 -c "import psm_model.${module}" 2>/dev/null; then
-        hf download "$DATASET_REPO" "psm-code/${module}.py" \
+        HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "psm-code/${module}.py" \
           --repo-type dataset --local-dir /tmp/psm-gate4-code || true
         cp "/tmp/psm-gate4-code/psm-code/${module}.py" "psm-model/src/psm_model/${module}.py" 2>/dev/null || true
       fi
@@ -337,7 +343,7 @@ build_curriculum() {
     for module in build_gate4_train_v3 build_gate4_fact_format_drills convert_chatgpt_exports mine_gate4_parse_failures; do
       if ! python3 -c "import psm_model.${module}" 2>/dev/null; then
         echo "Fetching psm_model.${module} from $DATASET_REPO..."
-        hf download "$DATASET_REPO" "psm-code/${module}.py" \
+        HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" "psm-code/${module}.py" \
           --repo-type dataset --local-dir /tmp/psm-gate4-code || true
         if [[ -f "/tmp/psm-gate4-code/psm-code/${module}.py" ]]; then
           cp "/tmp/psm-gate4-code/psm-code/${module}.py" "psm-model/src/psm_model/${module}.py"
@@ -351,7 +357,7 @@ build_curriculum() {
 
     if [[ ! -f "$CURRICULUM" ]]; then
       echo "Downloading prebuilt v3 curriculum from $DATASET_REPO..."
-      hf download "$DATASET_REPO" curriculum/psm-50m-gate4-train-v3.jsonl \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/psm-50m-gate4-train-v3.jsonl \
         --repo-type dataset --local-dir psm-model/data || true
       if [[ -f psm-model/data/curriculum/psm-50m-gate4-train-v3.jsonl ]]; then
         CURRICULUM="psm-model/data/curriculum/psm-50m-gate4-train-v3.jsonl"
@@ -380,7 +386,7 @@ build_curriculum() {
 
     CHATGPT_ROWS="${GATE4_CHATGPT_ROWS:-psm-model/data/curriculum/chatgpt-export-rows.jsonl}"
     if [[ ! -f "$CHATGPT_ROWS" ]]; then
-      hf download "$DATASET_REPO" curriculum/chatgpt-export-rows.jsonl \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/chatgpt-export-rows.jsonl \
         --repo-type dataset --local-dir psm-model/data || true
       if [[ -f psm-model/data/curriculum/chatgpt-export-rows.jsonl ]]; then
         CHATGPT_ROWS="psm-model/data/curriculum/chatgpt-export-rows.jsonl"
@@ -391,7 +397,7 @@ build_curriculum() {
     EVAL_REPORT="${GATE4_EVAL_REPORT:-psm-model/checkpoints/gate-eval/gate4-full-expanded-step-42000.json}"
     REPAIR_SOURCE="${GATE4_REPAIR_SOURCE:-$EXPANDED_BUDGET}"
     if [[ ! -f "$EVAL_REPORT" ]]; then
-      hf download "$DATASET_REPO" curriculum/gate4-full-expanded-step-42000.json \
+      HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" curriculum/gate4-full-expanded-step-42000.json \
         --repo-type dataset --local-dir psm-model/data/curriculum || true
       if [[ -f psm-model/data/curriculum/gate4-full-expanded-step-42000.json ]]; then
         EVAL_REPORT="psm-model/data/curriculum/gate4-full-expanded-step-42000.json"
@@ -686,7 +692,9 @@ tmux new-session -d -s psm-gate4 bash -lc "
     --resume '$RESUME' \
     --tokenizer '$TOK' \
     --steps '$TARGET_STEPS' \
-    --batch-size 1 \
+    --batch-size '$BATCH_SIZE' \
+    --learning-rate '$LEARNING_RATE' \
+    --min-learning-rate '$MIN_LEARNING_RATE' \
     --preset 50m \
     --output-format tagged \
     --sampling action_balanced \

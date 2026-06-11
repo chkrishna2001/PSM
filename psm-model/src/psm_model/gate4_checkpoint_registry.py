@@ -123,7 +123,7 @@ def verify_hf_steps(*, repo_id: str, run_stem: str, steps: set[int]) -> list[str
     for step in sorted(steps):
         for remote in remote_paths_for_step(run_stem, step):
             try:
-                if not file_exists(remote, repo_id=repo_id, repo_type="model"):
+                if not file_exists(repo_id, remote, repo_type="model"):
                     missing.append(remote)
             except Exception:  # noqa: BLE001
                 missing.append(remote)

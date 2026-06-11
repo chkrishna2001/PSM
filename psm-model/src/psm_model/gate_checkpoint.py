@@ -251,7 +251,7 @@ def main() -> int:
     parser.add_argument("--manual-probe", type=Path, default=DEFAULT_MANUAL_PROBE)
     parser.add_argument("--expanded-probe", type=Path, default=DEFAULT_EXPANDED_PROBE)
     parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action"])
-    parser.add_argument("--device", default="cpu", help="Evaluation device: cpu, cuda, or auto.")
+    parser.add_argument("--device", default="auto", help="Evaluation device: auto, cpu, or cuda.")
     parser.add_argument("--action-classifier", type=Path, help="Optional standalone action classifier checkpoint for product-safe manual action selection.")
     parser.add_argument("--foundation-threshold", type=float, default=DEFAULT_THRESHOLDS["foundation_macro_action_prefix_accuracy"])
     parser.add_argument("--concept-threshold", type=float, default=DEFAULT_THRESHOLDS["concept_macro_action_prefix_accuracy"])

@@ -247,7 +247,7 @@ def main() -> int:
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("input", help="JSON object payload")
     parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action"])
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--device", default="auto")
     parser.add_argument("--action-classifier", type=Path, help="Optional standalone action classifier checkpoint to select the action before calibration.")
     args = parser.parse_args()
 

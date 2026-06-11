@@ -171,6 +171,8 @@ def evaluate_model_rows(
                 "predicted_fact_count": len(parsed.get("facts", [])) if parsed else None,
                 "facts_exact": schema_ok and _fact_signature(parsed) == _fact_signature(expected),
                 "generated_tokens": len(tokenizer.encode(raw)),
+                # Raw text is essential for diagnosing parse failures (loops vs field slips).
+                "raw_output": None if parse_ok else raw[:4000],
                 "issues": [
                     {"path": issue.path, "message": issue.message}
                     for issue in (parse_issues if parse_issues else (schema_result.issues if schema_result else ()))
@@ -260,7 +262,7 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--max-new-tokens", type=int, default=1200)
     parser.add_argument("--tokenizer", type=Path)
-    parser.add_argument("--device", default="cpu", help="Evaluation device: cpu, cuda, or auto.")
+    parser.add_argument("--device", default="auto", help="Evaluation device: auto, cpu, or cuda.")
     parser.add_argument("--force-action-head", action="store_true", help="Use the auxiliary action head to force the generated action prefix.")
     args = parser.parse_args()
 

@@ -20,6 +20,15 @@ DEFAULT_V4 = {
 }
 
 
+def _failing_probe_ids(eval_report: Path) -> set[str]:
+    report = json.loads(eval_report.read_text(encoding="utf-8"))
+    return {
+        str(row.get("id"))
+        for row in report.get("reports", [])
+        if not row.get("skipped") and not row.get("parse_valid", True)
+    }
+
+
 def build_gate4_train_v4(
     output: Path,
     *,
@@ -36,8 +45,15 @@ def build_gate4_train_v4(
     stratified_max: int = DEFAULT_V4["stratified_max"],
     repair_copies: int = DEFAULT_V4["repair_copies"],
     stratified_seed: int = 42,
+    fail_boost_report: Path | None = None,
+    fail_boost_copies: int = 0,
 ) -> dict[str, Any]:
-    """Gate 4 v4: eval-matched expanded anchor (×100) + complete-tag drills; resume from 42k."""
+    """Gate 4 v4: eval-matched expanded anchor (×100) + complete-tag drills; resume from 42k.
+
+    Phase 1b: `fail_boost_report` + `fail_boost_copies` add extra copies of the
+    expanded probes that failed parse in that eval report, concentrating
+    training mass on the unsolved families without adding new direct drills.
+    """
     repair_rows: list[dict[str, Any]]
     repair_summary: dict[str, Any] | None = None
 
@@ -62,10 +78,16 @@ def build_gate4_train_v4(
         else []
     )
 
+    fail_boost_rows: list[dict[str, Any]] = []
+    if fail_boost_report is not None and fail_boost_copies > 0:
+        failing_ids = _failing_probe_ids(fail_boost_report)
+        fail_boost_rows = [row for row in expanded_rows if str(row.get("id")) in failing_ids]
+
     direct_added = _copy_rows(direct_rows, prefix="direct-anchor", copies=direct_copies, seen=seen, output=rows)
     expanded_added = _copy_rows(expanded_rows, prefix="expanded-budget", copies=expanded_copies, seen=seen, output=rows)
     drill_added = _copy_rows(drill_rows, prefix="complete-tag", copies=complete_tag_copies, seen=seen, output=rows)
     repair_added = _copy_rows(repair_rows, prefix="parse-repair", copies=repair_copies, seen=seen, output=rows)
+    boost_added = _copy_rows(fail_boost_rows, prefix="fail-boost", copies=fail_boost_copies, seen=seen, output=rows)
     stratified_added = _copy_rows(stratified_rows, prefix="stratified-real", copies=1, seen=seen, output=rows)
 
     rng = random.Random(stratified_seed)
@@ -95,11 +117,15 @@ def build_gate4_train_v4(
         "expanded_budget_rows": expanded_added,
         "complete_tag_rows": drill_added,
         "parse_repair_rows": repair_added,
+        "fail_boost_rows": boost_added,
+        "fail_boost_probes": len(fail_boost_rows),
+        "fail_boost_report": str(fail_boost_report) if fail_boost_report is not None else None,
         "stratified_real_rows": stratified_added,
         "mix_shares": {
             "expanded_budget": round(expanded_added / total if total else 0.0, 4),
             "complete_tag": round(drill_added / total if total else 0.0, 4),
             "parse_repair": round(repair_added / total if total else 0.0, 4),
+            "fail_boost": round(boost_added / total if total else 0.0, 4),
             "parse_focus": round(parse_focus / total if total else 0.0, 4),
             "stratified_real": round(stratified_added / total if total else 0.0, 4),
             "direct_anchor": round(direct_added / total if total else 0.0, 4),
@@ -127,6 +153,8 @@ def main() -> int:
     parser.add_argument("--stratified-max", type=int, default=DEFAULT_V4["stratified_max"])
     parser.add_argument("--repair-copies", type=int, default=DEFAULT_V4["repair_copies"])
     parser.add_argument("--stratified-seed", type=int, default=42)
+    parser.add_argument("--fail-boost-report", type=Path, default=None)
+    parser.add_argument("--fail-boost-copies", type=int, default=0)
     args = parser.parse_args()
 
     print(
@@ -146,6 +174,8 @@ def main() -> int:
                 stratified_max=args.stratified_max,
                 repair_copies=args.repair_copies,
                 stratified_seed=args.stratified_seed,
+                fail_boost_report=args.fail_boost_report,
+                fail_boost_copies=args.fail_boost_copies,
             ),
             indent=2,
             sort_keys=True,

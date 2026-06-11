@@ -558,22 +558,11 @@ def train_texts(
 
 
 def resolve_device(device: str, torch: Any | None = None) -> Any:
-    from psm_model.device_policy import enforce_local_device_policy
+    from psm_model.device_policy import resolve_device_name
 
     torch = torch or _torch()
-    device = enforce_local_device_policy(device, context="resolve_device")
-    requested = device.lower()
-    if requested == "auto":
-        requested = "cuda" if torch.cuda.is_available() and allow_local_gpu() else "cpu"
-    if requested == "cuda" and not torch.cuda.is_available():
-        raise ValueError("CUDA was requested but torch.cuda.is_available() is false")
-    return torch.device(requested)
-
-
-def allow_local_gpu() -> bool:
-    from psm_model.device_policy import allow_local_gpu as _allow_local_gpu
-
-    return _allow_local_gpu()
+    resolved = resolve_device_name(device, torch.cuda.is_available(), context="resolve_device")
+    return torch.device(resolved)
 
 
 def configure_cuda_memory_fraction(torch: Any, device: Any, fraction: float) -> None:
@@ -842,7 +831,7 @@ def main() -> int:
     parser.add_argument("--metrics-out", type=Path, help="Append JSONL step/checkpoint metrics to this path.")
     parser.add_argument("--freeze-backbone", action="store_true", help="Train only the auxiliary action head; freeze all decoder/LM parameters.")
     parser.add_argument("--reset-optimizer", action="store_true", help="Do not load optimizer state from the resume checkpoint.")
-    parser.add_argument("--device", default="cpu", help="Training device: cpu, cuda, or auto.")
+    parser.add_argument("--device", default="auto", help="Training device: auto, cpu, or cuda.")
     parser.add_argument(
         "--cuda-memory-fraction",
         type=float,

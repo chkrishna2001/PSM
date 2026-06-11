@@ -227,7 +227,7 @@ def main() -> int:
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("data", type=Path)
     parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action"])
-    parser.add_argument("--device", default="cpu", help="Evaluation device: cpu, cuda, or auto.")
+    parser.add_argument("--device", default="auto", help="Evaluation device: auto, cpu, or cuda.")
     parser.add_argument("--mode", choices=["prefix", "head"], default="prefix")
     args = parser.parse_args()
 

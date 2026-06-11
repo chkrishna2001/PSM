@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
-import { dirname, resolve } from "node:path";
+import path from "node:path";
 import { MemoryStore, PsmModelRuntime, PsmService } from "@psm-memory/sdk";
 import { buildLocomoRememberText, createLocomoIngestRuntime, flattenTurns, loadSamples, locomoSourceTimestamp, parseOptions } from "./common.js";
 
@@ -18,20 +18,20 @@ interface IngestStats {
 
 export async function main(argv: string[]): Promise<number> {
   const options = parseOptions(argv);
-  const checkpoint = getOption(argv, "checkpoint", "psm-model/checkpoints/real-v3-50m-full-v2.pt");
+  const checkpoint = getOption(argv, "checkpoint", "psm-model/checkpoints/real-v3-50m-full-v2-step-048000.pt");
   const python = getOption(argv, "python", platform() === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python");
   const device = getOption(argv, "device", "cpu");
   const outputFormat = getOption(argv, "output-format", "tagged") as "tagged" | "json" | "at_tag";
   const windowSize = Number(getOption(argv, "window-size", "2"));
-  const repoRoot = resolve(getOption(argv, "repo-root", process.cwd()));
+  const repoRoot = path.resolve(getOption(argv, "repo-root", process.cwd()));
 
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
   store.initializeSchema();
   const runtime = createLocomoIngestRuntime(
     new PsmModelRuntime({
-      checkpoint: resolve(repoRoot, checkpoint),
-      python: resolve(repoRoot, python),
+      checkpoint: path.resolve(repoRoot, checkpoint),
+      python: resolvePythonExecutable(repoRoot, python),
       repoRoot,
       outputFormat,
       device
@@ -114,11 +114,19 @@ function recordRememberResult(stats: IngestStats, source: string, result: Record
 
 function finish(store: MemoryStore, stats: IngestStats): number {
   const out = "benchmark/locomo/results/ingest-psm-model-summary.json";
-  mkdirSync(dirname(out), { recursive: true });
+  mkdirSync(path.dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(stats, null, 2), "utf8");
   store.close();
   process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
   return stats.failed > 0 ? 1 : 0;
+}
+
+function resolvePythonExecutable(repoRoot: string, python: string): string {
+  const looksAbsolute = /^[A-Za-z]:[\\/]/.test(python) || python.startsWith("/");
+  if (looksAbsolute || (!python.includes("/") && !python.includes("\\"))) {
+    return python;
+  }
+  return path.resolve(repoRoot, python);
 }
 
 function getOption(argv: string[], key: string, fallback: string): string {

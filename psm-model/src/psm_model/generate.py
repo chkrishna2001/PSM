@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,37 @@ def _torch():
     return torch
 
 
+@dataclass
+class GenerationSession:
+    checkpoint: Path
+    output_format: str
+    device_obj: Any
+    model: TinyDecoderModel
+    tokenizer: ByteTokenizer
+
+
+def open_generation_session(
+    checkpoint: Path,
+    *,
+    output_format: str | None = None,
+    device: str = "auto",
+) -> GenerationSession:
+    torch = _torch()
+    device_obj = resolve_device(device, torch)
+    metadata = load_checkpoint_metadata(checkpoint)
+    resolved_format = output_format or str(metadata.get("output_format", "json"))
+    tokenizer_path = checkpoint.with_suffix(".tokenizer.json")
+    tokenizer = load_tokenizer(tokenizer_path) if tokenizer_path.exists() else ByteTokenizer()
+    model = TinyDecoderModel.load_checkpoint(checkpoint, map_location=str(device_obj)).to(device_obj)
+    return GenerationSession(
+        checkpoint=checkpoint,
+        output_format=resolved_format,
+        device_obj=device_obj,
+        model=model,
+        tokenizer=tokenizer,
+    )
+
+
 def generate_storage_json(
     checkpoint: Path,
     input_payload: dict[str, object],
@@ -28,30 +60,34 @@ def generate_storage_json(
     max_new_tokens: int = 512,
     temperature: float = 0.0,
     output_format: str | None = None,
-    device: str = "cpu",
+    device: str = "auto",
     force_action_head: bool = False,
+    session: GenerationSession | None = None,
 ) -> str:
+    active = session or open_generation_session(checkpoint, output_format=output_format, device=device)
     torch = _torch()
-    device_obj = resolve_device(device, torch)
-    metadata = load_checkpoint_metadata(checkpoint)
-    output_format = output_format or str(metadata.get("output_format", "json"))
-    tokenizer_path = checkpoint.with_suffix(".tokenizer.json")
-    tokenizer = load_tokenizer(tokenizer_path) if tokenizer_path.exists() else ByteTokenizer()
-    model = TinyDecoderModel.load_checkpoint(checkpoint, map_location=str(device_obj)).to(device_obj)
-    prompt = render_storage_prompt(input_payload, output_format=output_format)
-    input_ids = torch.tensor([tokenizer.encode(prompt, add_bos=True)], dtype=torch.long, device=device_obj)
+    prompt = render_storage_prompt(input_payload, output_format=active.output_format)
+    input_ids = torch.tensor(
+        [active.tokenizer.encode(prompt, add_bos=True)],
+        dtype=torch.long,
+        device=active.device_obj,
+    )
     if force_action_head:
-        action, _ = predict_action_head(model, input_ids)
+        action, _ = predict_action_head(active.model, input_ids)
         if action is not None:
-            forced_ids = torch.tensor([tokenizer.encode(render_action_prefix(action, output_format=output_format))], dtype=torch.long, device=device_obj)
+            forced_ids = torch.tensor(
+                [active.tokenizer.encode(render_action_prefix(action, output_format=active.output_format))],
+                dtype=torch.long,
+                device=active.device_obj,
+            )
             input_ids = torch.cat([input_ids, forced_ids], dim=1)
-    output_ids = model.generate(
+    output_ids = active.model.generate(
         input_ids,
         max_new_tokens=max_new_tokens,
-        eos_id=tokenizer.eos_id,
+        eos_id=active.tokenizer.eos_id,
         temperature=temperature,
     )[0].tolist()
-    text = tokenizer.decode(output_ids)
+    text = active.tokenizer.decode(output_ids)
     return text.split("<|assistant|>\n", 1)[-1].split("<|end|>", 1)[0]
 
 
@@ -69,7 +105,7 @@ def main() -> int:
     parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action"])
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--device", default="cpu", help="Generation device: cpu, cuda, or auto.")
+    parser.add_argument("--device", default="auto", help="Generation device: auto, cpu, or cuda.")
     parser.add_argument("--force-action-head", action="store_true", help="Use the auxiliary action head to force the generated action prefix.")
     args = parser.parse_args()
 

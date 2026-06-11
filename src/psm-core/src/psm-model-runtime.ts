@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import { RememberServer } from "./remember-server.js";
 import type { GenerateOptions, ModelRuntime } from "./types.js";
 
 export interface PsmModelRuntimeOptions {
@@ -32,7 +33,12 @@ function extractStoragePayload(prompt: string): Record<string, unknown> | null {
       const parsed = JSON.parse(trimmed) as unknown;
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
       const payload = parsed as Record<string, unknown>;
-      if ("conversation" in payload || payload.operation === "remember_llm_response") {
+      const operation = payload.operation;
+      if (
+        "conversation" in payload
+        || operation === "remember_llm_response"
+        || operation === "repair_remember_json"
+      ) {
         return payload;
       }
     } catch {
@@ -77,8 +83,29 @@ export class PsmModelRuntime implements ModelRuntime {
     this.python = options.python ?? (process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python");
     this.repoRoot = resolveRepoRoot(options.repoRoot);
     this.outputFormat = options.outputFormat ?? "tagged";
-    this.device = options.device ?? "cpu";
-    this.maxNewTokens = options.maxNewTokens ?? 1200;
+    this.device = options.device ?? "auto";
+    this.maxNewTokens = options.maxNewTokens ?? 384;
+  }
+
+  private runtimeEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      PYTHONPATH: resolve(this.repoRoot, "psm-model", "src"),
+      PSM_FORCE_CPU: process.env.PSM_FORCE_CPU ?? (process.env.PSM_RUNPOD === "1" ? "0" : "1")
+    };
+  }
+
+  private async generateViaServer(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const server = RememberServer.get({
+      python: this.python,
+      checkpoint: this.checkpoint,
+      repoRoot: this.repoRoot,
+      outputFormat: this.outputFormat,
+      device: this.device,
+      maxNewTokens: this.maxNewTokens,
+      env: this.runtimeEnv()
+    });
+    return server.remember(payload);
   }
 
   async generateJson(prompt: string, _options: GenerateOptions = {}): Promise<string> {
@@ -86,11 +113,15 @@ export class PsmModelRuntime implements ModelRuntime {
     if (!payload) {
       throw new Error("PsmModelRuntime only supports PSM storage prompts from remember().");
     }
+    if (process.env.PSM_REMEMBER_SERVER !== "0") {
+      const report = await this.generateViaServer(payload);
+      if (!report.parsed || typeof report.parsed !== "object") {
+        throw new Error(`psm-model returned no storage decision: ${JSON.stringify(report)}`);
+      }
+      return normalizeDecision(report.parsed as Record<string, unknown>);
+    }
     const pythonPath = isAbsolute(this.python) ? this.python : resolve(this.repoRoot, this.python);
-    const env = {
-      ...process.env,
-      PYTHONPATH: resolve(this.repoRoot, "psm-model", "src")
-    };
+    const env = this.runtimeEnv();
     const result = spawnSync(
       pythonPath,
       [
@@ -120,9 +151,9 @@ export class PsmModelRuntime implements ModelRuntime {
     if (result.status !== 0) {
       throw new Error(stdout || stderr || `psm_model.remember_cli failed with status ${result.status}`);
     }
-    const report = JSON.parse(stdout) as { parsed?: Record<string, unknown>; valid?: boolean };
-    if (!report.parsed || report.valid === false) {
-      throw new Error(`psm-model returned invalid storage decision: ${stdout}`);
+    const report = JSON.parse(stdout) as { parsed?: Record<string, unknown> };
+    if (!report.parsed) {
+      throw new Error(`psm-model returned no storage decision: ${stdout}`);
     }
     return normalizeDecision(report.parsed);
   }

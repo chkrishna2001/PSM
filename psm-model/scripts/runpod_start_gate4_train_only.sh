@@ -21,6 +21,9 @@ UPLOAD_ALL="${UPLOAD_ALL:-1}"
 STRUCTURAL_LOSS_WEIGHT="${STRUCTURAL_LOSS_WEIGHT:-8}"
 PROMOTE_SPAN_WEIGHT="${PROMOTE_SPAN_WEIGHT:-4}"
 EVAL_EVERY="${EVAL_EVERY:-200}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+LEARNING_RATE="${LEARNING_RATE:-3e-4}"
+MIN_LEARNING_RATE="${MIN_LEARNING_RATE:-0}"
 RESUME_STEP="$(basename "$RESUME" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
 
 echo "=== start gate4 train-only $(date -u +%Y-%m-%dT%H:%M:%SZ) builder=$CURRICULUM_BUILDER resume=$RESUME_STEP target=$TARGET_STEPS ==="
@@ -67,7 +70,9 @@ tmux new-session -d -s psm-gate4 bash -lc "
     --resume '$RESUME' \
     --tokenizer '$TOK' \
     --steps '$TARGET_STEPS' \
-    --batch-size 1 \
+    --batch-size '$BATCH_SIZE' \
+    --learning-rate '$LEARNING_RATE' \
+    --min-learning-rate '$MIN_LEARNING_RATE' \
     --preset 50m \
     --output-format tagged \
     --sampling action_balanced \

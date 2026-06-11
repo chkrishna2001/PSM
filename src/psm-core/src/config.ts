@@ -84,9 +84,9 @@ export function defaultPsmConfig(): PsmConfig {
     },
     psmModel: {
       enabled: false,
-      checkpoint: "psm-model/checkpoints/real-v3-50m-full-v2.pt",
+      checkpoint: "psm-model/checkpoints/real-v3-50m-full-v2-step-048000.pt",
       python: process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python",
-      device: "cpu",
+      device: "auto",
       outputFormat: "tagged"
     },
     daemon: {
