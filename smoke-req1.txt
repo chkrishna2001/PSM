@@ -1,0 +1,1 @@
+﻿{"payload":{"operation":"remember_llm_response","conversation":[{"role":"user","content":"hello"},{"role":"assistant","content":"I prefer dark mode in all my apps."}]}}

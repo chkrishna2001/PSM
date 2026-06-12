@@ -278,6 +278,92 @@ After training: `upload-gate4`, then `eval-gates --expanded`. Legacy dilution cu
 - Manual full-output smoke: `match_rate` ≥ 0.80 on `manual-probe.jsonl`
 - 20–30 real-chat `remember --psm-model` E2E cases with parse-failure → ignore/repair
 
+## Gate 5 — Recall / context planning (anti-collapse)
+
+Gate 4 proves **write** path (StorageDecision). Gate 5 adds **read** path (`recall_plan`, `context_plan` JSON) without letting storage metrics collapse.
+
+**Indexables are deferred** — recall training uses `target_tables`, `ranking_hints`, and `temporal_intent` only. Add indexables as a later Gate 6+ curriculum once recall planning passes.
+
+### Build curriculum + probes
+
+```powershell
+$env:PYTHONPATH = 'psm-model\src'
+.\.venv\Scripts\python.exe -m psm_model.generate_recall_curriculum `
+  psm-model\data\curriculum\psm-50m-recall-plan-v1.jsonl
+
+.\.venv\Scripts\python.exe -m psm_model.build_gate5_train_v1 `
+  psm-model\data\curriculum\psm-50m-gate5-train-v1.jsonl `
+  --expanded-copies 25 --direct-copies 100 --recall-copies 20
+```
+
+Default mix keeps **~65–75% storage mass** (expanded + direct anchors) and **~25–35% recall** — do not train recall-only on top of 48000.
+
+### Train (resume from Gate 4 best)
+
+```powershell
+.\.venv\Scripts\python.exe -m psm_model.train `
+  psm-model\data\curriculum\psm-50m-gate5-train-v1.jsonl `
+  --resume psm-model\checkpoints\real-v3-50m-full-v2-step-048000.pt `
+  --out psm-model\checkpoints\real-v3-50m-full-v2.pt `
+  --steps 51000 --batch-size 8 --preset 50m `
+  --output-format tagged --sampling random `
+  --device auto --save-every 200 `
+  --probe psm-model\data\direct-behavior-v1\expanded-probe-v1-filtered.jsonl `
+  --eval-every 400
+```
+
+Use `--sampling random` for mixed storage+recall curricula. Action-span loss applies to storage rows only.
+
+### Dual gate eval (must pass both)
+
+```powershell
+.\.venv\Scripts\python.exe -m psm_model.eval_dual_gate `
+  psm-model\checkpoints\real-v3-50m-full-v2-step-051000.pt `
+  --storage-probe psm-model\data\direct-behavior-v1\expanded-probe-v1-filtered.jsonl `
+  --recall-probe psm-model\data\curriculum\psm-50m-recall-plan-v1.jsonl `
+  --device cuda
+```
+
+| Gate | Metric | Minimum |
+|------|--------|---------|
+| **Storage (Gate 4 bar)** | `parse_valid_rate` | 0.95 |
+| | `action_accuracy` | 0.85 |
+| **Recall (Gate 5)** | `parse_valid_rate` | 0.95 |
+| | `target_tables_exact_rate` | 0.90 |
+| | `target_tables_primary_rate` | 0.95 |
+| | `ranking_hints_score` | 0.50 |
+
+Promote only when **dual gate passes**. If storage regresses, increase storage copies or reduce LR before adding recall mass.
+
+### RunPod (`runpod_ctl.py train-gate5`)
+
+```powershell
+cd C:\Users\chkri\source\repos\PSM
+o runpodkey
+o chinnahftoken; $env:HF_TOKEN = (Get-Clipboard -Raw).Trim()
+$env:PSM_HF_MODEL_REPO = 'subbu83/psm-50m-mixed-v1-run'
+$env:DATASET_HF_TOKEN = (Get-Content "$env:USERPROFILE\.cache\huggingface\token" -Raw).Trim()
+
+# New pod (cold bootstrap + wait for train + dual eval)
+python psm-model\scripts\runpod_ctl.py train-gate5 --deploy --gpu "NVIDIA L4" `
+  --target-steps 51000 --batch-size 8 --learning-rate 1e-4 --eval-every 400 `
+  --pull-reports psm-model\checkpoints\gate-eval
+
+# Existing warm pod (scripts+src sync, tmux only — verify GPU util)
+python psm-model\scripts\runpod_ctl.py train-gate5 --pod-id <pod_id> `
+  --proxy-user <pod_id>-<suffix> --warm-pod `
+  --target-steps 51000 --batch-size 8
+
+# Dual eval only (checkpoint already on HF)
+python psm-model\scripts\runpod_ctl.py eval-gate5-dual --pod-id <pod_id> `
+  --proxy-user <pod_id>-<suffix> --eval-step 51000 --sync-src `
+  --pull-reports psm-model\checkpoints\gate-eval --delete-after
+```
+
+Tmux on pod: `psm-gate5` (train), `psm-gate5-sync` (HF upload), `psm-gate5-eval` (dual eval). Metrics: `real-v3-50m-full-v2-gate5.metrics.jsonl`. Report: `gate-eval/gate5-dual-step-051000.json`.
+
+Before first launch, tar-push local `psm-model/src` + `psm-model/scripts` (ctl does this on warm/cold paths). Optionally upload new modules to HF dataset `psm-code/` for cold clones without `--sync-src`.
+
 ## Colab (after Gate 2)
 
 1. Upload filtered curricula + passing checkpoints to a **private** HF repo via `hf upload`.

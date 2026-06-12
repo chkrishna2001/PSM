@@ -12,6 +12,11 @@ export interface TraceModelRuntimeOptions {
 export class TraceModelRuntime implements ModelRuntime {
   constructor(private readonly options: TraceModelRuntimeOptions) {}
 
+  async warmup(): Promise<void> {
+    const inner = this.options.runtime as { warmup?: () => Promise<void> };
+    if (inner.warmup) await inner.warmup();
+  }
+
   async generateJson(prompt: string, options: GenerateOptions = {}): Promise<string> {
     const started = Date.now();
     let output = "";

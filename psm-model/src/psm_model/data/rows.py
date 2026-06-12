@@ -6,14 +6,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from psm_model.schema import StorageDecision, ValidationIssue, validate_storage_decision
+from psm_model.prompts import row_task
+from psm_model.recall_schema import validate_recall_plan
+from psm_model.schema import ValidationIssue, validate_storage_decision
 
 
 @dataclass(frozen=True)
 class TrainingRow:
     id: str
+    task: str
     input: dict[str, Any]
-    expected: StorageDecision
+    expected: dict[str, Any]
     source: str | None = None
     split: str | None = None
 
@@ -25,6 +28,7 @@ class DatasetGateReport:
     failures: tuple[dict[str, Any], ...]
     action_counts: dict[str, int]
     memory_type_counts: dict[str, int]
+    task_counts: dict[str, int]
     duplicate_ids: tuple[str, ...]
 
     @property
@@ -40,8 +44,19 @@ class DatasetGateReport:
             "failures": list(self.failures),
             "action_counts": self.action_counts,
             "memory_type_counts": self.memory_type_counts,
+            "task_counts": self.task_counts,
             "duplicate_ids": list(self.duplicate_ids),
         }
+
+
+def infer_row_task(value: dict[str, Any]) -> str:
+    explicit = value.get("task")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
+    row_input = value.get("input")
+    if isinstance(row_input, dict):
+        return row_task(row_input)
+    return "storage"
 
 
 def validate_training_row(value: Any) -> tuple[TrainingRow | None, tuple[ValidationIssue, ...]]:
@@ -58,26 +73,37 @@ def validate_training_row(value: Any) -> tuple[TrainingRow | None, tuple[Validat
         issues.append(
             ValidationIssue(
                 "$.input",
-                "input must include at least one of conversation, source, context, or prompt",
+                "input must include conversation, question, user_prompt, source, context, or prompt",
             )
         )
 
-    expected_result = validate_storage_decision(value.get("expected"))
-    issues.extend(ValidationIssue(f"$.expected{issue.path[1:]}", issue.message) for issue in expected_result.issues)
+    task = infer_row_task(value)
+    expected_raw = value.get("expected")
+    expected: dict[str, Any] | None = None
+    if task == "storage":
+        expected_result = validate_storage_decision(expected_raw)
+        issues.extend(ValidationIssue(f"$.expected{issue.path[1:]}", issue.message) for issue in expected_result.issues)
+        if expected_result.ok and isinstance(expected_raw, dict):
+            expected = expected_raw
+    else:
+        recall_result = validate_recall_plan(expected_raw)
+        issues.extend(ValidationIssue(f"$.expected", issue) for issue in recall_result.issues)
+        if isinstance(expected_raw, dict) and recall_result.ok:
+            expected = expected_raw
 
     source = _optional_string(value, "source", "$.source", issues)
     split = _optional_string(value, "split", "$.split", issues)
     if split and split not in {"train", "validation", "test", "probe"}:
         issues.append(ValidationIssue("$.split", "split must be train, validation, test, or probe"))
 
-    if issues:
+    if issues or expected is None:
         return None, tuple(issues)
 
-    assert expected_result.decision is not None
     return TrainingRow(
         id=row_id,
+        task=task,
         input=row_input,
-        expected=expected_result.decision,
+        expected=expected,
         source=source,
         split=split,
     ), ()
@@ -89,6 +115,7 @@ def load_jsonl_rows(path: Path) -> DatasetGateReport:
     failures: list[dict[str, Any]] = []
     action_counts: Counter[str] = Counter()
     memory_type_counts: Counter[str] = Counter()
+    task_counts: Counter[str] = Counter()
     seen_ids: set[str] = set()
     duplicate_ids: set[str] = set()
 
@@ -128,8 +155,12 @@ def load_jsonl_rows(path: Path) -> DatasetGateReport:
 
             assert row is not None
             valid += 1
-            action_counts[row.expected.action] += 1
-            memory_type_counts[row.expected.memory.type if row.expected.memory else "none"] += 1
+            task_counts[row.task] += 1
+            if row.task == "storage":
+                action_counts[str(row.expected.get("action", "unknown"))] += 1
+                memory = row.expected.get("memory")
+                memory_type = memory.get("type") if isinstance(memory, dict) else "none"
+                memory_type_counts[str(memory_type)] += 1
 
     return DatasetGateReport(
         total=total,
@@ -137,6 +168,7 @@ def load_jsonl_rows(path: Path) -> DatasetGateReport:
         failures=tuple(failures),
         action_counts=dict(sorted(action_counts.items())),
         memory_type_counts=dict(sorted(memory_type_counts.items())),
+        task_counts=dict(sorted(task_counts.items())),
         duplicate_ids=tuple(sorted(duplicate_ids)),
     )
 
@@ -160,5 +192,9 @@ def _optional_string(value: dict[str, Any], key: str, path: str, issues: list[Va
 
 
 def _has_prompt_payload(value: dict[str, Any]) -> bool:
-    return any(isinstance(value.get(key), str) and value[key].strip() for key in ("conversation", "source", "context", "prompt"))
-
+    if isinstance(value.get("conversation"), list) and value["conversation"]:
+        return True
+    return any(
+        isinstance(value.get(key), str) and value[key].strip()
+        for key in ("conversation", "source", "context", "prompt", "question", "user_prompt")
+    )

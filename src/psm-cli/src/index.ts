@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, HybridPsmRuntime, MemoryStore, NodeLlamaRuntime, PsmModelRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TraceModelRuntime, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
-import { callDaemon, startDaemon } from "./daemon.js";
+import { callDaemon, dispatchDaemonRemember, startDaemon } from "./daemon.js";
 import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
 
 export async function run(argv: string[]): Promise<number> {
@@ -303,7 +303,8 @@ function createRuntime(options: Record<string, string | boolean>): ModelRuntime 
     gpu: stringOption(options, "gpu", config.runtime.gpu) as "auto",
     gpuLayers: stringOption(options, "gpu-layers", config.runtime.gpuLayers) as "auto"
   });
-  const usePsmModel = boolOption(options, "psm-model") || config.psmModel.enabled;
+  const usePsmModel = boolOption(options, "psm-model") || config.psmModel.enabled
+    || process.env.PSM_MODEL === "1" || process.env.PSM_MODEL === "true";
   const runtime: ModelRuntime = usePsmModel
     ? new HybridPsmRuntime(
         primary,
@@ -506,22 +507,44 @@ async function runHookRemember(options: Record<string, string | boolean>): Promi
     }
     responseChars = response.length;
 
-    const daemonStarted = Date.now();
-    const daemonResult = await callDaemon({
-      operation: "remember",
-      payload: {
-        llmResponse: response,
-        userId,
-        source: {
-          source_kind: responseSource ?? "hook",
-          source_id: transcriptPath ?? latestSessionPath() ?? undefined,
-          source_timestamp: new Date().toISOString(),
-          source_label: responseSource ? `agent:${responseSource}` : "agent hook"
-        }
+    const rememberPayload = {
+      llmResponse: response,
+      userId,
+      source: {
+        source_kind: responseSource ?? "hook",
+        source_id: transcriptPath ?? latestSessionPath() ?? undefined,
+        source_timestamp: new Date().toISOString(),
+        source_label: responseSource ? `agent:${responseSource}` : "agent hook"
       }
-    });
-    if (daemonResult) {
-      timings.model_remember = Date.now() - daemonStarted;
+    };
+    const dispatchStarted = Date.now();
+    const dispatched = await dispatchDaemonRemember(
+      { operation: "remember", payload: rememberPayload },
+      (completion) => {
+        const completedAt = Date.now();
+        writeHookAudit({
+          ts: new Date().toISOString(),
+          hook: "remember",
+          async_completion: true,
+          status: completion.ok ? "ok" : "error",
+          reason: completion.ok ? undefined : completion.error,
+          db: dbPath,
+          user: userId,
+          input_keys: inputKeys,
+          response_source: responseSource,
+          response_chars: responseChars,
+          action: completion.ok && typeof completion.body.action === "string" ? completion.body.action : undefined,
+          timings_ms: {
+            dispatch_ms: dispatchStarted - started,
+            model_remember: completedAt - dispatchStarted,
+            total: completedAt - started
+          }
+        });
+      }
+    );
+    if (dispatched) {
+      timings.dispatch_remember = Date.now() - dispatchStarted;
+      status = "dispatched";
       return;
     }
 

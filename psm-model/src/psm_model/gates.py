@@ -25,9 +25,20 @@ EXPANDED_PROBE_THRESHOLDS = {
     "facts_exact_rate": 0.50,
 }
 
+# Gate 5 — recall / context planning (JSON RecallPlan on recall probes).
+RECALL_PROBE_THRESHOLDS = {
+    "parse_valid_rate": 0.95,
+    "schema_valid_rate": 0.95,
+    "target_tables_exact_rate": 0.90,
+    "target_tables_primary_rate": 0.95,
+    "ranking_hints_score": 0.50,
+    "top_k_exact_rate": 0.90,
+}
+
 GATE_MODE_THRESHOLDS = {
     "direct": DIRECT_PROBE_THRESHOLDS,
     "expanded": EXPANDED_PROBE_THRESHOLDS,
+    "recall": RECALL_PROBE_THRESHOLDS,
 }
 
 

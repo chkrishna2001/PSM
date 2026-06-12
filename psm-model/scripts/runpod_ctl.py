@@ -1763,6 +1763,222 @@ def cmd_train_gate4(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_train_gate5(args: argparse.Namespace) -> int:
+    scripts_dir = Path(__file__).resolve().parent
+    warm_pod = getattr(args, "warm_pod", True) and bool(args.pod_id) and not args.deploy
+    script_path = scripts_dir / ("runpod_start_gate5_train_only.sh" if warm_pod else "runpod_train_gate5.sh")
+    if not script_path.exists():
+        raise SystemExit(f"missing train script: {script_path}")
+
+    proxy_user = args.proxy_user or None
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+
+    if args.upload_first:
+        upload_path = scripts_dir / "runpod_upload_gate4.sh"
+        if not upload_path.exists():
+            raise SystemExit(f"missing upload script: {upload_path}")
+        upload_rc = _ssh_run_script(
+            args.host_alias,
+            upload_path,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            timeout_sec=min(args.timeout_sec, 7200),
+            extra_env={"KEEP_LOCAL": str(args.upload_keep_local)},
+            ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+            skip_ssh_wait=bool(args.deploy or args.pod_id),
+        )
+        if upload_rc != 0:
+            return upload_rc
+
+    repo_root = Path(__file__).resolve().parents[2]
+    if args.sync_src and not warm_pod:
+        src_dir = repo_root / "psm-model" / "src"
+        remote_src = "/workspace/PSM/psm-model/src"
+        print(f"Syncing {src_dir} -> pod:{remote_src}", file=sys.stderr)
+        push_rc = _ssh_push_dir(
+            args.host_alias, src_dir, remote_src, host=ssh_host, port=ssh_port, user=ssh_user
+        )
+        if push_rc != 0:
+            print(f"warning: src sync failed (exit {push_rc})", file=sys.stderr)
+    elif args.sync_src and warm_pod:
+        print("warm-pod: skipping full src sync (use --no-warm-pod for cold bootstrap)", file=sys.stderr)
+
+    scripts_dir_repo = repo_root / "psm-model" / "scripts"
+    if scripts_dir_repo.is_dir():
+        remote_scripts = "/workspace/PSM/psm-model/scripts"
+        print(f"Syncing {scripts_dir_repo} -> pod:{remote_scripts}", file=sys.stderr)
+        scripts_rc = _ssh_push_dir(
+            args.host_alias, scripts_dir_repo, remote_scripts, host=ssh_host, port=ssh_port, user=ssh_user
+        )
+        if scripts_rc != 0:
+            print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
+    if args.curriculum:
+        _push_repo_files_via_tar(
+            args.host_alias,
+            repo_root,
+            [args.curriculum, args.recall_probe],
+            "/workspace/PSM",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+
+    extra_env = {
+        "PSM_TRAIN_DEVICE": args.device,
+        "TARGET_STEPS": str(args.target_steps),
+        "RESUME_CHECKPOINT": args.resume_checkpoint,
+        "TOKENIZER": args.tokenizer,
+        "ABORT_AFTER_STEP": str(args.abort_after_step),
+        "GATE5_CURRICULUM": args.curriculum or "psm-model/data/curriculum/psm-50m-gate5-train-v1.jsonl",
+        "GATE5_RECALL_PROBE": args.recall_probe,
+        "EXPANDED_COPIES": str(args.expanded_copies),
+        "DIRECT_COPIES": str(args.direct_copies),
+        "RECALL_COPIES": str(args.recall_copies),
+        "STRUCTURAL_LOSS_WEIGHT": str(args.structural_loss_weight),
+        "BATCH_SIZE": str(args.batch_size),
+        "LEARNING_RATE": str(args.learning_rate),
+        "MIN_LEARNING_RATE": str(args.min_learning_rate),
+        "WARMUP_STEPS": str(args.warmup_steps),
+        "EVAL_EVERY": str(args.eval_every),
+        "SAVE_EVERY": str(args.save_every),
+        "KEEP_LOCAL": str(args.keep_local),
+        "SYNC_INTERVAL_SEC": str(args.sync_interval_sec),
+        "GATE5_EVAL_AFTER": "1" if args.eval_after else "0",
+        "PSM_HF_MODEL_REPO": os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO),
+    }
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        extra_env["HF_TOKEN"] = hf_token
+    dataset_hf_token = os.environ.get("DATASET_HF_TOKEN", "").strip()
+    if dataset_hf_token:
+        extra_env["DATASET_HF_TOKEN"] = dataset_hf_token
+    resume_step = ""
+    for part in Path(args.resume_checkpoint).stem.split("-"):
+        if part.isdigit():
+            resume_step = part
+    if resume_step:
+        extra_env["GATE4_PINNED_STEPS"] = resume_step
+    if args.curriculum:
+        extra_env["SKIP_CURRICULUM_BUILD"] = "1"
+
+    start_timeout = 300 if warm_pod else args.timeout_sec
+    rc = _ssh_run_script(
+        args.host_alias,
+        script_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=start_timeout,
+        extra_env=extra_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+    )
+    if rc == 0 and warm_pod:
+        if not _verify_pod_job(
+            args.host_alias,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            tmux_session="psm-gate5",
+            process_pattern="psm_model.train",
+            label="gate5-train",
+        ):
+            return 1
+
+    if args.pull_metrics:
+        scp_rc = _scp_from_pod(
+            args.host_alias,
+            "/workspace/PSM/psm-model/checkpoints/real-v3-50m-full-v2-gate5.metrics.jsonl",
+            Path(args.pull_metrics).parent,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if scp_rc != 0:
+            print("warning: could not pull gate5 metrics", file=sys.stderr)
+
+    local_ckpt_dir = Path(__file__).resolve().parents[1] / "checkpoints"
+    _scp_from_pod(
+        args.host_alias,
+        "/workspace/PSM/psm-model/checkpoints/gate4-checkpoint-registry.json",
+        local_ckpt_dir,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+    )
+    if args.pull_reports:
+        target_step = f"{int(args.target_steps):06d}"
+        _scp_from_pod(
+            args.host_alias,
+            f"/workspace/PSM/psm-model/checkpoints/gate-eval/gate5-dual-step-{target_step}.json",
+            Path(args.pull_reports),
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+
+    args.required_hf_steps = _gate4_best_steps_for_verify() or [int(args.target_steps)]
+    _delete_pod_unless_kept(args, pod_id, rc, job="training")
+    return rc
+
+
+def cmd_eval_gate5_dual(args: argparse.Namespace) -> int:
+    script_path = Path(__file__).resolve().parent / "runpod_eval_gate5_dual.sh"
+    if not script_path.exists():
+        raise SystemExit(f"missing eval script: {script_path}")
+
+    proxy_user = args.proxy_user or None
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+    repo_root = Path(__file__).resolve().parents[2]
+    if args.sync_src:
+        src_dir = repo_root / "psm-model" / "src"
+        _ssh_push_dir(
+            args.host_alias, src_dir, "/workspace/PSM/psm-model/src", host=ssh_host, port=ssh_port, user=ssh_user
+        )
+    scripts_dir = repo_root / "psm-model" / "scripts"
+    _ssh_push_dir(
+        args.host_alias, scripts_dir, "/workspace/PSM/psm-model/scripts", host=ssh_host, port=ssh_port, user=ssh_user
+    )
+
+    extra_env = {
+        "EVAL_STEP": f"{int(args.eval_step):06d}",
+        "PSM_EVAL_DEVICE": args.device,
+        "GATE5_STORAGE_PROBE": args.storage_probe,
+        "GATE5_RECALL_PROBE": args.recall_probe,
+        "PSM_HF_MODEL_REPO": os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO),
+    }
+    if os.environ.get("HF_TOKEN", "").strip():
+        extra_env["HF_TOKEN"] = os.environ["HF_TOKEN"].strip()
+    if os.environ.get("DATASET_HF_TOKEN", "").strip():
+        extra_env["DATASET_HF_TOKEN"] = os.environ["DATASET_HF_TOKEN"].strip()
+
+    rc = _ssh_run_script(
+        args.host_alias,
+        script_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=args.timeout_sec,
+        extra_env=extra_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=bool(args.deploy or args.pod_id),
+    )
+    if args.pull_reports:
+        step = f"{int(args.eval_step):06d}"
+        _scp_from_pod(
+            args.host_alias,
+            f"/workspace/PSM/psm-model/checkpoints/gate-eval/gate5-dual-step-{step}.json",
+            Path(args.pull_reports),
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+    _delete_pod_unless_kept(args, pod_id, rc, job="eval")
+    return rc
+
+
 def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
     start_cmd = ["bash", "-lc", AUTOSTART_CMD] if args.autostart else ["sleep", "infinity"]
     env = {
@@ -2118,6 +2334,101 @@ def main() -> int:
         help=argparse.SUPPRESS,
     )
     train_gate4.set_defaults(func=cmd_train_gate4)
+
+    train_gate5 = sub.add_parser(
+        "train-gate5",
+        help="Run Gate 5 mixed storage+recall training (resume 48000 default); dual gate eval after train",
+    )
+    train_gate5.add_argument("--deploy", action="store_true")
+    train_gate5.add_argument("--pod-id", default="")
+    train_gate5.add_argument("--name", default="psm-train-gate5")
+    train_gate5.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    train_gate5.add_argument("--template", default="")
+    train_gate5.add_argument("--gpu", default=DEFAULT_GPU)
+    train_gate5.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    train_gate5.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(train_gate5)
+    train_gate5.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    train_gate5.add_argument("--proxy-user", default="")
+    train_gate5.add_argument("--warm-pod", action=argparse.BooleanOptionalAction, default=True)
+    train_gate5.add_argument("--device", default="cuda")
+    train_gate5.add_argument("--target-steps", type=int, default=51000, help="Absolute step target (default: 48000 to 51000).")
+    train_gate5.add_argument(
+        "--resume-checkpoint",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-048000.pt",
+    )
+    train_gate5.add_argument(
+        "--tokenizer",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-048000.tokenizer.json",
+    )
+    train_gate5.add_argument("--sync-src", action=argparse.BooleanOptionalAction, default=True)
+    train_gate5.add_argument("--upload-first", action="store_true")
+    train_gate5.add_argument("--upload-keep-local", type=int, default=2)
+    train_gate5.add_argument("--save-every", type=int, default=200)
+    train_gate5.add_argument("--keep-local", type=int, default=2)
+    train_gate5.add_argument("--sync-interval-sec", type=int, default=120)
+    train_gate5.add_argument(
+        "--curriculum",
+        default="",
+        help="Pre-built gate5 JSONL on pod (sets SKIP_CURRICULUM_BUILD).",
+    )
+    train_gate5.add_argument(
+        "--recall-probe",
+        default="psm-model/data/curriculum/psm-50m-recall-plan-v1.jsonl",
+    )
+    train_gate5.add_argument("--expanded-copies", type=int, default=25)
+    train_gate5.add_argument("--direct-copies", type=int, default=100)
+    train_gate5.add_argument("--recall-copies", type=int, default=20)
+    train_gate5.add_argument("--structural-loss-weight", type=float, default=1.0)
+    train_gate5.add_argument("--batch-size", type=int, default=8)
+    train_gate5.add_argument("--learning-rate", type=float, default=1e-4)
+    train_gate5.add_argument("--min-learning-rate", type=float, default=1e-5)
+    train_gate5.add_argument("--warmup-steps", type=int, default=50)
+    train_gate5.add_argument("--eval-every", type=int, default=400)
+    train_gate5.add_argument("--abort-after-step", type=int, default=60000)
+    train_gate5.add_argument("--eval-after", action=argparse.BooleanOptionalAction, default=True)
+    train_gate5.add_argument("--wait-ssh", type=int, default=300)
+    train_gate5.add_argument("--timeout-sec", type=int, default=28800)
+    train_gate5.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
+    train_gate5.add_argument("--pull-metrics", default="")
+    train_gate5.add_argument(
+        "--pull-reports",
+        default="psm-model/checkpoints/gate-eval",
+        help="Local dir for gate5-dual-step-*.json after training (warm pod: may be empty until train completes).",
+    )
+    train_gate5.add_argument("--keep-pod", action="store_true")
+    train_gate5.add_argument("--force-delete-pod", action="store_true")
+    train_gate5.add_argument("--delete-after", action="store_true", help=argparse.SUPPRESS)
+    train_gate5.set_defaults(func=cmd_train_gate5)
+
+    eval_gate5 = sub.add_parser("eval-gate5-dual", help="Dual eval: Gate 4 storage + Gate 5 recall on one checkpoint step")
+    eval_gate5.add_argument("--deploy", action="store_true")
+    eval_gate5.add_argument("--pod-id", default="")
+    eval_gate5.add_argument("--name", default="psm-eval-gate5")
+    eval_gate5.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    eval_gate5.add_argument("--gpu", default=DEFAULT_GPU)
+    eval_gate5.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    eval_gate5.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(eval_gate5)
+    eval_gate5.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    eval_gate5.add_argument("--proxy-user", default="")
+    eval_gate5.add_argument("--eval-step", type=int, required=True, help="Checkpoint step, e.g. 51000")
+    eval_gate5.add_argument("--device", default="cuda")
+    eval_gate5.add_argument(
+        "--storage-probe",
+        default="psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl",
+    )
+    eval_gate5.add_argument(
+        "--recall-probe",
+        default="psm-model/data/curriculum/psm-50m-recall-plan-v1.jsonl",
+    )
+    eval_gate5.add_argument("--sync-src", action="store_true", help="Push local psm-model/src before eval.")
+    eval_gate5.add_argument("--timeout-sec", type=int, default=7200)
+    eval_gate5.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
+    eval_gate5.add_argument("--pull-reports", default="psm-model/checkpoints/gate-eval")
+    eval_gate5.add_argument("--keep-pod", action="store_true")
+    eval_gate5.add_argument("--delete-after", action="store_true", help=argparse.SUPPRESS)
+    eval_gate5.set_defaults(func=cmd_eval_gate5_dual)
 
     upload_gate4 = sub.add_parser("upload-gate4", help="Upload latest Gate 4 checkpoints to HF")
     upload_gate4.add_argument("--pod-id", default="", help="Existing pod id.")

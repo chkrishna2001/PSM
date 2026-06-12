@@ -1,8 +1,8 @@
 import { createServer, request as httpRequest } from "node:http";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { defaultEmbeddingModel, MemoryStore, NodeLlamaRuntime, PsmService, readPsmConfig, resolvePsmDbPath, TraceModelRuntime, TransformersEmbeddingRuntime, type EmbeddingRuntime, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { dirname, join, resolve } from "node:path";
+import { defaultEmbeddingModel, HybridPsmRuntime, MemoryStore, NodeLlamaRuntime, PsmModelRuntime, PsmService, readPsmConfig, resolvePsmDbPath, TraceModelRuntime, TransformersEmbeddingRuntime, type EmbeddingRuntime, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { defaultModelPath, resolveModelPath } from "./model.js";
 
 export interface DaemonRequest {
@@ -27,6 +27,7 @@ export async function startDaemon(): Promise<void> {
   store.initializeSchema();
 
   const runtime = createRuntime(config);
+  await warmupRuntime(runtime);
   const service = new PsmService(store, runtime, config.embeddings.enabled ? createEmbeddingRuntime() : undefined);
   let lastRequestAt = Date.now();
 
@@ -35,7 +36,13 @@ export async function startDaemon(): Promise<void> {
     writeDaemonState(serverPort(server), config.daemon.host);
     try {
       if (req.method === "GET" && req.url === "/health") {
-        writeJson(res, 200, { ok: true, db: dbPath, model: defaultModelPath(), pid: process.pid });
+        writeJson(res, 200, {
+          ok: true,
+          db: dbPath,
+          model: defaultModelPath(),
+          psm_model: psmModelEnabled(config) ? resolve(config.psmModel.checkpoint) : undefined,
+          pid: process.pid
+        });
         return;
       }
 
@@ -116,6 +123,30 @@ export async function callDaemon(request: DaemonRequest): Promise<Record<string,
   return daemonRequestRaw(state, "POST", "/v1", request);
 }
 
+export async function dispatchDaemonRemember(
+  request: DaemonRequest,
+  onComplete: (result: { ok: true; body: Record<string, unknown> } | { ok: false; error: string }) => void
+): Promise<boolean> {
+  const config = readPsmConfig();
+  if (!config.daemon.enabled || !config.daemon.autostart) return false;
+  try {
+    const state = await ensureDaemon();
+    void daemonRequestRaw(state, "POST", "/v1", request)
+      .then((body) => onComplete({ ok: true, body }))
+      .catch((error) => onComplete({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error)
+      }));
+    return true;
+  } catch (error) {
+    onComplete({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return true;
+  }
+}
+
 async function ensureDaemon(): Promise<DaemonState> {
   const current = readDaemonState();
   if (current && await isHealthy(current)) return current;
@@ -164,18 +195,47 @@ function createEmbeddingRuntime(): { model: string; runtime: EmbeddingRuntime } 
   };
 }
 
+function resolveRepoRoot(): string {
+  const cwd = process.cwd();
+  if (existsSync(resolve(cwd, "psm-model", "src", "psm_model"))) return cwd;
+  return cwd;
+}
+
+function psmModelEnabled(config: PsmConfig): boolean {
+  if (process.env.PSM_MODEL === "1" || process.env.PSM_MODEL === "true") return true;
+  return config.psmModel.enabled;
+}
+
 function createRuntime(config: PsmConfig): ModelRuntime {
-  const runtime = new NodeLlamaRuntime({
+  const primary = new NodeLlamaRuntime({
     modelPath: resolveModelPath(),
     contextSize: config.runtime.contextSize,
     gpu: config.runtime.gpu as "auto",
     gpuLayers: config.runtime.gpuLayers as "auto"
   });
+  const repoRoot = resolveRepoRoot();
+  const runtime: ModelRuntime = psmModelEnabled(config)
+    ? new HybridPsmRuntime(
+        primary,
+        new PsmModelRuntime({
+          checkpoint: resolve(repoRoot, config.psmModel.checkpoint),
+          python: config.psmModel.python,
+          device: config.psmModel.device,
+          outputFormat: config.psmModel.outputFormat,
+          repoRoot
+        })
+      )
+    : primary;
   return traceEnabled(config) ? new TraceModelRuntime({
     runtime,
     path: tracePath(config),
     source: "psm-daemon"
   }) : runtime;
+}
+
+async function warmupRuntime(runtime: ModelRuntime): Promise<void> {
+  const warmable = runtime as { warmup?: () => Promise<void> };
+  if (warmable.warmup) await warmable.warmup();
 }
 
 function traceEnabled(config: PsmConfig): boolean {

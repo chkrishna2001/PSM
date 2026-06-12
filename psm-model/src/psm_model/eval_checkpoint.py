@@ -22,6 +22,11 @@ def evaluate_checkpoint(
     force_action_head: bool = False,
     gate_mode: str = "direct",
 ) -> dict[str, object]:
+    if gate_mode == "recall":
+        from psm_model.eval_recall import evaluate_recall_checkpoint
+
+        return evaluate_recall_checkpoint(checkpoint, data, max_new_tokens=min(max_new_tokens, 384), device=device)
+
     import torch
 
     device_obj = resolve_device(device, torch)
@@ -66,8 +71,8 @@ def main() -> int:
     parser.add_argument(
         "--gate-mode",
         default="direct",
-        choices=["direct", "expanded"],
-        help="Gate 3 uses direct (1.0 on all metrics). Gate 4 expanded probe uses relaxed expanded thresholds.",
+        choices=["direct", "expanded", "recall"],
+        help="Gate 3 direct, Gate 4 expanded storage, Gate 5 recall planning.",
     )
     args = parser.parse_args()
 

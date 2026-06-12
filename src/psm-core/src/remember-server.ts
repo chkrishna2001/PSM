@@ -105,6 +105,10 @@ export class RememberServer {
     return server;
   }
 
+  async ensureReady(): Promise<void> {
+    await this.ready;
+  }
+
   async remember(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     await this.ready;
     const task = this.chain.then(() => this.writeRequest(payload));

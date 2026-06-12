@@ -95,8 +95,8 @@ export class PsmModelRuntime implements ModelRuntime {
     };
   }
 
-  private async generateViaServer(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const server = RememberServer.get({
+  private rememberServer(): RememberServer {
+    return RememberServer.get({
       python: this.python,
       checkpoint: this.checkpoint,
       repoRoot: this.repoRoot,
@@ -105,7 +105,15 @@ export class PsmModelRuntime implements ModelRuntime {
       maxNewTokens: this.maxNewTokens,
       env: this.runtimeEnv()
     });
-    return server.remember(payload);
+  }
+
+  async warmup(): Promise<void> {
+    if (process.env.PSM_REMEMBER_SERVER === "0") return;
+    await this.rememberServer().ensureReady();
+  }
+
+  private async generateViaServer(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.rememberServer().remember(payload);
   }
 
   async generateJson(prompt: string, _options: GenerateOptions = {}): Promise<string> {
@@ -164,6 +172,10 @@ export class HybridPsmRuntime implements ModelRuntime {
     private readonly primary: ModelRuntime,
     private readonly storage: PsmModelRuntime
   ) {}
+
+  async warmup(): Promise<void> {
+    await this.storage.warmup();
+  }
 
   async generateJson(prompt: string, options: GenerateOptions = {}): Promise<string> {
     if (extractStoragePayload(prompt)) {

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from psm_model.configs import config_from_preset
-from psm_model.data import validate_training_row
+from psm_model.data import infer_row_task, validate_training_row
 from psm_model.model import TinyDecoderConfig, TinyDecoderModel
 from psm_model.prompts import render_training_text
 from psm_model.schema import ACTIONS
@@ -25,6 +25,7 @@ ACTION_TO_ID = {action: index for index, action in enumerate(ACTION_ORDER)}
 class TrainingText:
     text: str
     action: str
+    task: str = "storage"
 
 
 def _torch():
@@ -64,12 +65,14 @@ def load_training_examples(
                 if issues or row is None:
                     formatted = ", ".join(f"{issue.path}: {issue.message}" for issue in issues)
                     raise ValueError(f"{path}:{line_number}: invalid row: {formatted}")
+            task = infer_row_task(raw)
             text = render_training_text(raw["input"], raw["expected"], output_format=output_format)
             if max_training_tokens is not None and tokenizer is not None:
                 if len(tokenizer.encode(text, add_bos=True, add_eos=True)) > max_training_tokens:
                     skipped_long += 1
                     continue
-            examples.append(TrainingText(text=text, action=str(raw["expected"]["action"])))
+            action = str(raw["expected"].get("action", task))
+            examples.append(TrainingText(text=text, action=action, task=task))
     if not examples:
         raise ValueError(f"no training examples remain in {path} after filtering")
     if skipped_long:
@@ -134,6 +137,7 @@ def action_span_loss_weights(
     output_format: str,
     action_span_weight: float,
     per_action_span_weights: dict[str, float] | None = None,
+    tasks: list[str] | None = None,
 ) -> Any | None:
     per_action_span_weights = per_action_span_weights or {}
     if action_span_weight == 1.0 and not per_action_span_weights:
@@ -148,6 +152,10 @@ def action_span_loss_weights(
     torch = _torch()
     weights = (labels != -100).to(torch.float32)
     for row_index, action in enumerate(action_labels):
+        if tasks is not None and tasks[row_index] != "storage":
+            continue
+        if action not in ACTION_TO_ID:
+            continue
         weight = per_action_span_weights.get(action, action_span_weight)
         action_tokens = _action_span_token_ids(action, tokenizer, output_format=output_format)
         start = _find_subsequence(labels[row_index].tolist(), action_tokens)
@@ -186,11 +194,23 @@ def parse_action_weight_overrides(values: list[str] | None) -> dict[str, float]:
     return result
 
 
-def action_span_mask(labels: Any, action_labels: list[str], tokenizer: Any, *, output_format: str) -> Any:
+def action_span_mask(
+    labels: Any,
+    action_labels: list[str],
+    tokenizer: Any,
+    *,
+    output_format: str,
+    tasks: list[str] | None = None,
+) -> Any:
     torch = _torch()
     mask = torch.zeros_like(labels, dtype=torch.bool)
     for row_index, action in enumerate(action_labels):
-        action_tokens = _action_span_token_ids(action, tokenizer, output_format=output_format)
+        if tasks is not None and tasks[row_index] != "storage":
+            continue
+        if action not in ACTION_TO_ID:
+            continue
+        row_format = "json" if tasks is not None and tasks[row_index] != "storage" else output_format
+        action_tokens = _action_span_token_ids(action, tokenizer, output_format=row_format)
         start = _find_subsequence(labels[row_index].tolist(), action_tokens)
         if start is None:
             positions = [int(first_label_positions(labels[[row_index]])[0])]
@@ -337,6 +357,7 @@ def train_texts(
     config: TinyDecoderConfig,
     tokenizer: Any | None = None,
     action_labels: list[str] | None = None,
+    task_labels: list[str] | None = None,
     sampling: str = "random",
     steps: int = 100,
     batch_size: int = 4,
@@ -372,7 +393,15 @@ def train_texts(
         configure_cuda_memory_fraction(torch, device_obj, cuda_memory_fraction)
     if not texts:
         raise ValueError("at least one training text is required")
-    sampler = _build_sampler(texts, action_labels=action_labels, sampling=sampling)
+    resolved_task_labels = task_labels or ["storage"] * len(texts)
+    if len(resolved_task_labels) != len(texts):
+        raise ValueError("task label count must match text count")
+    sampler = _build_sampler(
+        texts,
+        action_labels=action_labels,
+        task_labels=resolved_task_labels,
+        sampling=sampling,
+    )
     random.seed(seed)
     torch.manual_seed(seed)
     tokenizer = tokenizer or ByteTokenizer()
@@ -421,18 +450,34 @@ def train_texts(
             input_ids, labels = move_batch_to_device(input_ids, labels, device_obj)
             action_targets = None
             action_positions = None
+            batch_task_labels = [resolved_task_labels[index] for index in batch_indices]
             if action_loss_weight > 0:
                 if action_labels is None:
                     raise ValueError("action auxiliary loss requires action labels")
-                action_targets = torch.tensor([ACTION_TO_ID[action_labels[index]] for index in batch_indices], dtype=torch.long, device=device_obj)
-                action_positions = first_label_positions(labels)
+                storage_batch = all(
+                    task == "storage" and action_labels[index] in ACTION_TO_ID
+                    for index, task in zip(batch_indices, batch_task_labels)
+                )
+                if storage_batch:
+                    action_targets = torch.tensor(
+                        [ACTION_TO_ID[action_labels[index]] for index in batch_indices],
+                        dtype=torch.long,
+                        device=device_obj,
+                    )
+                    action_positions = first_label_positions(labels)
             first_token_weights = lm_loss_weights(labels, first_token_weight=first_token_loss_weight)
             structure_weights = structural_loss_weights(labels, tokenizer, output_format=output_format, structural_weight=structural_loss_weight)
             span_weights = None
             span_mask = None
             if action_labels is not None:
                 batch_action_labels = [action_labels[index] for index in batch_indices]
-                span_mask = action_span_mask(labels, batch_action_labels, tokenizer, output_format=output_format)
+                span_mask = action_span_mask(
+                    labels,
+                    batch_action_labels,
+                    tokenizer,
+                    output_format=output_format,
+                    tasks=batch_task_labels,
+                )
                 span_weights = action_span_loss_weights(
                     labels,
                     batch_action_labels,
@@ -440,6 +485,7 @@ def train_texts(
                     output_format=output_format,
                     action_span_weight=action_span_loss_weight,
                     per_action_span_weights=action_span_weight_overrides,
+                    tasks=batch_task_labels,
                 )
             loss_weights = merge_loss_weights(first_token_weights, span_weights, structure_weights)
             current_learning_rate = _learning_rate_for_step(
@@ -586,7 +632,13 @@ def freeze_non_action_head_parameters(model: TinyDecoderModel) -> None:
         parameter.requires_grad = name.startswith("action_head.")
 
 
-def _build_sampler(texts: list[str], *, action_labels: list[str] | None, sampling: str) -> Any:
+def _build_sampler(
+    texts: list[str],
+    *,
+    action_labels: list[str] | None,
+    task_labels: list[str] | None = None,
+    sampling: str,
+) -> Any:
     if sampling == "random":
         return lambda: random.randrange(len(texts))
     if sampling != "action_balanced":
@@ -595,9 +647,12 @@ def _build_sampler(texts: list[str], *, action_labels: list[str] | None, samplin
         raise ValueError("action-balanced sampling requires action labels")
     if len(action_labels) != len(texts):
         raise ValueError("action label count must match text count")
+    resolved_task_labels = task_labels or ["storage"] * len(texts)
 
     action_to_indices: dict[str, list[int]] = {}
     for index, action in enumerate(action_labels):
+        if resolved_task_labels[index] != "storage" or action not in ACTION_TO_ID:
+            continue
         action_to_indices.setdefault(action, []).append(index)
     actions = sorted(action_to_indices)
     if not actions:
@@ -867,6 +922,7 @@ def main() -> int:
     )
     texts = [example.text for example in examples]
     action_labels = [example.action for example in examples]
+    task_labels = [example.task for example in examples]
     action_span_weight_overrides = parse_action_weight_overrides(args.action_span_weight)
     report = {
         "config": asdict(config),
@@ -943,6 +999,7 @@ def main() -> int:
         config=config,
         tokenizer=tokenizer,
         action_labels=action_labels,
+        task_labels=task_labels,
         sampling=args.sampling,
         steps=args.steps,
         batch_size=args.batch_size,

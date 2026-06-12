@@ -42,7 +42,7 @@ class DatasetRowTests(unittest.TestCase):
 
         self.assertEqual(issues, ())
         self.assertIsNotNone(row)
-        self.assertEqual(row.expected.action, "store_episodic")
+        self.assertEqual(row.expected["action"], "store_episodic")
 
     def test_training_row_requires_prompt_payload(self):
         row, issues = validate_training_row({"id": "row-1", "input": {}, "expected": VALID_EXPECTED})
