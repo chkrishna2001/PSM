@@ -4,7 +4,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from psm_model.eval_generation import _parse_output, predict_action_head, render_action_prefix
 from psm_model.model import TinyDecoderModel
@@ -53,19 +53,28 @@ def open_generation_session(
     )
 
 
+def _default_max_new_tokens(output_format: str) -> int:
+    env = __import__("os").environ.get("PSM_MAX_NEW_TOKENS")
+    if env and env.isdigit():
+        return int(env)
+    return 128 if output_format == "tagged" else 384
+
+
 def generate_storage_json(
     checkpoint: Path,
     input_payload: dict[str, object],
     *,
-    max_new_tokens: int = 512,
+    max_new_tokens: int | None = None,
     temperature: float = 0.0,
     output_format: str | None = None,
     device: str = "auto",
     force_action_head: bool = False,
     session: GenerationSession | None = None,
+    use_kv_cache: bool = True,
 ) -> str:
     active = session or open_generation_session(checkpoint, output_format=output_format, device=device)
     torch = _torch()
+    resolved_max_new_tokens = max_new_tokens if max_new_tokens is not None else _default_max_new_tokens(active.output_format)
     prompt = render_storage_prompt(input_payload, output_format=active.output_format)
     input_ids = torch.tensor(
         [active.tokenizer.encode(prompt, add_bos=True)],
@@ -81,11 +90,19 @@ def generate_storage_json(
                 device=active.device_obj,
             )
             input_ids = torch.cat([input_ids, forced_ids], dim=1)
+    decode_tail = (
+        (lambda ids, start: active.tokenizer.decode(ids[start:]))
+        if active.output_format == "tagged"
+        else None
+    )
     output_ids = active.model.generate(
         input_ids,
-        max_new_tokens=max_new_tokens,
+        max_new_tokens=resolved_max_new_tokens,
         eos_id=active.tokenizer.eos_id,
         temperature=temperature,
+        use_kv_cache=use_kv_cache,
+        stop_on_tagged_end=active.output_format == "tagged",
+        decode=decode_tail,
     )[0].tolist()
     text = active.tokenizer.decode(output_ids)
     return text.split("<|assistant|>\n", 1)[-1].split("<|end|>", 1)[0]

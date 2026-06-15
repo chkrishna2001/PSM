@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     import torch
@@ -70,16 +70,25 @@ class TinyDecoderModel(_ModuleBase):
         action_labels: Any | None = None,
         action_positions: Any | None = None,
         action_loss_weight: float = 0.0,
+        past_key_values: tuple[tuple[Any, Any], ...] | None = None,
+        use_cache: bool = False,
+        start_pos: int = 0,
     ) -> dict[str, Any]:
         torch = _torch()
         _, seq_len = input_ids.shape
-        if seq_len > self.config.context_length:
-            raise ValueError(f"sequence length {seq_len} exceeds context length {self.config.context_length}")
+        past_len = past_key_values[0][0].size(2) if past_key_values else 0
+        total_len = past_len + seq_len
+        if total_len > self.config.context_length:
+            raise ValueError(f"sequence length {total_len} exceeds context length {self.config.context_length}")
 
         x = self.token_embedding(input_ids)
         x = self.drop(x)
-        for block in self.blocks:
-            x = block(x)
+        presents: list[tuple[Any, Any]] = []
+        for index, block in enumerate(self.blocks):
+            past_kv = past_key_values[index] if past_key_values is not None else None
+            x, present = block(x, past_kv=past_kv, start_pos=start_pos, use_cache=use_cache)
+            if use_cache and present is not None:
+                presents.append(present)
         x = self.norm(x)
         logits = self.head(x)
 
@@ -112,7 +121,16 @@ class TinyDecoderModel(_ModuleBase):
                     loss = action_loss * action_loss_weight
                 elif action_loss_weight > 0:
                     loss = loss + action_loss * action_loss_weight
-        return {"logits": logits, "action_logits": action_logits, "loss": loss, "lm_loss": lm_loss, "action_loss": action_loss}
+        result: dict[str, Any] = {
+            "logits": logits,
+            "action_logits": action_logits,
+            "loss": loss,
+            "lm_loss": lm_loss,
+            "action_loss": action_loss,
+        }
+        if use_cache:
+            result["past_key_values"] = tuple(presents)
+        return result
 
     @staticmethod
     def _init_weights(module: Any) -> None:
@@ -165,30 +183,99 @@ class TinyDecoderModel(_ModuleBase):
         eos_id: int | None = None,
         temperature: float = 1.0,
         top_k: int | None = None,
+        use_kv_cache: bool = True,
+        stop_on_tagged_end: bool = False,
+        decode: Callable[[list[int], int], str] | None = None,
     ) -> Any:
         torch = _torch()
         was_training = self.training
         self.eval()
         try:
             with torch.no_grad():
+                if use_kv_cache:
+                    return self._generate_with_kv_cache(
+                        input_ids,
+                        max_new_tokens=max_new_tokens,
+                        eos_id=eos_id,
+                        temperature=temperature,
+                        top_k=top_k,
+                        stop_on_tagged_end=stop_on_tagged_end,
+                        decode=decode,
+                    )
                 for _ in range(max_new_tokens):
                     context = input_ids[:, -self.config.context_length :]
                     logits = self(context)["logits"][:, -1, :]
-                    if temperature <= 0:
-                        next_id = torch.argmax(logits, dim=-1, keepdim=True)
-                    else:
-                        logits = logits / temperature
-                        if top_k is not None:
-                            values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                            logits = torch.where(logits < values[:, [-1]], torch.full_like(logits, -math.inf), logits)
-                        probs = torch.nn.functional.softmax(logits, dim=-1)
-                        next_id = torch.multinomial(probs, num_samples=1)
+                    next_id = self._sample_next_token(logits, temperature=temperature, top_k=top_k)
                     input_ids = torch.cat([input_ids, next_id], dim=1)
                     if eos_id is not None and bool((next_id == eos_id).all()):
                         break
             return input_ids
         finally:
             self.train(was_training)
+
+    def _generate_with_kv_cache(
+        self,
+        input_ids: Any,
+        *,
+        max_new_tokens: int,
+        eos_id: int | None,
+        temperature: float,
+        top_k: int | None,
+        stop_on_tagged_end: bool,
+        decode: Any | None,
+    ) -> Any:
+        torch = _torch()
+        prompt_len = input_ids.size(1)
+        past_key_values: tuple[tuple[Any, Any], ...] | None = None
+        prefill = self(
+            input_ids,
+            past_key_values=None,
+            use_cache=True,
+            start_pos=0,
+        )
+        logits = prefill["logits"][:, -1, :]
+        past_key_values = prefill["past_key_values"]
+        next_id = self._sample_next_token(logits, temperature=temperature, top_k=top_k)
+        input_ids = torch.cat([input_ids, next_id], dim=1)
+        if eos_id is not None and bool((next_id == eos_id).all()):
+            return input_ids
+        if stop_on_tagged_end and decode is not None and self._tagged_generation_complete(decode(input_ids[0].tolist(), prompt_len)):
+            return input_ids
+
+        for step in range(1, max_new_tokens):
+            position = prompt_len + step - 1
+            step_out = self(
+                next_id,
+                past_key_values=past_key_values,
+                use_cache=True,
+                start_pos=position,
+            )
+            past_key_values = step_out["past_key_values"]
+            logits = step_out["logits"][:, -1, :]
+            next_id = self._sample_next_token(logits, temperature=temperature, top_k=top_k)
+            input_ids = torch.cat([input_ids, next_id], dim=1)
+            if eos_id is not None and bool((next_id == eos_id).all()):
+                break
+            if stop_on_tagged_end and decode is not None and self._tagged_generation_complete(decode(input_ids[0].tolist(), prompt_len)):
+                break
+        return input_ids
+
+    @staticmethod
+    def _sample_next_token(logits: Any, *, temperature: float, top_k: int | None) -> Any:
+        torch = _torch()
+        if temperature <= 0:
+            return torch.argmax(logits, dim=-1, keepdim=True)
+        logits = logits / temperature
+        if top_k is not None:
+            values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+            logits = torch.where(logits < values[:, [-1]], torch.full_like(logits, -math.inf), logits)
+        probs = torch.nn.functional.softmax(logits, dim=-1)
+        return torch.multinomial(probs, num_samples=1)
+
+    @staticmethod
+    def _tagged_generation_complete(text: str) -> bool:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return bool(lines) and lines[-1] == "END"
 
 
 class _CausalSelfAttention(_ModuleBase):
@@ -204,7 +291,14 @@ class _CausalSelfAttention(_ModuleBase):
         self.proj = nn.Linear(config.n_embd, config.n_embd)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x: Any) -> Any:
+    def forward(
+        self,
+        x: Any,
+        *,
+        past_kv: tuple[Any, Any] | None = None,
+        start_pos: int = 0,
+        use_cache: bool = False,
+    ) -> tuple[Any, tuple[Any, Any] | None]:
         torch = _torch()
         batch, seq_len, embd = x.shape
         qkv = self.qkv(x)
@@ -212,17 +306,24 @@ class _CausalSelfAttention(_ModuleBase):
         q = q.view(batch, seq_len, self.n_head, self.head_dim).transpose(1, 2)
         k = k.view(batch, seq_len, self.n_head, self.head_dim).transpose(1, 2)
         v = v.view(batch, seq_len, self.n_head, self.head_dim).transpose(1, 2)
-        q, k = _apply_rope(q, k)
+        q, k = _apply_rope(q, k, start_pos=start_pos)
 
+        if past_kv is not None:
+            past_k, past_v = past_kv
+            k = torch.cat([past_k, k], dim=2)
+            v = torch.cat([past_v, v], dim=2)
+
+        present = (k, v) if use_cache else None
+        is_decode_step = past_kv is not None and seq_len == 1
         y = torch.nn.functional.scaled_dot_product_attention(
             q,
             k,
             v,
             dropout_p=self.dropout.p if self.training else 0.0,
-            is_causal=True,
+            is_causal=not is_decode_step,
         )
         y = y.transpose(1, 2).contiguous().view(batch, seq_len, embd)
-        return self.proj(y)
+        return self.proj(y), present
 
 
 class _FeedForward(_ModuleBase):
@@ -251,10 +352,18 @@ class _DecoderBlock(_ModuleBase):
         self.norm_2 = _RMSNorm(config.n_embd)
         self.ff = _FeedForward(config)
 
-    def forward(self, x: Any) -> Any:
-        x = x + self.attn(self.norm_1(x))
+    def forward(
+        self,
+        x: Any,
+        *,
+        past_kv: tuple[Any, Any] | None = None,
+        start_pos: int = 0,
+        use_cache: bool = False,
+    ) -> tuple[Any, tuple[Any, Any] | None]:
+        attn_out, present = self.attn(self.norm_1(x), past_kv=past_kv, start_pos=start_pos, use_cache=use_cache)
+        x = x + attn_out
         x = x + self.ff(self.norm_2(x))
-        return x
+        return x, present
 
 
 class _RMSNorm(_ModuleBase):
@@ -271,11 +380,11 @@ class _RMSNorm(_ModuleBase):
         return normalized * self.weight
 
 
-def _apply_rope(q: Any, k: Any) -> tuple[Any, Any]:
+def _apply_rope(q: Any, k: Any, *, start_pos: int = 0) -> tuple[Any, Any]:
     torch = _torch()
     _, _, seq_len, head_dim = q.shape
     half_dim = head_dim // 2
-    positions = torch.arange(seq_len, device=q.device, dtype=q.dtype)
+    positions = torch.arange(start_pos, start_pos + seq_len, device=q.device, dtype=q.dtype)
     freqs = torch.arange(half_dim, device=q.device, dtype=q.dtype)
     inv_freq = 1.0 / (10000 ** (freqs / half_dim))
     angles = positions[:, None] * inv_freq[None, :]

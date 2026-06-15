@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import {
   defaultEmbeddingModel,
   MemoryStore,
   NodeLlamaRuntime,
+  PsmModelRuntime,
   PsmService,
   TransformersEmbeddingRuntime,
   type ContextItem,
@@ -24,6 +25,10 @@ interface Options {
   answerContextK: number;
   limit: number;
   psmModel: string;
+  psmCheckpoint: string;
+  psmPython: string;
+  psmDevice: string;
+  repoRoot: string;
   psmContextSize: number;
   psmGpu: "auto" | "cuda" | "vulkan" | "metal";
   psmGpuLayers: "auto" | "max" | number;
@@ -87,6 +92,7 @@ interface Output {
 
 export async function main(argv: string[]): Promise<number> {
   const options = parseOptions(argv);
+  const answerableOnly = argv.includes("--answerable-only");
   if (!options.apiKey) {
     throw new Error("OPENROUTER_API_KEY is required. Set it in Colab or pass --api-key.");
   }
@@ -105,10 +111,12 @@ export async function main(argv: string[]): Promise<number> {
       const userId = `locomo-${sampleId}`;
       const memories = store.selectMemories(userId, ["semantic", "episodic"], 10000);
       if (memories.length === 0) continue;
+      const ingestedEvidenceIds = new Set(memories.flatMap(memoryEvidenceIds));
 
       for (const qa of sample.qa ?? []) {
         const evidence = (qa.evidence ?? []).map(String).filter(Boolean);
         if (evidence.length === 0) continue;
+        if (answerableOnly && !evidence.some((id) => ingestedEvidenceIds.has(id))) continue;
         const question = String(qa.question ?? "");
         const goldAnswer = String(qa.answer ?? "");
         const category = String(qa.category ?? "unknown");
@@ -377,7 +385,7 @@ function summarize(records: AnswerRecord[], options: Options): Record<string, un
     top_k: options.topK,
     psm_context_top_k: options.psmContextTopK,
     answer_context_k: options.answerContextK,
-    psm_model: options.psmModel,
+    psm_model: options.psmCheckpoint || options.psmModel,
     embedding_model: options.noEmbeddings ? null : options.embeddingModel,
     answer_model: options.answerModel,
     judge_model: options.judgeModel,
@@ -584,13 +592,21 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function createPsmService(store: MemoryStore, options: Options): PsmService {
-  const runtime = new NodeLlamaRuntime({
-    modelPath: options.psmModel,
-    contextSize: options.psmContextSize,
-    gpu: options.psmGpu,
-    gpuLayers: options.psmGpuLayers,
-    log: (message) => process.stderr.write(`${message}\n`)
-  });
+  const runtime = options.psmCheckpoint
+    ? new PsmModelRuntime({
+        checkpoint: resolve(options.repoRoot, options.psmCheckpoint),
+        python: options.psmPython,
+        repoRoot: options.repoRoot,
+        device: options.psmDevice,
+        outputFormat: "tagged"
+      })
+    : new NodeLlamaRuntime({
+        modelPath: options.psmModel,
+        contextSize: options.psmContextSize,
+        gpu: options.psmGpu,
+        gpuLayers: options.psmGpuLayers,
+        log: (message) => process.stderr.write(`${message}\n`)
+      });
   const embeddings = options.noEmbeddings ? undefined : {
     model: options.embeddingModel,
     runtime: new TransformersEmbeddingRuntime({
@@ -651,6 +667,10 @@ function parseOptions(argv: string[]): Options {
     answerContextK: intOption(raw, "answer-context-k", Math.min(5, intOption(raw, "top-k", 5))),
     limit: intOption(raw, "limit", 0),
     psmModel: stringOption(raw, "psm-model", process.env.PSM_MEMORY_MODEL || defaultModelPath()),
+    psmCheckpoint: stringOption(raw, "checkpoint", process.env.PSM_CHECKPOINT || ""),
+    psmPython: stringOption(raw, "python", process.env.PSM_PYTHON || (platform() === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python")),
+    psmDevice: stringOption(raw, "device", process.env.PSM_DEVICE || "auto"),
+    repoRoot: stringOption(raw, "repo-root", process.cwd()),
     psmContextSize: intOption(raw, "psm-context-size", 4096),
     psmGpu: stringOption(raw, "psm-gpu", "auto") as Options["psmGpu"],
     psmGpuLayers: parseGpuLayers(stringOption(raw, "psm-gpu-layers", "auto")),

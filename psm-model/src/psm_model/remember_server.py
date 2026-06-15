@@ -56,7 +56,7 @@ def main() -> int:
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "at_tag"])
     parser.add_argument("--device", default="auto")
-    parser.add_argument("--max-new-tokens", type=int, default=384)
+    parser.add_argument("--max-new-tokens", type=int, default=128)
     args = parser.parse_args()
 
     session = open_generation_session(

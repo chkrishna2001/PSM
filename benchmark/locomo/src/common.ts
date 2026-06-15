@@ -53,6 +53,54 @@ export function locomoSourceTimestamp(sample: LocomoSample, session: string | un
   return typeof date === "string" && date.trim() ? date.trim() : undefined;
 }
 
+/** Product-shaped plain text: one turn utterance, no transcript wrapper or benchmark metadata. */
+export function buildLocomoProductText(input: { turns: LocomoTurn[]; index: number }): string {
+  const turn = input.turns[input.index];
+  const speaker = String(turn.speaker ?? "Unknown").trim();
+  const utterance = String(turn.text ?? "").trim();
+  const imageBits = [
+    turn.query ? `Image query: ${turn.query}.` : "",
+    turn.blip_caption ? `Image caption: ${turn.blip_caption}.` : ""
+  ].filter(Boolean);
+
+  const base = utterance
+    ? `${speaker} said ${quoteText(utterance)}.`
+    : `${speaker} shared an image.`;
+  return imageBits.length > 0 ? `${base} ${imageBits.join(" ")}`.replace(/\s+/g, " ").trim() : base;
+}
+
+/** Long-form transcript text (legacy benchmark shape; not product-shaped). */
+export function buildLocomoPsmText(input: { sample: LocomoSample; turns: LocomoTurn[]; index: number; windowSize: number }): string {
+  const turn = input.turns[input.index];
+  const speaker = String(turn.speaker ?? "Unknown").trim();
+  const utterance = String(turn.text ?? "").trim();
+  const session = String(turn.session ?? "");
+  const sourceTimestamp = locomoSourceTimestamp(input.sample, session);
+  const windowSize = Number.isInteger(input.windowSize) && input.windowSize >= 0 ? input.windowSize : 2;
+  const windowStart = Math.max(0, input.index - windowSize);
+  const priorTurns = input.turns.slice(windowStart, input.index);
+  const imageBits = [
+    turn.query ? `image query: ${turn.query}` : "",
+    turn.blip_caption ? `image caption: ${turn.blip_caption}` : ""
+  ].filter(Boolean);
+
+  const parts: string[] = [];
+  if (priorTurns.length > 0) {
+    const prior = priorTurns
+      .map((item) => `${item.speaker ?? "Unknown"} said ${quoteText(item.text)}`)
+      .join("; ");
+    parts.push(`Earlier in the conversation: ${prior}.`);
+  }
+  if (sourceTimestamp) {
+    parts.push(`Session time: ${sourceTimestamp}.`);
+  }
+  if (imageBits.length > 0) {
+    parts.push(imageBits.join(" "));
+  }
+  parts.push(`${speaker} said ${quoteText(utterance)}.`);
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
 export function buildLocomoRememberText(input: { sample: LocomoSample; turns: LocomoTurn[]; index: number; windowSize: number }): string {
   const turn = input.turns[input.index];
   const sampleId = String(input.sample.sample_id ?? "unknown");

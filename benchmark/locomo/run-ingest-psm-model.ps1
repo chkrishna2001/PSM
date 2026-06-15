@@ -3,14 +3,18 @@ param(
     [string]$Db = "benchmark\locomo\results\locomo-psm-model-step-048000-n25.db",
     [int]$Limit = 25,
     [int]$BatchSize = 5,
-    [string]$Device = "cpu",
-    [int]$WindowSize = 2
+    [string]$Device = "auto",
+    [string]$WindowSize = 2,
+    [ValidateSet("psm", "locomo")]
+    [string]$InputFormat = "psm"
 )
 
-# Local LoCoMo stays on CPU — loading 50M on laptop GPU can OOM/crash the machine.
-if ($Device -ne "cpu") {
-    Write-Error "Local runs must use -Device cpu (requested: $Device). Use runpod_locomo.sh for GPU."
-    exit 1
+# Prefer GPU when available; set PSM_FORCE_CPU=1 to force CPU-only.
+if ($Device -eq "cpu") {
+    $env:PSM_FORCE_CPU = "1"
+} else {
+    Remove-Item Env:PSM_FORCE_CPU -ErrorAction SilentlyContinue
+    $env:PSM_ALLOW_LOCAL_GPU = "1"
 }
 
 $ErrorActionPreference = "Stop"
@@ -33,6 +37,7 @@ try {
         "--device", $Device,
         "--python", $python,
         "--window-size", "$WindowSize",
+        "--input-format", $InputFormat,
         "--limit", "$Limit"
     )
     node @args
