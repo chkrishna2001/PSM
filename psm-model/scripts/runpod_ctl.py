@@ -36,15 +36,15 @@ DEFAULT_HF_DATASET_REPO = "chkrishna2001/psm-50m-action-mixed-v1"
 STOCK_PYTORCH_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
 # 50M trains at batch-size 1 (~3–6 GiB VRAM). 3090 + modest volume is enough; 4090 is overkill.
-DEFAULT_GPU = "NVIDIA GeForce RTX 3090"
+DEFAULT_GPU = "NVIDIA RTX A5000"
 DEFAULT_VOLUME_GB = 20
 DEFAULT_CONTAINER_DISK_GB = 10
 DEFAULT_MIN_VRAM_GB = 12
 
 # Cheapest-first preference order for --auto-gpu (GraphQL stockStatus must not be None).
 PSM_GPU_PREFERENCES = (
-    "NVIDIA L4",
     "NVIDIA RTX A5000",
+    "NVIDIA L4",
     "NVIDIA GeForce RTX 3090",
     "NVIDIA GeForce RTX 4080",
     "NVIDIA GeForce RTX 4090",
@@ -231,17 +231,24 @@ def _add_auto_gpu_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _rest(method: str, path: str, data: dict | None = None) -> dict | list:
+    ok, body = _rest_try(method, path, data)
+    if not ok:
+        raise SystemExit(body)
+    return body
+
+
+def _rest_try(method: str, path: str, data: dict | None = None) -> tuple[bool, dict | list | str]:
     url = f"{REST_URL}{path}"
     headers = {"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"}
-    body = json.dumps(data).encode("utf-8") if data is not None else None
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    body_bytes = json.dumps(data).encode("utf-8") if data is not None else None
+    req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             raw = resp.read().decode("utf-8")
-            return json.loads(raw) if raw else {"status": resp.status}
+            return True, json.loads(raw) if raw else {"status": resp.status}
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8")
-        raise SystemExit(f"RunPod REST {method} {path} failed ({exc.code}): {detail}") from exc
+        return False, f"RunPod REST {method} {path} failed ({exc.code}): {detail}"
 
 
 def cmd_list_pods(_: argparse.Namespace) -> int:
@@ -672,10 +679,65 @@ def _ssh_probe(target: dict[str, str]) -> bool:
         text=True,
         timeout=90,
     )
-    ok = probe.returncode == 0 and "ssh-ready" in probe.stdout
+    ok = (
+        probe.returncode == 0
+        and "ssh-ready" in probe.stdout
+        and "container not found" not in (probe.stdout + probe.stderr).lower()
+    )
     if ok and target.get("mode") == "proxy" and target.get("pod_id"):
         _ssh_cache_save(str(target["pod_id"]), str(target["user"]))
     return ok
+
+
+def _gpu_deploy_candidates(args: argparse.Namespace) -> tuple[str, ...]:
+    if getattr(args, "gpu_preferences", ""):
+        return _parse_gpu_preferences(args.gpu_preferences)
+    if getattr(args, "auto_gpu", False):
+        return PSM_GPU_PREFERENCES
+    gpu = str(getattr(args, "gpu", "") or DEFAULT_GPU)
+    return (gpu,)
+
+
+def _create_pod_with_fallback(args: argparse.Namespace) -> dict:
+    candidates = _gpu_deploy_candidates(args)
+    rejected: list[dict[str, str]] = []
+    for cloud_type in ("SECURE", "COMMUNITY"):
+        for gpu in candidates:
+            deploy_args = argparse.Namespace(
+                name=args.name,
+                image=getattr(args, "image", STOCK_PYTORCH_IMAGE),
+                template=getattr(args, "template", ""),
+                gpu=gpu,
+                volume_gb=getattr(args, "volume_gb", DEFAULT_VOLUME_GB),
+                container_disk_gb=getattr(args, "container_disk_gb", DEFAULT_CONTAINER_DISK_GB),
+                autostart=getattr(args, "autostart", False),
+                wait_ssh=0,
+            )
+            ok, result = _rest_try("POST", "/pods", _deploy_payload(deploy_args, cloud_type=cloud_type))
+            if ok and isinstance(result, dict) and result.get("id"):
+                print(
+                    json.dumps(
+                        {
+                            "event": "pod_created",
+                            "cloudType": cloud_type,
+                            "gpu": gpu,
+                            "id": result.get("id"),
+                        },
+                        indent=2,
+                    )
+                )
+                return result
+            rejected.append(
+                {
+                    "cloudType": cloud_type,
+                    "gpu": gpu,
+                    "error": str(result)[:240] if isinstance(result, str) else "unknown",
+                }
+            )
+    raise SystemExit(
+        "No RunPod GPU could be provisioned (tried SECURE + COMMUNITY). "
+        f"Attempts: {json.dumps(rejected, indent=2)}"
+    )
 
 
 def _proxy_ssh_triplet(proxy_user: str) -> tuple[str, str, str]:
@@ -716,18 +778,7 @@ def _resolve_pod_ssh(
         return pod_id, target["host"], target["port"], target["user"]
 
     if getattr(args, "deploy", False):
-        _apply_auto_gpu(args)
-        deploy_args = argparse.Namespace(
-            name=args.name,
-            image=args.image,
-            template=args.template,
-            gpu=args.gpu,
-            volume_gb=args.volume_gb,
-            container_disk_gb=args.container_disk_gb,
-            autostart=False,
-            wait_ssh=0,
-        )
-        data = _rest("POST", "/pods", _deploy_payload(deploy_args))
+        data = _create_pod_with_fallback(args)
         print(json.dumps(data, indent=2))
         pod_id = str(data.get("id", ""))
         if not pod_id:
@@ -762,7 +813,9 @@ def _verify_pod_job(
         "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader 2>/dev/null || echo GPU_NA\n"
     )
     time.sleep(8)
-    for attempt in range(4):
+    attempts = 12 if "eval" in label else 4
+    pause_sec = 15 if "eval" in label else 5
+    for attempt in range(attempts):
         proc = subprocess.run(
             [
                 SSH_BIN,
@@ -788,9 +841,157 @@ def _verify_pod_job(
                 if any(k in line for k in ("TMUX_", "PROC_", "%", "MiB", process_pattern)):
                     print(f"verify {label}: {line.strip()}", file=sys.stderr)
             return True
-        time.sleep(5)
+        time.sleep(pause_sec)
     print(f"verify {label}: FAILED — no tmux/{process_pattern} on pod", file=sys.stderr)
     return False
+
+
+def _probe_pod_training(
+    host_alias: str,
+    *,
+    host: str | None,
+    port: str | None,
+    user: str,
+    tmux_session: str,
+    process_pattern: str,
+    train_log: str,
+    timeout_sec: int = 60,
+) -> tuple[dict[str, str], list[str]]:
+    """Quick non-blocking pod probe (single SSH, hard timeout). Returns status dict + log tail."""
+    probe = f"""
+tmux has-session -t {tmux_session} 2>/dev/null && echo PSM_TMUX=OK || echo PSM_TMUX=MISSING
+pgrep -af '{process_pattern}' 2>/dev/null | grep -v tmux | head -1 | sed 's/^/PSM_PROC=/' || echo PSM_PROC=MISSING
+nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 | awk -F',' '{{printf "PSM_GPU_UTIL=%s\\nPSM_GPU_MEM_MIB=%s\\n", $1, $2}}' || echo PSM_GPU_UTIL=NA
+python3 -c "import torch; print('PSM_CUDA_OK=1' if torch.cuda.is_available() else 'PSM_CUDA_OK=0')" 2>/dev/null || echo PSM_CUDA_OK=0
+test -f /tmp/psm-gate5.done && echo PSM_TRAIN_DONE=1 || echo PSM_TRAIN_DONE=0
+test -f /tmp/psm-gate5-dual-eval.done && echo PSM_EVAL_DONE=1 || echo PSM_EVAL_DONE=0
+test -f /tmp/psm-gate4.done && echo PSM_GATE4_TRAIN_DONE=1 || echo PSM_GATE4_TRAIN_DONE=0
+ls -t /workspace/PSM/psm-model/checkpoints/real-v3-50m-full-v2-step-*.pt 2>/dev/null | head -1 | sed 's|.*/||;s/.pt$//' | sed 's/^/PSM_LATEST_CKPT=/' || echo PSM_LATEST_CKPT=none
+ls /workspace/PSM/psm-model/checkpoints/gate-eval/gate5-dual-step-*.json 2>/dev/null | tail -1 | xargs -r basename | sed 's/^/PSM_DUAL_EVAL=/' || echo PSM_DUAL_EVAL=none
+tmux has-session -t psm-gate5-sync 2>/dev/null && echo PSM_SYNC_TMUX=OK || echo PSM_SYNC_TMUX=MISSING
+if [[ -f '{train_log}' ]]; then tail -3 '{train_log}' | while IFS= read -r line; do echo "PSM_LOG=$line"; done; else echo PSM_LOG=missing; fi
+"""
+    proc = subprocess.run(
+        [
+            SSH_BIN,
+            "-tt",
+            "-i",
+            SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=15",
+            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+            "bash",
+            "-s",
+        ],
+        input=f"{probe}exit\n",
+        capture_output=True,
+        text=True,
+        timeout=timeout_sec,
+        encoding="utf-8",
+        errors="replace",
+    )
+    status: dict[str, str] = {"ssh_rc": str(proc.returncode)}
+    log_lines: list[str] = []
+    for line in (proc.stdout or "").splitlines():
+        if line.startswith("PSM_"):
+            key, _, value = line.partition("=")
+            if key == "PSM_LOG":
+                log_lines.append(value.strip())
+            else:
+                status[key] = value.strip()
+    if proc.stderr:
+        status["ssh_stderr"] = proc.stderr.strip()[-500:]
+    return status, log_lines
+
+
+def cmd_verify_pod(args: argparse.Namespace) -> int:
+    proxy_user = args.proxy_user or None
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_pod_ssh(args, proxy_user=proxy_user)
+    status, log_lines = _probe_pod_training(
+        args.host_alias,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        tmux_session=args.tmux_session,
+        process_pattern=args.process_pattern,
+        train_log=args.train_log,
+        timeout_sec=args.timeout_sec,
+    )
+    tmux_ok = status.get("PSM_TMUX") == "OK"
+    proc_ok = status.get("PSM_PROC", "MISSING") != "MISSING"
+    cuda_ok = status.get("PSM_CUDA_OK") == "1"
+    gpu_util = 0
+    try:
+        gpu_util = int(float(status.get("PSM_GPU_UTIL", "0").replace("%", "").strip() or 0))
+    except ValueError:
+        gpu_util = 0
+    gpu_ok = not args.require_gpu or gpu_util >= args.min_gpu_pct
+    train_done = status.get("PSM_TRAIN_DONE") == "1"
+    eval_done = status.get("PSM_EVAL_DONE") == "1"
+    sync_tmux = status.get("PSM_SYNC_TMUX") == "OK"
+    gpu_active = cuda_ok and gpu_util >= args.min_gpu_pct
+    if proc_ok and cuda_ok and (not args.require_gpu or gpu_ok):
+        job_state = "training"
+    elif gpu_active and tmux_ok and not proc_ok:
+        job_state = "gpu_active"
+    elif eval_done and not proc_ok:
+        job_state = "eval_finished"
+    elif train_done and not proc_ok:
+        job_state = "train_finished"
+    elif train_done and eval_done:
+        job_state = "eval_finished"
+    elif not proc_ok and gpu_util < args.min_gpu_pct:
+        job_state = "idle_billing" if sync_tmux or tmux_ok else "stopped"
+    else:
+        job_state = "unknown"
+    passed = job_state in ("training", "gpu_active", "eval_finished") and cuda_ok and (
+        job_state == "eval_finished" or (tmux_ok and (gpu_ok or not args.require_gpu))
+    )
+    report = {
+        "pod_id": pod_id,
+        "passed": passed,
+        "job_state": job_state,
+        "tmux": status.get("PSM_TMUX"),
+        "sync_tmux": sync_tmux,
+        "process": status.get("PSM_PROC", "MISSING")[:120],
+        "cuda_ok": cuda_ok,
+        "gpu_util_pct": gpu_util,
+        "gpu_mem_mib": status.get("PSM_GPU_MEM_MIB"),
+        "train_done": train_done,
+        "eval_done": eval_done,
+        "latest_checkpoint": status.get("PSM_LATEST_CKPT"),
+        "dual_eval_report": status.get("PSM_DUAL_EVAL"),
+        "train_log_tail": log_lines[-3:],
+        "idle_billing": job_state in ("train_finished", "idle_billing", "eval_finished"),
+    }
+    print(json.dumps(report, indent=2))
+    if job_state == "train_finished":
+        print(
+            "TRAIN_FINISHED_IDLE — GPU job done but pod still billing. "
+            "Run dual eval or stop/delete pod.",
+            file=sys.stderr,
+        )
+        return 2
+    if job_state == "eval_finished":
+        print("EVAL_FINISHED — safe to sync HF and delete pod after verify.", file=sys.stderr)
+        return 0
+    if job_state == "idle_billing":
+        print("IDLE_BILLING — no train process, pod still running.", file=sys.stderr)
+        if args.stop_on_fail:
+            print(f"Stopping pod {pod_id} (idle GPU billing).", file=sys.stderr)
+            _rest("POST", f"/pods/{pod_id}/stop")
+        return 2
+    if not passed:
+        print(
+            "verify-pod FAILED: "
+            f"tmux={tmux_ok} proc={proc_ok} cuda={cuda_ok} gpu>={args.min_gpu_pct}% is {gpu_ok} (saw {gpu_util}%)",
+            file=sys.stderr,
+        )
+        if args.stop_on_fail:
+            print(f"Stopping pod {pod_id} (idle GPU billing).", file=sys.stderr)
+            _rest("POST", f"/pods/{pod_id}/stop")
+        return 1
+    return 0
 
 
 def _push_repo_files_via_tar(
@@ -1157,7 +1358,7 @@ def _ssh_push_dir(
         with tarfile.open(tmp_path, "w:gz") as archive:
             archive.add(local_path, arcname=".")
         size_mb = tmp_path.stat().st_size / (1024 * 1024)
-        print(f"pushing {local_path} ({size_mb:.1f} MB tar) -> {remote_path}", file=sys.stderr, flush=True)
+        print(f"pushing {local_path} ({size_mb:.1f} MB tar) -> {remote_path}", flush=True)
         encoded = base64.b64encode(tmp_path.read_bytes()).decode("ascii")
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -1195,8 +1396,14 @@ def _ssh_push_dir(
         if result.stderr:
             print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
         return result.returncode
-    if "PSM_PUSH_OK" not in result.stdout:
+    combined = f"{result.stdout}\n{result.stderr}"
+    if "container not found" in combined.lower():
+        print("remote push failed: pod container not running (stop+start pod, do not deploy another)", file=sys.stderr)
+        return 2
+    if "PSM_PUSH_OK" not in combined:
         print("remote push did not confirm PSM_PUSH_OK", file=sys.stderr)
+        if result.stdout.strip():
+            print(result.stdout[-400:], file=sys.stderr)
         return 1
     return 0
 
@@ -1814,28 +2021,63 @@ def cmd_train_gate5(args: argparse.Namespace) -> int:
         if scripts_rc != 0:
             print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
 
+    gate5_artifacts: list[str] = []
     if args.curriculum:
+        gate5_artifacts.append(args.curriculum)
+    if args.recall_probe:
+        gate5_artifacts.append(args.recall_probe)
+    expanded_probe = repo_root / "probes" / "expanded-probe-v1-filtered.jsonl"
+    if expanded_probe.is_file():
+        gate5_artifacts.append("probes/expanded-probe-v1-filtered.jsonl")
+    default_curriculum_rel = (
+        "psm-model/data/curriculum/psm-50m-gate5-train-v2-recall-heavy.jsonl"
+        if getattr(args, "profile", "recall-heavy") == "recall-heavy"
+        else "psm-model/data/curriculum/psm-50m-gate5-train-v1.jsonl"
+    )
+    prebuilt_curriculum = repo_root / default_curriculum_rel
+    if prebuilt_curriculum.is_file() and default_curriculum_rel not in gate5_artifacts:
+        gate5_artifacts.append(default_curriculum_rel)
+    if gate5_artifacts:
         _push_repo_files_via_tar(
             args.host_alias,
             repo_root,
-            [args.curriculum, args.recall_probe],
+            gate5_artifacts,
             "/workspace/PSM",
             host=ssh_host,
             port=ssh_port,
             user=ssh_user,
         )
 
+    profile_presets = {
+        "bridge": (25, 100, 20),
+        "recall-heavy": (20, 0, 500),
+    }
+    expanded_copies, direct_copies, recall_copies = profile_presets.get(
+        args.profile, profile_presets["recall-heavy"]
+    )
+    if args.expanded_copies is not None:
+        expanded_copies = args.expanded_copies
+    if args.direct_copies is not None:
+        direct_copies = args.direct_copies
+    if args.recall_copies is not None:
+        recall_copies = args.recall_copies
+    default_curriculum = (
+        "psm-model/data/curriculum/psm-50m-gate5-train-v2-recall-heavy.jsonl"
+        if args.profile == "recall-heavy"
+        else "psm-model/data/curriculum/psm-50m-gate5-train-v1.jsonl"
+    )
     extra_env = {
         "PSM_TRAIN_DEVICE": args.device,
         "TARGET_STEPS": str(args.target_steps),
         "RESUME_CHECKPOINT": args.resume_checkpoint,
         "TOKENIZER": args.tokenizer,
         "ABORT_AFTER_STEP": str(args.abort_after_step),
-        "GATE5_CURRICULUM": args.curriculum or "psm-model/data/curriculum/psm-50m-gate5-train-v1.jsonl",
+        "GATE5_CURRICULUM": args.curriculum or default_curriculum,
         "GATE5_RECALL_PROBE": args.recall_probe,
-        "EXPANDED_COPIES": str(args.expanded_copies),
-        "DIRECT_COPIES": str(args.direct_copies),
-        "RECALL_COPIES": str(args.recall_copies),
+        "GATE5_PROFILE": args.profile,
+        "EXPANDED_COPIES": str(expanded_copies),
+        "DIRECT_COPIES": str(direct_copies),
+        "RECALL_COPIES": str(recall_copies),
         "STRUCTURAL_LOSS_WEIGHT": str(args.structural_loss_weight),
         "BATCH_SIZE": str(args.batch_size),
         "LEARNING_RATE": str(args.learning_rate),
@@ -1860,7 +2102,12 @@ def cmd_train_gate5(args: argparse.Namespace) -> int:
             resume_step = part
     if resume_step:
         extra_env["GATE4_PINNED_STEPS"] = resume_step
-    if args.curriculum:
+    curriculum_on_disk = (
+        Path(args.curriculum)
+        if args.curriculum
+        else repo_root / default_curriculum
+    )
+    if curriculum_on_disk.is_file():
         extra_env["SKIP_CURRICULUM_BUILD"] = "1"
 
     start_timeout = 300 if warm_pod else args.timeout_sec
@@ -1938,9 +2185,15 @@ def cmd_eval_gate5_dual(args: argparse.Namespace) -> int:
             args.host_alias, src_dir, "/workspace/PSM/psm-model/src", host=ssh_host, port=ssh_port, user=ssh_user
         )
     scripts_dir = repo_root / "psm-model" / "scripts"
-    _ssh_push_dir(
-        args.host_alias, scripts_dir, "/workspace/PSM/psm-model/scripts", host=ssh_host, port=ssh_port, user=ssh_user
-    )
+    if not getattr(args, "no_sync_scripts", False):
+        push_rc = _ssh_push_dir(
+            args.host_alias, scripts_dir, "/workspace/PSM/psm-model/scripts", host=ssh_host, port=ssh_port, user=ssh_user
+        )
+        if push_rc != 0:
+            print(
+                f"script sync failed (exit {push_rc}); continuing — eval script bootstraps from git/HF",
+                file=sys.stderr,
+            )
 
     extra_env = {
         "EVAL_STEP": f"{int(args.eval_step):06d}",
@@ -1954,18 +2207,78 @@ def cmd_eval_gate5_dual(args: argparse.Namespace) -> int:
     if os.environ.get("DATASET_HF_TOKEN", "").strip():
         extra_env["DATASET_HF_TOKEN"] = os.environ["DATASET_HF_TOKEN"].strip()
 
+    bootstrap_env = {**extra_env, "BOOTSTRAP_ONLY": "1"}
     rc = _ssh_run_script(
         args.host_alias,
         script_path,
         host=ssh_host,
         port=ssh_port,
         user=ssh_user,
-        timeout_sec=args.timeout_sec,
-        extra_env=extra_env,
+        timeout_sec=min(args.timeout_sec, 1800),
+        extra_env=bootstrap_env,
         ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
         skip_ssh_wait=bool(args.deploy or args.pod_id),
     )
-    if args.pull_reports:
+    if rc != 0:
+        if getattr(args, "stop_on_fail", False):
+            _rest("POST", f"/pods/{pod_id}/stop")
+        _delete_pod_unless_kept(args, pod_id, rc, job="eval")
+        return rc if isinstance(rc, int) else rc[0]
+
+    start_env = {**extra_env, "WAIT_EVAL_DONE": "0"}
+    rc = _ssh_run_script(
+        args.host_alias,
+        script_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=min(args.timeout_sec, 900),
+        extra_env=start_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+    )
+    if rc == 0 and getattr(args, "verify_after_start", True):
+        if not _verify_pod_job(
+            args.host_alias,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            tmux_session="psm-gate5-eval",
+            process_pattern="eval_dual_gate",
+            label="gate5-eval",
+        ):
+            # Eval loads checkpoint before GPU spikes; don't abort if tmux already started.
+            probe = _probe_pod_training(
+                args.host_alias,
+                host=ssh_host,
+                port=ssh_port,
+                user=ssh_user,
+                tmux_session="psm-gate5-eval",
+                process_pattern="eval_dual_gate",
+                train_log="/tmp/psm-gate5-dual-eval.log",
+                timeout_sec=30,
+            )
+            status, _ = probe
+            if status.get("PSM_EVAL_DONE") != "1" and status.get("PSM_TMUX") != "OK":
+                print("gate5-eval verify failed: no GPU job on pod", file=sys.stderr)
+                if getattr(args, "stop_on_fail", False):
+                    _rest("POST", f"/pods/{pod_id}/stop")
+                _delete_pod_unless_kept(args, pod_id, 1, job="eval")
+                return 1
+            print("gate5-eval verify: tmux up or eval already done — continuing wait", file=sys.stderr)
+
+    wait_path = Path(__file__).resolve().parent / "runpod_wait_gate5_dual.sh"
+    rc = _ssh_run_script(
+        args.host_alias,
+        wait_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=args.timeout_sec,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+    )
+    if rc == 0 and args.pull_reports:
         step = f"{int(args.eval_step):06d}"
         _scp_from_pod(
             args.host_alias,
@@ -1979,7 +2292,7 @@ def cmd_eval_gate5_dual(args: argparse.Namespace) -> int:
     return rc
 
 
-def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
+def _deploy_payload(args: argparse.Namespace, *, cloud_type: str = "SECURE") -> dict[str, object]:
     start_cmd = ["bash", "-lc", AUTOSTART_CMD] if args.autostart else ["sleep", "infinity"]
     env = {
         "HF_TOKEN": HF_TOKEN_SECRET_REF,
@@ -1993,7 +2306,7 @@ def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
         "name": args.name,
         "gpuTypeIds": [args.gpu],
         "gpuCount": 1,
-        "cloudType": "SECURE",
+        "cloudType": cloud_type,
         "supportPublicIp": True,
         "env": env,
     }
@@ -2014,17 +2327,7 @@ def _deploy_payload(args: argparse.Namespace) -> dict[str, object]:
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:
-    _apply_auto_gpu(args)
-    start_cmd = ["bash", "-lc", AUTOSTART_CMD] if args.autostart else ["sleep", "infinity"]
-    env = {
-        "HF_TOKEN": HF_TOKEN_SECRET_REF,
-        "PYTHONPATH": "psm-model/src",
-        "PSM_REPO_ROOT": "/workspace/PSM",
-        "PSM_HF_MODEL_REPO": DEFAULT_HF_MODEL_REPO,
-        "PSM_HF_DATASET_REPO": DEFAULT_HF_DATASET_REPO,
-        "PSM_SYNC_GIT": "1",
-    }
-    data = _rest("POST", "/pods", _deploy_payload(args))
+    data = _create_pod_with_fallback(args)
     print(json.dumps(data, indent=2))
     if args.wait_ssh:
         pod_id = str(data.get("id", ""))
@@ -2033,6 +2336,7 @@ def cmd_deploy(args: argparse.Namespace) -> int:
                 argparse.Namespace(
                     pod_id=pod_id,
                     host_alias=SSH_CONFIG_HOST,
+                    proxy_user="",
                     timeout_sec=args.wait_ssh,
                     poll_sec=5,
                 )
@@ -2136,6 +2440,31 @@ def main() -> int:
     wait_ssh.add_argument("--timeout-sec", type=int, default=180)
     wait_ssh.add_argument("--poll-sec", type=int, default=5)
     wait_ssh.set_defaults(func=cmd_wait_ssh)
+
+    verify_pod = sub.add_parser(
+        "verify-pod",
+        help="Probe tmux + train process + CUDA + GPU util (hard timeout, no 8h block)",
+    )
+    verify_pod.add_argument("--pod-id", required=True)
+    verify_pod.add_argument("--proxy-user", default="", help="pod_id-suffix@ssh.runpod.io (required for reliable SSH)")
+    verify_pod.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    verify_pod.add_argument("--tmux-session", default="psm-gate5")
+    verify_pod.add_argument("--process-pattern", default="psm_model.train")
+    verify_pod.add_argument("--train-log", default="/tmp/psm-gate5-train.log")
+    verify_pod.add_argument("--timeout-sec", type=int, default=60, help="Max SSH probe time (default 60s)")
+    verify_pod.add_argument("--min-gpu-pct", type=int, default=5, help="Fail if GPU util below this")
+    verify_pod.add_argument(
+        "--require-gpu",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Require GPU util >= min-gpu-pct (use --no-require-gpu during apt/bootstrap)",
+    )
+    verify_pod.add_argument(
+        "--stop-on-fail",
+        action="store_true",
+        help="Stop pod immediately if verify fails (prevents idle billing)",
+    )
+    verify_pod.set_defaults(func=cmd_verify_pod)
 
     eval_gates = sub.add_parser(
         "eval-gates",
@@ -2348,18 +2677,19 @@ def main() -> int:
     train_gate5.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
     train_gate5.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
     _add_auto_gpu_arguments(train_gate5)
+    train_gate5.set_defaults(auto_gpu=True)
     train_gate5.add_argument("--host-alias", default=SSH_CONFIG_HOST)
     train_gate5.add_argument("--proxy-user", default="")
     train_gate5.add_argument("--warm-pod", action=argparse.BooleanOptionalAction, default=True)
     train_gate5.add_argument("--device", default="cuda")
-    train_gate5.add_argument("--target-steps", type=int, default=51000, help="Absolute step target (default: 48000 to 51000).")
+    train_gate5.add_argument("--target-steps", type=int, default=58000, help="Absolute step target (phase 2 default: 051000 to 58000).")
     train_gate5.add_argument(
         "--resume-checkpoint",
-        default="psm-model/checkpoints/real-v3-50m-full-v2-step-048000.pt",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-057000.pt",
     )
     train_gate5.add_argument(
         "--tokenizer",
-        default="psm-model/checkpoints/real-v3-50m-full-v2-step-048000.tokenizer.json",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-057000.tokenizer.json",
     )
     train_gate5.add_argument("--sync-src", action=argparse.BooleanOptionalAction, default=True)
     train_gate5.add_argument("--upload-first", action="store_true")
@@ -2376,12 +2706,18 @@ def main() -> int:
         "--recall-probe",
         default="psm-model/data/curriculum/psm-50m-recall-plan-v1.jsonl",
     )
-    train_gate5.add_argument("--expanded-copies", type=int, default=25)
-    train_gate5.add_argument("--direct-copies", type=int, default=100)
-    train_gate5.add_argument("--recall-copies", type=int, default=20)
+    train_gate5.add_argument(
+        "--profile",
+        choices=("bridge", "recall-heavy"),
+        default="recall-heavy",
+        help="Gate5 curriculum mix (recall-heavy for phase 2 from step 051000).",
+    )
+    train_gate5.add_argument("--expanded-copies", type=int, default=None)
+    train_gate5.add_argument("--direct-copies", type=int, default=None)
+    train_gate5.add_argument("--recall-copies", type=int, default=None)
     train_gate5.add_argument("--structural-loss-weight", type=float, default=1.0)
-    train_gate5.add_argument("--batch-size", type=int, default=8)
-    train_gate5.add_argument("--learning-rate", type=float, default=1e-4)
+    train_gate5.add_argument("--batch-size", type=int, default=16)
+    train_gate5.add_argument("--learning-rate", type=float, default=5e-5)
     train_gate5.add_argument("--min-learning-rate", type=float, default=1e-5)
     train_gate5.add_argument("--warmup-steps", type=int, default=50)
     train_gate5.add_argument("--eval-every", type=int, default=400)
@@ -2423,10 +2759,20 @@ def main() -> int:
         default="psm-model/data/curriculum/psm-50m-recall-plan-v1.jsonl",
     )
     eval_gate5.add_argument("--sync-src", action="store_true", help="Push local psm-model/src before eval.")
+    eval_gate5.add_argument(
+        "--no-sync-scripts",
+        action="store_true",
+        help="Skip tar-push of scripts (eval bootstraps from git/HF on pod).",
+    )
     eval_gate5.add_argument("--timeout-sec", type=int, default=7200)
     eval_gate5.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
     eval_gate5.add_argument("--pull-reports", default="psm-model/checkpoints/gate-eval")
     eval_gate5.add_argument("--keep-pod", action="store_true")
+    eval_gate5.add_argument(
+        "--stop-on-fail",
+        action="store_true",
+        help="Stop pod if CUDA/GPU verify fails after eval tmux start",
+    )
     eval_gate5.add_argument("--delete-after", action="store_true", help=argparse.SUPPRESS)
     eval_gate5.set_defaults(func=cmd_eval_gate5_dual)
 

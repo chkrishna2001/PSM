@@ -95,6 +95,26 @@ for rel in \
       --repo-type dataset --local-dir . 2>/dev/null || true
   fi
 done
+for rel in \
+  psm-model/data/probes/direct_probes.jsonl \
+  psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl; do
+  if [[ ! -f "$rel" ]]; then
+    HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" \
+      probes/direct_probes.jsonl \
+      probes/expanded-probe-v1-filtered.jsonl \
+      probes/manual-probe.jsonl \
+      --repo-type dataset --local-dir psm-model/data || true
+    cp -f psm-model/data/probes/expanded-probe-v1-filtered.jsonl psm-model/data/direct-behavior-v1/ 2>/dev/null || true
+    cp -f psm-model/data/probes/manual-probe.jsonl psm-model/data/direct-behavior-v1/ 2>/dev/null || true
+  fi
+done
+if [[ ! -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl && -f probes/expanded-probe-v1-filtered.jsonl ]]; then
+  cp -f probes/expanded-probe-v1-filtered.jsonl psm-model/data/direct-behavior-v1/
+fi
+if [[ ! -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl ]]; then
+  echo "Gate 5 expanded probes missing (HF + local probes/)" >&2
+  exit 1
+fi
 
 RECALL_PROBE="${GATE5_RECALL_PROBE:-psm-model/data/curriculum/psm-50m-recall-plan-v1.jsonl}"
 if [[ ! -f "$RECALL_PROBE" ]]; then

@@ -44,6 +44,29 @@ def _copy_task_rows(
     return added
 
 
+GATE5_PROFILES: dict[str, dict[str, int]] = {
+    # Phase 1 bridge: storage-heavy; recall mass is tiny without direct_probes on disk.
+    "bridge": {"expanded_copies": 25, "direct_copies": 100, "recall_copies": 20},
+    # Phase 2: ~35-40% recall rows to learn recall_plan JSON without collapsing storage.
+    "recall-heavy": {"expanded_copies": 20, "direct_copies": 0, "recall_copies": 500},
+}
+
+
+def resolve_gate5_profile(
+    profile: str | None,
+    *,
+    expanded_copies: int | None = None,
+    direct_copies: int | None = None,
+    recall_copies: int | None = None,
+) -> tuple[int, int, int]:
+    base = GATE5_PROFILES.get(profile or "bridge", GATE5_PROFILES["bridge"])
+    return (
+        expanded_copies if expanded_copies is not None else base["expanded_copies"],
+        direct_copies if direct_copies is not None else base["direct_copies"],
+        recall_copies if recall_copies is not None else base["recall_copies"],
+    )
+
+
 def build_gate5_train_v1(
     output: Path,
     *,
@@ -140,20 +163,36 @@ def main() -> int:
         type=Path,
         default=Path("psm-model/data/probes/direct_probes.jsonl"),
     )
-    parser.add_argument("--expanded-copies", type=int, default=25)
-    parser.add_argument("--direct-copies", type=int, default=100)
-    parser.add_argument("--recall-copies", type=int, default=20)
+    parser.add_argument(
+        "--profile",
+        choices=sorted(GATE5_PROFILES),
+        default="bridge",
+        help="Curriculum mix preset (recall-heavy for Gate 5 phase 2).",
+    )
+    parser.add_argument("--expanded-copies", type=int, default=None)
+    parser.add_argument("--direct-copies", type=int, default=None)
+    parser.add_argument("--recall-copies", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    summary = build_gate5_train_v1(
-        args.output,
-        expanded_probes=args.expanded_probes,
-        direct_probes=args.direct_probes,
+    expanded_copies, direct_copies, recall_copies = resolve_gate5_profile(
+        args.profile,
         expanded_copies=args.expanded_copies,
         direct_copies=args.direct_copies,
         recall_copies=args.recall_copies,
+    )
+    direct_probes = args.direct_probes
+    if direct_copies == 0:
+        direct_probes = None
+    summary = build_gate5_train_v1(
+        args.output,
+        expanded_probes=args.expanded_probes,
+        direct_probes=direct_probes,
+        expanded_copies=expanded_copies,
+        direct_copies=direct_copies,
+        recall_copies=recall_copies,
         seed=args.seed,
     )
+    summary["profile"] = args.profile
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0 if summary["dataset_gate"]["ok"] else 1
 

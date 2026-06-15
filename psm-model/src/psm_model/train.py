@@ -783,24 +783,37 @@ def _save_training_checkpoint(
             "loss_summary": loss_summary(losses),
         }
     )
-    torch.save(
-        {
-            "config": asdict(model.config),
-            "state_dict": model.state_dict(),
-            "optimizer_state": optimizer.state_dict(),
-            "metadata": checkpoint_metadata,
-            "training": {
-                "completed_steps": completed_steps,
-                "losses": losses,
-                "random_state": random.getstate(),
-                "seed": seed,
-                "torch_rng_state": torch.get_rng_state(),
-            },
+    payload = {
+        "config": asdict(model.config),
+        "state_dict": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "metadata": checkpoint_metadata,
+        "training": {
+            "completed_steps": completed_steps,
+            "losses": losses,
+            "random_state": random.getstate(),
+            "seed": seed,
+            "torch_rng_state": torch.get_rng_state(),
         },
-        path,
-    )
-    tokenizer.save(path.with_suffix(".tokenizer.json"))
-    path.with_suffix(".meta.json").write_text(json.dumps(checkpoint_metadata, indent=2, sort_keys=True), encoding="utf-8")
+    }
+    tokenizer_path = path.with_suffix(".tokenizer.json")
+    meta_path = path.with_suffix(".meta.json")
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_tokenizer_path = tokenizer_path.with_name(f"{tokenizer_path.name}.tmp")
+    tmp_meta_path = meta_path.with_name(f"{meta_path.name}.tmp")
+    for stale in (tmp_path, tmp_tokenizer_path, tmp_meta_path):
+        stale.unlink(missing_ok=True)
+    try:
+        torch.save(payload, tmp_path)
+        tokenizer.save(tmp_tokenizer_path)
+        tmp_meta_path.write_text(json.dumps(checkpoint_metadata, indent=2, sort_keys=True), encoding="utf-8")
+        tmp_path.replace(path)
+        tmp_tokenizer_path.replace(tokenizer_path)
+        tmp_meta_path.replace(meta_path)
+    except Exception:
+        for stale in (tmp_path, tmp_tokenizer_path, tmp_meta_path):
+            stale.unlink(missing_ok=True)
+        raise
 
 
 def _learning_rate_for_step(

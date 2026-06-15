@@ -28,6 +28,43 @@ echo "=== start gate5 train-only $(date -u +%Y-%m-%dT%H:%M:%SZ) resume=$RESUME_S
 
 sed -i 's/\r$//' psm-model/scripts/*.sh 2>/dev/null || true
 chmod +x psm-model/scripts/runpod_upload_gate4.sh 2>/dev/null || true
+mkdir -p psm-model/checkpoints psm-model/data/probes psm-model/data/direct-behavior-v1
+
+download_ckpt() {
+  local rel="$1"
+  if [[ ! -f "$rel" ]]; then
+    echo "Downloading $rel from $MODEL_REPO..."
+    HF_TOKEN="${HF_TOKEN:-}" hf download "$MODEL_REPO" "$rel" --local-dir .
+  fi
+}
+for rel in "$RESUME" "${RESUME%.pt}.tokenizer.json" "${RESUME%.pt}.meta.json"; do
+  download_ckpt "$rel"
+done
+if [[ ! -f "$RESUME" ]]; then
+  echo "Gate 5 resume checkpoint unavailable on HF: $RESUME" >&2
+  exit 1
+fi
+
+if [[ ! -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl ]]; then
+  HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" \
+    data/probes/direct_probes.jsonl \
+    data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl \
+    --repo-type dataset --local-dir . 2>/dev/null || true
+fi
+if [[ ! -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl ]]; then
+  HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" \
+    probes/direct_probes.jsonl \
+    probes/expanded-probe-v1-filtered.jsonl \
+    --repo-type dataset --local-dir psm-model/data || true
+  cp -f psm-model/data/probes/expanded-probe-v1-filtered.jsonl psm-model/data/direct-behavior-v1/ 2>/dev/null || true
+fi
+if [[ ! -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl && -f probes/expanded-probe-v1-filtered.jsonl ]]; then
+  cp -f probes/expanded-probe-v1-filtered.jsonl psm-model/data/direct-behavior-v1/
+fi
+if [[ ! -f psm-model/data/direct-behavior-v1/expanded-probe-v1-filtered.jsonl ]]; then
+  echo "Gate 5 expanded probes missing on pod" >&2
+  exit 1
+fi
 
 if [[ "${SKIP_CURRICULUM_BUILD:-0}" != "1" ]]; then
   RECALL_PROBE="${GATE5_RECALL_PROBE:-psm-model/data/curriculum/psm-50m-recall-plan-v1.jsonl}"

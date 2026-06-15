@@ -26,8 +26,11 @@ alwaysApply: true
 ## Launch policy (avoid idle GPU billing)
 
 1. **Always pass `--proxy-user`** (`pod_id-suffix@ssh.runpod.io`) for existing pods — never rely on SSH endpoint probe alone.
-2. **Default `--warm-pod`** on existing pods: scripts sync → tmux start → **verify** `tmux` + `psm_model.train`/`eval_checkpoint` + GPU mem within 15s. Exit non-zero if verify fails.
-3. **Never full `src` sync** on warm pods (silent multi-minute hang). Use `--no-sync-src` / warm-pod path; cold bootstrap only with `--no-warm-pod`.
-4. **Never SCP** to RunPod proxy — tar-push via `_ssh_push_dir` only.
-5. **tmux must export `PSM_RUNPOD=1`** or training silently runs on CPU.
-6. **After every launch**, confirm pod dashboard shows GPU util >0% before leaving.
+2. **Two-phase launch** — never block on `train-gate5 --deploy` (8h SSH). Use `deploy` → `train-gate5 --pod-id` (warm) → **`verify-pod`** (≤60s). See `.cursor/skills/runpod-gpu-train/SKILL.md`.
+3. **HF tokens** — `HF_TOKEN` from `o chinnahftoken` (model repo); `DATASET_HF_TOKEN` from local HF cache (dataset). Wrong token = idle pod.
+4. **Default `--warm-pod`** on existing pods: scripts sync → tmux start → **verify** `tmux` + `psm_model.train` + GPU mem within 15s. Exit non-zero if verify fails.
+5. **Never full `src` sync** on warm pods (silent multi-minute hang). Use `--no-sync-src` / warm-pod path; cold bootstrap only with `--no-warm-pod`.
+6. **Never SCP** to RunPod proxy — tar-push via `_ssh_push_dir` only.
+7. **tmux must export `PSM_RUNPOD=1`** or training silently runs on CPU.
+8. **After every launch**, run `python psm-model/scripts/runpod_ctl.py verify-pod --pod-id <id> --proxy-user <user>` or confirm dashboard GPU util >0%.
+9. **GPU 0% for >5 min after bootstrap** → stop/delete pod (`verify-pod --stop-on-fail`).
