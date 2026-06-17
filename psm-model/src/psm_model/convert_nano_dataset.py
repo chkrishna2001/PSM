@@ -21,6 +21,7 @@ def convert_nano_files(
     validation_ratio: float = 0.08,
     test_ratio: float = 0.04,
     limit: int | None = None,
+    normalize_prod_conversation: bool = False,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, Any]] = []
@@ -45,7 +46,12 @@ def convert_nano_files(
                 except json.JSONDecodeError:
                     report["skipped"]["invalid_json"] += 1
                     continue
-                converted, reason = convert_nano_row(raw, source_path=path, line_number=line_number)
+                converted, reason = convert_nano_row(
+                    raw,
+                    source_path=path,
+                    line_number=line_number,
+                    normalize_prod_conversation=normalize_prod_conversation,
+                )
                 if converted is None:
                     report["skipped"][reason] += 1
                     continue
@@ -92,7 +98,13 @@ def convert_nano_files(
     return report
 
 
-def convert_nano_row(raw: dict[str, Any], *, source_path: Path, line_number: int) -> tuple[dict[str, Any] | None, str]:
+def convert_nano_row(
+    raw: dict[str, Any],
+    *,
+    source_path: Path,
+    line_number: int,
+    normalize_prod_conversation: bool = False,
+) -> tuple[dict[str, Any] | None, str]:
     if not isinstance(raw, dict):
         return None, "row_not_object"
     output = raw.get("output")
@@ -107,7 +119,7 @@ def convert_nano_row(raw: dict[str, Any], *, source_path: Path, line_number: int
     if not result.ok:
         return None, "invalid_expected"
 
-    input_payload = canonical_input(raw.get("input"))
+    input_payload = canonical_input(raw.get("input"), normalize_prod_conversation=normalize_prod_conversation)
     raw_id = str(raw.get("id") or f"{source_path.stem}:{line_number}")
     row = {
         "id": _stable_row_id(raw_id, source_path=source_path, line_number=line_number),
@@ -166,7 +178,40 @@ def canonical_fact(fact: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def canonical_input(input_value: Any) -> dict[str, Any]:
+def to_prod_conversation(conversation: str) -> str:
+    text = conversation.strip()
+    if not text:
+        return "User:"
+    if text.startswith("User:"):
+        return text
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return "User:"
+
+    parsed: list[tuple[str, str]] = []
+    for line in lines:
+        if ":" not in line:
+            parsed = []
+            break
+        speaker, utterance = line.split(":", 1)
+        speaker = speaker.strip()
+        utterance = utterance.strip()
+        if not speaker or not utterance:
+            parsed = []
+            break
+        parsed.append((speaker, utterance))
+
+    if parsed and len(parsed) == 1:
+        speaker, utterance = parsed[0]
+        quote = utterance.replace('"', "'")
+        return f'User: {speaker} said "{quote}".'
+    if parsed:
+        block = "\n".join(f"{speaker}: {utterance}" for speaker, utterance in parsed)
+        return f"User: {block}"
+    return f"User: {text}"
+
+
+def canonical_input(input_value: Any, *, normalize_prod_conversation: bool = False) -> dict[str, Any]:
     if not isinstance(input_value, dict):
         return {"conversation": str(input_value or "")}
     parts: list[str] = []
@@ -181,9 +226,10 @@ def canonical_input(input_value: Any) -> dict[str, Any]:
     if not parts and isinstance(input_value.get("conversation"), str):
         parts.append(input_value["conversation"])
 
-    result: dict[str, Any] = {
-        "conversation": "\n".join(parts).strip(),
-    }
+    conversation = "\n".join(parts).strip()
+    if normalize_prod_conversation:
+        conversation = to_prod_conversation(conversation)
+    result: dict[str, Any] = {"conversation": conversation}
     memory_store = input_value.get("memory_store")
     if isinstance(memory_store, list) and memory_store:
         result["context"] = json.dumps({"memory_store": memory_store}, ensure_ascii=False, sort_keys=True)
@@ -234,6 +280,11 @@ def main() -> int:
     parser.add_argument("--validation-ratio", type=float, default=0.08)
     parser.add_argument("--test-ratio", type=float, default=0.04)
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--normalize-prod-conversation",
+        action="store_true",
+        help="Normalize conversation into prod-aligned 'User: ...' storage shape.",
+    )
     args = parser.parse_args()
 
     report = convert_nano_files(
@@ -242,6 +293,7 @@ def main() -> int:
         validation_ratio=args.validation_ratio,
         test_ratio=args.test_ratio,
         limit=args.limit,
+        normalize_prod_conversation=args.normalize_prod_conversation,
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["accepted"] > 0 else 1

@@ -1348,7 +1348,11 @@ def _ssh_push_dir(
     port: str | None = None,
     user: str = "root",
 ) -> int:
-    """Push a local directory to the pod via tar+base64 over bash -s."""
+    """Push a local directory to the pod via tar+base64 over bash -s.
+
+    Important: do not force PTY allocation here. RunPod proxy SSH can reject
+    explicit PTY mode and leave push calls hanging before tmux/train startup.
+    """
     if not local_path.is_dir():
         print(f"local dir missing: {local_path}", file=sys.stderr)
         return 1
@@ -1376,7 +1380,6 @@ def _ssh_push_dir(
     result = subprocess.run(
         [
             SSH_BIN,
-            "-tt",
             "-i",
             SSH_KEY_PATH,
             "-o",

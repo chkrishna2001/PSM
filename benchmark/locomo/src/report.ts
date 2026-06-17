@@ -38,11 +38,11 @@ export function main(argv: string[]): number {
 function renderReport(psm: PsmResults, baselines: Baseline[]): string {
   const summary = psm.summary ?? {};
   const answerAccuracy = typeof summary.answer_accuracy === "number" ? summary.answer_accuracy : undefined;
-  const topKEntry = Object.entries(summary).find(([key]) => /^hit_at_\d+$/.test(key) && key !== "hit_at_1");
-  const topKLabel = topKEntry?.[0].replace("hit_at_", "Hit@") ?? "Hit@K";
+  const topKEntry = Object.entries(summary).find(([key]) => /^(?:evidence_)?hit_at_(?:\d+|k)$/.test(key) && !key.endsWith("hit_at_1"));
+  const topKLabel = topKEntry?.[0].replace(/^(?:evidence_)?hit_at_/, "Hit@") ?? "Hit@K";
   const topKValue = typeof topKEntry?.[1] === "number" ? topKEntry[1] : undefined;
   const questions = typeof summary.questions === "number" ? String(summary.questions) : "";
-  const hitAt1 = typeof summary.hit_at_1 === "number" ? summary.hit_at_1 : undefined;
+  const hitAt1 = typeof summary.hit_at_1 === "number" ? summary.hit_at_1 : (typeof summary.evidence_hit_at_1 === "number" ? summary.evidence_hit_at_1 : undefined);
   const sortedBaselines = [...baselines].sort((a, b) => b.score - a.score);
 
   return [

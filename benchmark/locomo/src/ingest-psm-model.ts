@@ -190,5 +190,6 @@ function getOption(argv: string[], key: string, fallback: string): string {
 }
 
 if (process.argv[1]?.endsWith("ingest-psm-model.js")) {
-  process.exitCode = await main(process.argv.slice(2));
+  const code = await main(process.argv.slice(2));
+  process.exit(code);
 }

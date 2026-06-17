@@ -605,10 +605,29 @@ def train_texts(
 
 def resolve_device(device: str, torch: Any | None = None) -> Any:
     from psm_model.device_policy import resolve_device_name
+    import os
+    import sys
 
     torch = torch or _torch()
     resolved = resolve_device_name(device, torch.cuda.is_available(), context="resolve_device")
-    return torch.device(resolved)
+    device_obj = torch.device(resolved)
+
+    fraction_str = os.environ.get("PSM_CUDA_MEMORY_FRACTION")
+    if fraction_str and device_obj.type == "cuda":
+        try:
+            fraction = float(fraction_str)
+            configure_cuda_memory_fraction(torch, device_obj, fraction)
+            print(
+                f"resolve_device: Set CUDA memory fraction to {fraction} on device {device_obj}",
+                file=sys.stderr,
+            )
+        except Exception as e:
+            print(
+                f"resolve_device: Error configuring CUDA memory fraction: {e}",
+                file=sys.stderr,
+            )
+
+    return device_obj
 
 
 def configure_cuda_memory_fraction(torch: Any, device: Any, fraction: float) -> None:

@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import {
   defaultEmbeddingModel,
+  HybridPsmRuntime,
   MemoryStore,
   NodeLlamaRuntime,
   PsmModelRuntime,
@@ -592,21 +593,25 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function createPsmService(store: MemoryStore, options: Options): PsmService {
+  const primary = new NodeLlamaRuntime({
+    modelPath: options.psmModel,
+    contextSize: options.psmContextSize,
+    gpu: options.psmGpu,
+    gpuLayers: options.psmGpuLayers,
+    log: (message) => process.stderr.write(`${message}\n`)
+  });
   const runtime = options.psmCheckpoint
-    ? new PsmModelRuntime({
-        checkpoint: resolve(options.repoRoot, options.psmCheckpoint),
-        python: options.psmPython,
-        repoRoot: options.repoRoot,
-        device: options.psmDevice,
-        outputFormat: "tagged"
-      })
-    : new NodeLlamaRuntime({
-        modelPath: options.psmModel,
-        contextSize: options.psmContextSize,
-        gpu: options.psmGpu,
-        gpuLayers: options.psmGpuLayers,
-        log: (message) => process.stderr.write(`${message}\n`)
-      });
+    ? new HybridPsmRuntime(
+        primary,
+        new PsmModelRuntime({
+          checkpoint: resolve(options.repoRoot, options.psmCheckpoint),
+          python: options.psmPython,
+          repoRoot: options.repoRoot,
+          device: options.psmDevice,
+          outputFormat: "tagged"
+        })
+      )
+    : primary;
   const embeddings = options.noEmbeddings ? undefined : {
     model: options.embeddingModel,
     runtime: new TransformersEmbeddingRuntime({
@@ -722,5 +727,6 @@ function intOption(options: Record<string, string | boolean>, key: string, fallb
 }
 
 if (process.argv[1]?.endsWith("answer-evaluate.js")) {
-  process.exitCode = await main(process.argv.slice(2));
+  const code = await main(process.argv.slice(2));
+  process.exit(code);
 }
