@@ -1,5 +1,5 @@
 import { normalizeAction } from "./actions.js";
-import { memoryTables, type ContextItem, type ContextRender, type MemoryFactPayload, type MemoryPayload, type MemoryTable, type RecallPlan, type StorageDecision } from "./types.js";
+import { memoryTables, type ContextItem, type ContextRender, type IndexableKind, type IndexablePayload, type MemoryFactPayload, type MemoryPayload, type MemoryTable, type RecallPlan, type StorageDecision } from "./types.js";
 
 export function extractJsonObject(text: string): string | null {
   const start = text.indexOf("{");
@@ -17,6 +17,7 @@ export function parseStorageDecision(rawText: string, fallbackContent: string, f
       action: normalizeAction(parsed.action ?? fallbackAction),
       memory,
       facts: normalizeFacts(parsed.facts),
+      indexables: normalizeIndexables(parsed.indexables),
       reasoning: stringOr(parsed.reasoning, "Model output missing explicit reasoning; applied parser defaults."),
       confidence: numberOrUndefined(parsed.confidence ?? memory?.confidence),
       emotional_weight: numberOrUndefined(parsed.emotional_weight ?? memory?.emotional_weight),
@@ -47,6 +48,40 @@ function normalizeFacts(value: unknown): MemoryFactPayload[] {
   return value
     .map(normalizeFact)
     .filter((fact): fact is MemoryFactPayload => fact !== null);
+}
+
+function normalizeIndexables(value: unknown): IndexablePayload[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeIndexable)
+    .filter((row): row is IndexablePayload => row !== null);
+}
+
+function normalizeIndexable(value: unknown): IndexablePayload | null {
+  if (!isRecord(value)) return null;
+  const kind = normalizeIndexableKind(value.kind);
+  const key = stringOrUndefined(value.key);
+  if (!kind || !key) return null;
+  const steps = Array.isArray(value.steps)
+    ? value.steps.map((step) => String(step).trim()).filter(Boolean)
+    : undefined;
+  return {
+    kind,
+    key: key.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
+    target_memory_table: stringOrUndefined(value.target_memory_table),
+    target_memory_id: stringOrUndefined(value.target_memory_id),
+    steps,
+    salience: numberOrUndefined(value.salience),
+    reconstructive_hint: stringOrUndefined(value.reconstructive_hint),
+    evidence_text: stringOrUndefined(value.evidence_text),
+    tags: Array.isArray(value.tags) ? value.tags.map((tag) => String(tag).trim()).filter(Boolean) : undefined
+  };
+}
+
+function normalizeIndexableKind(value: unknown): IndexableKind | null {
+  const kind = String(value ?? "").trim().toLowerCase();
+  if (kind === "mnemonic" || kind === "fact_anchor" || kind === "workflow") return kind;
+  return null;
 }
 
 function normalizeFact(value: unknown): MemoryFactPayload | null {

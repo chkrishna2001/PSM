@@ -49,6 +49,7 @@ export interface StorageDecision {
   action: MemoryAction;
   memory: MemoryPayload | null;
   facts?: MemoryFactPayload[];
+  indexables?: IndexablePayload[];
   reasoning: string;
   confidence?: number;
   emotional_weight?: number;
@@ -94,6 +95,29 @@ export interface MemoryFactRecord {
   resolved_time_confidence?: number;
   created_at?: string;
   updated_at?: string;
+}
+
+export type IndexableKind = "mnemonic" | "fact_anchor" | "workflow";
+
+export interface IndexablePayload {
+  kind: IndexableKind;
+  key: string;
+  target_memory_table?: string;
+  target_memory_id?: string;
+  steps?: string[];
+  salience?: number;
+  reconstructive_hint?: string;
+  evidence_text?: string;
+  tags?: string[];
+}
+
+export interface IndexableRecord extends IndexablePayload {
+  id: string;
+  user_id: string;
+  steps: string[];
+  salience: number;
+  tags: string[];
+  created_at?: string;
 }
 
 export interface RecallPlan {

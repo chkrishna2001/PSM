@@ -234,6 +234,12 @@ undertrained 5-step debug checkpoint: failed generated-output gate.
 300-step debug checkpoint: passed generated-output gate with exact action/type/content/facts on all 5 direct probes.
 ```
 
+## Prod memory (isolated)
+
+The production-memory initiative (grounding eval, future `prod-extraction-v1` curriculum) lives in **`prod-memory/`** — not mixed with gate/train code in `src/psm_model/` or LoCoMo in `benchmark/locomo/`.
+
+See [prod-memory/README.md](prod-memory/README.md).
+
 ## Claude Worker Rule
 
 Claude CLI workers must use isolated git worktrees under `.worktrees/`. Codex owns the main worktree and reviews any worker diff before merging.

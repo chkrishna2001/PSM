@@ -84,7 +84,7 @@ export class PsmModelRuntime implements ModelRuntime {
     this.repoRoot = resolveRepoRoot(options.repoRoot);
     this.outputFormat = options.outputFormat ?? "tagged";
     this.device = options.device ?? "auto";
-    this.maxNewTokens = options.maxNewTokens ?? Number(process.env.PSM_MAX_NEW_TOKENS ?? 128);
+    this.maxNewTokens = options.maxNewTokens ?? Number(process.env.PSM_MAX_NEW_TOKENS ?? 384);
   }
 
   private runtimeEnv(): NodeJS.ProcessEnv {

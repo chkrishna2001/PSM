@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { routeForAction } from "./actions.js";
+import { baseSourceId, normalizeContentKey } from "./segment-remember.js";
 import { openSqliteDatabase, type DbRow, type SqliteDatabase } from "./sqlite.js";
-import type { MemoryAction, MemoryFactPayload, MemoryFactRecord, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision, WrittenMemoryRef } from "./types.js";
+import type { IndexablePayload, IndexableRecord, MemoryAction, MemoryFactPayload, MemoryFactRecord, MemoryPayload, MemoryRecord, MemoryTable, RankedMemory, StorageDecision, WrittenMemoryRef } from "./types.js";
 import { memoryTables } from "./types.js";
 
 export class MemoryStore {
@@ -136,6 +137,22 @@ CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user_model ON memory_embeddings
 CREATE INDEX IF NOT EXISTS idx_memory_facts_user_predicate ON memory_facts(user_id, predicate);
 CREATE INDEX IF NOT EXISTS idx_memory_facts_user_subject ON memory_facts(user_id, subject);
 CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source_memory_table, source_memory_id);
+CREATE TABLE IF NOT EXISTS indexables (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  target_memory_table TEXT,
+  target_memory_id TEXT,
+  steps_json TEXT NOT NULL DEFAULT '[]',
+  salience REAL NOT NULL,
+  reconstructive_hint TEXT,
+  evidence_text TEXT,
+  tags TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_indexables_user_key ON indexables(user_id, key);
 `);
     this.ensureMemoryMetadataColumns();
   }
@@ -143,10 +160,22 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
   applyDecision(userId: string, source: string, decision: StorageDecision, extraTags: string[] = []): { action: MemoryAction; route: string; written: string[]; memory_refs: WrittenMemoryRef[] } {
     const route = routeForAction(decision.action);
     this.insertDecision(userId, source, decision.action, route, decision.reasoning, decision.raw_json);
-    const memory = decision.memory ? withExtraTags(decision.memory, extraTags) : undefined;
+    const memory = decision.memory
+      ? withExtraTags(
+          {
+            ...decision.memory,
+            source_id: decision.memory.source_id ?? source
+          },
+          extraTags
+        )
+      : undefined;
     const content = memory?.content?.trim();
     const written: string[] = [];
     const memory_refs: WrittenMemoryRef[] = [];
+
+    if (content && this.hasDuplicateMemoryContent(userId, content, source)) {
+      return { action: "ignore", route: "dedupe_skip", written, memory_refs };
+    }
 
     switch (route) {
       case "ignore":
@@ -158,6 +187,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
         memory_refs.push({ table: "semantic", id: this.insertSemantic(userId, content, memory, [source]), content });
         written.push("semantic");
         this.insertDecisionFacts(userId, decision, memory_refs, memory);
+        this.insertDecisionIndexables(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
       case "decay_existing_then_insert":
         if (!memory || !content) return { action: "ignore", route: "ignore", written, memory_refs };
@@ -165,6 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
         memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("decay_schedule", "episodic");
         this.insertDecisionFacts(userId, decision, memory_refs, memory);
+        this.insertDecisionIndexables(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
       case "conflict_log_and_hold":
         if (!memory || !content) return { action: "ignore", route: "ignore", written, memory_refs };
@@ -174,6 +205,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
           memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
           written.push("episodic");
           this.insertDecisionFacts(userId, decision, memory_refs, memory);
+          this.insertDecisionIndexables(userId, decision, memory_refs, memory);
         }
         return { action: decision.action, route, written, memory_refs };
       default:
@@ -181,6 +213,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_source_memory ON memory_facts(source
         memory_refs.push({ table: "episodic", id: this.insertEpisodic(userId, content, memory), content });
         written.push("episodic");
         this.insertDecisionFacts(userId, decision, memory_refs, memory);
+        this.insertDecisionIndexables(userId, decision, memory_refs, memory);
         return { action: decision.action, route, written, memory_refs };
     }
   }
@@ -333,6 +366,53 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
     return this.db.prepare("SELECT * FROM memory_facts WHERE user_id = ? ORDER BY created_at DESC LIMIT ?").all(userId, limit).map(asMemoryFactRecord);
   }
 
+  upsertIndexable(userId: string, payload: IndexablePayload): string {
+    const id = randomUUID();
+    const key = payload.key.trim().toLowerCase();
+    const steps = JSON.stringify(payload.steps ?? []);
+    const tags = JSON.stringify(payload.tags ?? []);
+    this.db.prepare(`
+INSERT INTO indexables (
+  id, user_id, kind, key, target_memory_table, target_memory_id, steps_json, salience,
+  reconstructive_hint, evidence_text, tags
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(user_id, key) DO UPDATE SET
+  kind = excluded.kind,
+  target_memory_table = excluded.target_memory_table,
+  target_memory_id = excluded.target_memory_id,
+  steps_json = excluded.steps_json,
+  salience = excluded.salience,
+  reconstructive_hint = excluded.reconstructive_hint,
+  evidence_text = excluded.evidence_text,
+  tags = excluded.tags`).run(
+      id,
+      userId,
+      payload.kind,
+      key,
+      payload.target_memory_table ?? null,
+      payload.target_memory_id ?? null,
+      steps,
+      payload.salience ?? 0.8,
+      payload.reconstructive_hint ?? null,
+      payload.evidence_text ?? null,
+      tags
+    );
+    const row = this.db.prepare("SELECT id FROM indexables WHERE user_id = ? AND key = ?").get(userId, key) as DbRow | undefined;
+    return String(row?.id ?? id);
+  }
+
+  selectIndexables(userId: string, limit = 100): IndexableRecord[] {
+    return this.db.prepare("SELECT * FROM indexables WHERE user_id = ? ORDER BY salience DESC, created_at DESC LIMIT ?")
+      .all(userId, limit)
+      .map(asIndexableRecord);
+  }
+
+  getIndexable(userId: string, key: string): IndexableRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM indexables WHERE user_id = ? AND key = ?").get(userId, key.toLowerCase()) as DbRow | undefined;
+    return row ? asIndexableRecord(row) : undefined;
+  }
+
   getMemory(table: "episodic" | "semantic" | "archival", id: string): MemoryRecord | undefined {
     if (table === "episodic") {
       const row = this.db.prepare("SELECT *, 'episodic' as memory_table FROM episodic WHERE id = ?").get(id);
@@ -391,6 +471,20 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
     }
   }
 
+  hasDuplicateMemoryContent(userId: string, content: string, sourceId: string): boolean {
+    const normalized = normalizeContentKey(content);
+    if (!normalized) return false;
+    const family = baseSourceId(sourceId);
+    const memories = this.selectMemories(userId, ["semantic", "episodic"], 1000);
+    return memories.some((memory) => {
+      if (normalizeContentKey(memory.content ?? "") !== normalized) return false;
+      const memorySource = memory.source_id ?? "";
+      return memorySource === sourceId
+        || memorySource === family
+        || memorySource.startsWith(`${family}:chunk-`);
+    });
+  }
+
   close(): void {
     this.db.close();
   }
@@ -420,6 +514,19 @@ ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
     if (!sourceMemory || !decision.facts?.length) return;
     for (const fact of decision.facts) {
       this.insertMemoryFact(userId, fact, sourceMemory, memory);
+    }
+  }
+
+  private insertDecisionIndexables(userId: string, decision: StorageDecision, refs: WrittenMemoryRef[], memory: MemoryPayload): void {
+    const sourceMemory = refs[0];
+    if (!sourceMemory || !decision.indexables?.length) return;
+    for (const row of decision.indexables) {
+      this.upsertIndexable(userId, {
+        ...row,
+        target_memory_table: row.target_memory_table ?? sourceMemory.table,
+        target_memory_id: row.target_memory_id ?? sourceMemory.id,
+        evidence_text: row.evidence_text ?? memory.content
+      });
     }
   }
 }
@@ -483,6 +590,37 @@ function asMemoryFactRecord(row: DbRow): MemoryFactRecord {
     resolved_time_confidence: asNumber(row.resolved_time_confidence),
     created_at: row.created_at == null ? undefined : String(row.created_at),
     updated_at: row.updated_at == null ? undefined : String(row.updated_at)
+  };
+}
+
+function asIndexableRecord(row: DbRow): IndexableRecord {
+  let steps: string[] = [];
+  let tags: string[] = [];
+  try {
+    const parsedSteps = JSON.parse(String(row.steps_json ?? "[]"));
+    steps = Array.isArray(parsedSteps) ? parsedSteps.map(String) : [];
+  } catch {
+    steps = [];
+  }
+  try {
+    const parsedTags = JSON.parse(String(row.tags ?? "[]"));
+    tags = Array.isArray(parsedTags) ? parsedTags.map(String) : [];
+  } catch {
+    tags = [];
+  }
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    kind: String(row.kind) as IndexableRecord["kind"],
+    key: String(row.key),
+    target_memory_table: row.target_memory_table == null ? undefined : String(row.target_memory_table),
+    target_memory_id: row.target_memory_id == null ? undefined : String(row.target_memory_id),
+    steps,
+    salience: asNumber(row.salience) ?? 0.8,
+    reconstructive_hint: row.reconstructive_hint == null ? undefined : String(row.reconstructive_hint),
+    evidence_text: row.evidence_text == null ? undefined : String(row.evidence_text),
+    tags,
+    created_at: row.created_at == null ? undefined : String(row.created_at)
   };
 }
 

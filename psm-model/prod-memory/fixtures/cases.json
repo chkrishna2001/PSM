@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "plan-01-handoff",
+      "suite": "plan_chunks",
+      "llmResponse": "## Phase 1 — Baseline eval\n\nGoal: measure HF checkpoints on prod-shaped `remember_target` before training.\n\nSuites: plan chunks, cursor-shaped assistant text, workflow procedures, technical rules, noise.\n\nMetrics: content_grounding_rate, curriculum_bleed_rate, fail_safe_ignore_rate.",
+      "keyTokens": ["baseline", "grounding", "workflow", "checkpoints"],
+      "expectAction": "store"
+    },
+    {
+      "id": "plan-02-chunking",
+      "suite": "plan_chunks",
+      "llmResponse": "### Chunking pipeline\n\nSplit long assistant handoffs on markdown headers and numbered steps. Target 600–1200 tokens per chunk so prompt overhead fits 2048 context. Call remember() per chunk with shared source_id and :chunk-N suffix.",
+      "keyTokens": ["chunking", "markdown", "remember", "context"],
+      "expectAction": "store"
+    },
+    {
+      "id": "cursor-01-summary",
+      "suite": "cursor_shaped",
+      "llmResponse": "I updated the remember path to reject ungrounded storage and block curriculum bleed. Prod max_new_tokens is now 384 to match eval. Next step is the prod grounding harness with fixtures for plan chunks and review-pr workflow.",
+      "keyTokens": ["remember", "grounding", "bleed", "fixtures"],
+      "expectAction": "store"
+    },
+    {
+      "id": "cursor-02-debug",
+      "suite": "cursor_shaped",
+      "llmResponse": "Root cause: the model memorized gate curriculum templates instead of extracting facts from assistant text. LoCoMo Hit@k was high while memory.content had no usable facts, so answer accuracy stayed at 0%.",
+      "keyTokens": ["curriculum", "assistant", "facts", "accuracy"],
+      "expectAction": "store"
+    },
+    {
+      "id": "workflow-review-pr",
+      "suite": "workflow",
+      "llmResponse": "# Review a pull request\n\n1. Get PR info with `gh pr view`.\n2. Check the target branch tracks the intended base.\n3. List changed files with `gh pr diff --name-only`.\n4. Review each changed file for correctness and scope.\n5. Summarize findings and request changes or approve.",
+      "keyTokens": ["pull", "request", "review", "changed", "approve"],
+      "expectAction": "store"
+    },
+    {
+      "id": "workflow-runpod",
+      "suite": "workflow",
+      "llmResponse": "RunPod launch policy: always pass --proxy-user, use two-phase deploy then train-gate5 --pod-id, verify tmux + psm_model.train + GPU util within 15s. Never SCP to proxy; use tar-push. Export PSM_RUNPOD=1 in tmux or training runs on CPU.",
+      "keyTokens": ["runpod", "verify", "tmux", "training"],
+      "expectAction": "store"
+    },
+    {
+      "id": "technical-eslint",
+      "suite": "technical",
+      "llmResponse": "Project rule: prefer explicit return types on exported functions in psm-core. Avoid default exports in library modules. Match existing import style with .js extensions in TypeScript sources.",
+      "keyTokens": ["exported", "functions", "typescript", "imports"],
+      "expectAction": "store"
+    },
+    {
+      "id": "technical-api",
+      "suite": "technical",
+      "llmResponse": "API convention: remember() accepts llmResponse as the assistant text to extract from. userMessage is optional context only when a real user turn exists in the product path.",
+      "keyTokens": ["remember", "llmresponse", "assistant", "optional"],
+      "expectAction": "store"
+    },
+    {
+      "id": "noise-filler",
+      "suite": "noise",
+      "llmResponse": "Okay, sure. Let me know if you need anything else.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "noise-meta",
+      "suite": "noise",
+      "llmResponse": "I don't have any durable facts to store from this message. This is just a acknowledgment with no new preferences, procedures, or entities.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    }
+  ]
+}

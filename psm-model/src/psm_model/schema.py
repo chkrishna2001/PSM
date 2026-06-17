@@ -19,6 +19,7 @@ ACTIONS = frozenset(
 
 MEMORY_TYPES = frozenset({"episodic", "semantic"})
 INFERENCE_KINDS = frozenset({"explicit"})
+INDEXABLE_KINDS = frozenset({"mnemonic", "fact_anchor", "workflow"})
 _PREDICATE_RE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _INVALID_EVIDENCE_SUBSTRINGS = (
     "benchmark dataset",
@@ -75,11 +76,25 @@ class Fact:
 
 
 @dataclass(frozen=True)
+class Indexable:
+    kind: str
+    key: str
+    target_memory_table: str | None = None
+    target_memory_id: str | None = None
+    steps: tuple[str, ...] = ()
+    salience: float | None = None
+    reconstructive_hint: str | None = None
+    evidence_text: str | None = None
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class StorageDecision:
     action: str
     memory: Memory | None
     facts: tuple[Fact, ...]
     reasoning: str
+    indexables: tuple[Indexable, ...] = ()
     confidence: float | None = None
     emotional_weight: float | None = None
     contradiction_score: float | None = None
@@ -109,6 +124,7 @@ def validate_storage_decision(value: Any) -> ValidationResult:
         issues.append(ValidationIssue("$.memory", f"{action} decisions require memory"))
 
     facts = _validate_facts(value.get("facts", []), "$.facts", issues)
+    indexables = _validate_indexables_optional(value.get("indexables", []), "$.indexables", issues)
     reasoning = _required_string(value, "reasoning", "$.reasoning", issues)
     confidence = _optional_number(value, "confidence", "$.confidence", issues)
     emotional_weight = _optional_number(value, "emotional_weight", "$.emotional_weight", issues)
@@ -121,6 +137,7 @@ def validate_storage_decision(value: Any) -> ValidationResult:
         action=action,
         memory=memory,
         facts=tuple(facts),
+        indexables=tuple(indexables),
         reasoning=reasoning,
         confidence=confidence,
         emotional_weight=emotional_weight,
@@ -213,6 +230,56 @@ def _validate_facts(value: Any, path: str, issues: list[ValidationIssue]) -> lis
             )
         )
     return facts
+
+
+def _validate_indexables_optional(value: Any, path: str, issues: list[ValidationIssue]) -> list[Indexable]:
+    if value in (None, []):
+        return []
+    if not isinstance(value, list):
+        issues.append(ValidationIssue(path, "indexables must be a list when present"))
+        return []
+
+    rows: list[Indexable] = []
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(item, dict):
+            issues.append(ValidationIssue(item_path, "indexable must be an object"))
+            continue
+        kind = _optional_string(item, "kind", f"{item_path}.kind", issues) or "mnemonic"
+        if kind not in INDEXABLE_KINDS:
+            issues.append(ValidationIssue(f"{item_path}.kind", f"unsupported indexable kind: {kind}"))
+            continue
+        key = _required_string(item, "key", f"{item_path}.key", issues)
+        if not key:
+            continue
+        steps_value = item.get("steps", [])
+        steps: tuple[str, ...] = ()
+        if steps_value not in (None, []):
+            if not isinstance(steps_value, list) or not all(isinstance(step, str) and step.strip() for step in steps_value):
+                issues.append(ValidationIssue(f"{item_path}.steps", "steps must be a list of non-empty strings"))
+            else:
+                steps = tuple(str(step).strip() for step in steps_value)
+        tags_value = item.get("tags", [])
+        tags: tuple[str, ...] = ()
+        if tags_value not in (None, []):
+            if not isinstance(tags_value, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags_value):
+                issues.append(ValidationIssue(f"{item_path}.tags", "tags must be a list of non-empty strings"))
+            else:
+                tags = tuple(str(tag).strip() for tag in tags_value)
+        rows.append(
+            Indexable(
+                kind=kind,
+                key=key,
+                target_memory_table=_optional_string(item, "target_memory_table", f"{item_path}.target_memory_table", issues),
+                target_memory_id=_optional_string(item, "target_memory_id", f"{item_path}.target_memory_id", issues),
+                steps=steps,
+                salience=_optional_number(item, "salience", f"{item_path}.salience", issues),
+                reconstructive_hint=_optional_string(item, "reconstructive_hint", f"{item_path}.reconstructive_hint", issues),
+                evidence_text=_optional_string(item, "evidence_text", f"{item_path}.evidence_text", issues),
+                tags=tags,
+            )
+        )
+    return rows
 
 
 def _required_string(value: dict[str, Any], key: str, path: str, issues: list[ValidationIssue]) -> str:

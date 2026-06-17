@@ -1,10 +1,37 @@
 import { fallbackAgentContextItems, renderAgentMemoryContext } from "./context.js";
+import { applyStorageGuards, groundingOverlapScore } from "./grounding-guards.js";
+import { buildIndexablesForRemember, rankIndexables, type ScoredIndexable } from "./indexables.js";
 import { buildContextPlanPrompt, buildContextRenderPrompt, buildRecallPlanPrompt, buildStoragePrompt, buildStorageRepairPrompt } from "./prompts.js";
 import { parseContextRender, parseRecallPlan, parseStorageDecision } from "./json.js";
 import { hybridRankMemories, tokenize } from "./ranking.js";
+import { chunkSourceId, segmentLlmResponse } from "./segment-remember.js";
 import { MemoryStore } from "./store.js";
 import { normalizeFactTemporalFields, normalizeMemoryTemporalFields } from "./temporal.js";
-import type { ContextItem, ContextRequest, EmbeddingRuntime, MemoryFactRecord, MemoryRecord, ModelRuntime, RankedMemory, RecallRequest, RememberRequest, WrittenMemoryRef } from "./types.js";
+import type { ContextItem, ContextRequest, EmbeddingRuntime, IndexableRecord, MemoryFactRecord, MemoryRecord, ModelRuntime, RankedMemory, RecallRequest, RememberRequest, StorageDecision, WrittenMemoryRef } from "./types.js";
+import { routeForAction } from "./actions.js";
+import type { SegmentSplitReason } from "./segment-remember.js";
+
+export interface RememberChunkedRequest extends RememberRequest {
+  maxChunkTokens?: number;
+  minChunkTokens?: number;
+}
+
+export interface ChunkRememberResult {
+  chunk_index: number;
+  chunk_text: string;
+  estimated_tokens: number;
+  split_reason: SegmentSplitReason;
+  source_id: string;
+  action?: string;
+  route?: string;
+  written: string[];
+  guard_rejected: boolean;
+  deduped: boolean;
+  content_grounded: boolean;
+  grounding_overlap: number;
+  grounding_required: number;
+  remember_result: Record<string, unknown>;
+}
 
 const contextMinScore = 0.15;
 const recallMinScore = 0.35;
@@ -70,6 +97,7 @@ export class PsmService {
       minScore: recallMinScore
     });
     const rankedFacts = rankFacts(searchQuery, candidates.facts, plan.top_k);
+    const rankedIndexables = rankIndexables(request.question, this.store.selectIndexables(request.userId, 100), plan.top_k);
     this.store.updateAccess(ranked);
     return {
       user_id: request.userId,
@@ -77,7 +105,9 @@ export class PsmService {
       recall_plan: plan,
       plan_fallback: plan.plan_fallback === true,
       facts: rankedFacts.map(factContextRow),
-      memories: ranked.map(memoryContextRow)
+      memories: ranked.map(memoryContextRow),
+      indexables: rankedIndexables.map((row) => indexableContextRow(row, this.store)),
+      workflows: rankedIndexables.filter((row) => row.kind === "workflow").map((row) => workflowContextRow(row, this.store))
     };
   }
 
@@ -128,6 +158,32 @@ export class PsmService {
         facts: decision.facts.map((fact) => normalizeFactTemporalFields(fact, sourceTimestamp))
       };
     }
+    const guarded = applyStorageGuards(request.llmResponse, decision);
+    if (guarded.rejected) {
+      return {
+        user_id: request.userId,
+        action: "ignore",
+        route: guarded.guard_route ?? "grounding_reject",
+        written: [],
+        memory: null,
+        reasoning: guarded.guard_reason ?? "Storage guard rejected ungrounded output.",
+        raw_model_json: decision.raw_json,
+        repair_attempted: Boolean(repairedRaw),
+        parse_error: decision.parse_error,
+        guard_rejected: true
+      };
+    }
+    if (wouldStoreDecision(decision) && !(decision.indexables?.length)) {
+      decision = {
+        ...decision,
+        indexables: buildIndexablesForRemember({
+          llmResponse: request.llmResponse,
+          memoryContent: decision.memory?.content?.trim() ?? request.llmResponse,
+          tags: [...(decision.memory?.tags ?? []), ...(request.extraTags ?? [])],
+          facts: decision.facts ?? []
+        })
+      };
+    }
     const result = this.store.applyDecision(request.userId, request.source?.source_id ?? "llm-response", decision, request.extraTags);
     await this.embedWrittenMemories(request.userId, result.memory_refs);
     return {
@@ -139,7 +195,73 @@ export class PsmService {
       reasoning: decision.reasoning,
       raw_model_json: decision.raw_json,
       repair_attempted: Boolean(repairedRaw),
-      parse_error: decision.parse_error
+      parse_error: decision.parse_error,
+      indexables: decision.indexables ?? []
+    };
+  }
+
+  async rememberChunked(request: RememberChunkedRequest): Promise<Record<string, unknown>> {
+    const segments = segmentLlmResponse(request.llmResponse, {
+      maxChunkTokens: request.maxChunkTokens,
+      minChunkTokens: request.minChunkTokens
+    });
+    const baseSourceId = request.source?.source_id ?? "llm-response";
+    const chunkResults: ChunkRememberResult[] = [];
+
+    for (const segment of segments) {
+      const sourceId = chunkSourceId(baseSourceId, segment.index);
+      const rememberResult = await this.remember({
+        ...request,
+        llmResponse: segment.text,
+        source: {
+          ...request.source,
+          source_id: sourceId,
+          source_kind: request.source?.source_kind ?? "llm_response_chunk",
+          source_label: request.source?.source_label
+            ? `${request.source.source_label} [chunk ${segment.index + 1}/${segments.length}]`
+            : `llm-response chunk ${segment.index + 1}/${segments.length}`
+        },
+        extraTags: [
+          ...(request.extraTags ?? []),
+          `chunk_index:${segment.index}`,
+          `chunk_total:${segments.length}`,
+          `chunk_split:${segment.splitReason}`
+        ]
+      });
+
+      const written = Array.isArray(rememberResult.written) ? rememberResult.written.map(String) : [];
+      const route = typeof rememberResult.route === "string" ? rememberResult.route : "";
+      const memory = isRecord(rememberResult.memory) ? rememberResult.memory : null;
+      const memoryContent = typeof memory?.content === "string" ? memory.content : "";
+      const overlap = groundingOverlapScore(segment.text, memoryContent);
+      chunkResults.push({
+        chunk_index: segment.index,
+        chunk_text: segment.text,
+        estimated_tokens: segment.estimatedTokens,
+        split_reason: segment.splitReason,
+        source_id: sourceId,
+        action: typeof rememberResult.action === "string" ? rememberResult.action : undefined,
+        route,
+        written,
+        guard_rejected: rememberResult.guard_rejected === true,
+        deduped: route === "dedupe_skip",
+        content_grounded: written.length > 0 && overlap.grounded,
+        grounding_overlap: overlap.overlap,
+        grounding_required: overlap.required,
+        remember_result: rememberResult
+      });
+    }
+
+    const storedChunks = chunkResults.filter((chunk) => chunk.written.length > 0);
+    return {
+      user_id: request.userId,
+      chunked: true,
+      chunk_count: segments.length,
+      chunks_stored: storedChunks.length,
+      chunks: chunkResults,
+      action: storedChunks.length > 0 ? "store_episodic" : "ignore",
+      route: storedChunks.length > 0 ? "chunked_remember" : "ignore",
+      written: storedChunks.flatMap((chunk) => chunk.written)
     };
   }
 
@@ -419,4 +541,46 @@ function mergeMemories(...groups: MemoryRecord[][]): MemoryRecord[] {
     }
   }
   return result;
+}
+
+function wouldStoreDecision(decision: StorageDecision): boolean {
+  const route = routeForAction(decision.action);
+  if (route === "ignore" || route === "recall_only") return false;
+  return Boolean(decision.memory?.content?.trim());
+}
+
+function indexableContextRow(row: ScoredIndexable, store: MemoryStore): Record<string, unknown> {
+  const linked = linkedMemoryForIndexable(row, store);
+  return {
+    id: row.id,
+    kind: row.kind,
+    key: row.key,
+    steps: row.steps,
+    salience: row.salience,
+    score: row.score,
+    reconstructive_hint: row.reconstructive_hint,
+    evidence_text: row.evidence_text,
+    tags: row.tags,
+    target_memory_table: row.target_memory_table,
+    target_memory_id: row.target_memory_id,
+    linked_memory_content: linked?.content ?? null
+  };
+}
+
+function workflowContextRow(row: ScoredIndexable, store: MemoryStore): Record<string, unknown> {
+  const linked = linkedMemoryForIndexable(row, store);
+  return {
+    key: row.key,
+    steps: row.steps,
+    procedure: linked?.content ?? row.reconstructive_hint ?? row.evidence_text ?? "",
+    score: row.score,
+    target_memory_id: row.target_memory_id
+  };
+}
+
+function linkedMemoryForIndexable(row: IndexableRecord, store: MemoryStore): MemoryRecord | undefined {
+  if (!row.target_memory_table || !row.target_memory_id) return undefined;
+  const table = row.target_memory_table;
+  if (table !== "episodic" && table !== "semantic" && table !== "archival") return undefined;
+  return store.getMemory(table, row.target_memory_id);
 }

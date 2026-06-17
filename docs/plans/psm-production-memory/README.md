@@ -14,11 +14,11 @@ This folder is the **single source of truth** for making PSM production-ready: g
 |-------|-----|--------|------------|
 | — | [00-north-star.md](00-north-star.md) | Reference | — |
 | 0 | [phase-0-freeze-governance.md](phase-0-freeze-governance.md) | **Not started** | — |
-| 1 | [phase-1-baseline-eval.md](phase-1-baseline-eval.md) | **Not started** | Phase 0 |
-| 2 | [phase-2-chunking-pipeline.md](phase-2-chunking-pipeline.md) | **Not started** | Phase 1 |
-| 3 | [phase-3-indexables-workflows.md](phase-3-indexables-workflows.md) | **Not started** | Phase 2 |
-| 4 | [phase-4-guardrails-prod.md](phase-4-guardrails-prod.md) | **Not started** | Phase 1 |
-| 5 | [phase-5-curriculum-training.md](phase-5-curriculum-training.md) | **Not started** | Phase 2, 3, 4 |
+| 1 | [phase-1-baseline-eval.md](phase-1-baseline-eval.md) | **Complete** | Phase 0 |
+| 2 | [phase-2-chunking-pipeline.md](phase-2-chunking-pipeline.md) | **Complete** | Phase 1 |
+| 3 | [phase-3-indexables-workflows.md](phase-3-indexables-workflows.md) | **Complete** | Phase 2 |
+| 4 | [phase-4-guardrails-prod.md](phase-4-guardrails-prod.md) | **Complete** | Phase 1 |
+| 5 | [phase-5-curriculum-training.md](phase-5-curriculum-training.md) | **HF + Colab ready** (smoke run pending) | Phase 2, 3, 4 |
 | 6 | [phase-6-promotion-ship.md](phase-6-promotion-ship.md) | **Not started** | Phase 5 |
 | 7 | [phase-7-cursor-integration.md](phase-7-cursor-integration.md) | **Not started** | Phase 6 |
 | 8 | [phase-8-scale-optional.md](phase-8-scale-optional.md) | **Gated** | Phase 5 plateau |
@@ -34,7 +34,7 @@ Phase 0 → Phase 1 → Phase 4 (parallel with Phase 2) → Phase 2 → Phase 3 
                                                                               └→ Phase 8 (only if Phase 5 plateaus)
 ```
 
-**No RunPod training** until Phase 1 baseline + Phase 4 guardrails are documented.
+**No RunPod for Phase 5** — use HF dataset + Colab notebook (`prod-memory/notebooks/prod-extraction-v1-colab.ipynb`).
 
 ---
 
@@ -66,7 +66,7 @@ Phase 0 → Phase 1 → Phase 4 (parallel with Phase 2) → Phase 2 → Phase 3 
 
 | Path | Phase |
 |------|-------|
-| `benchmark/results/prod-grounding-baseline.json` | 1 |
-| `benchmark/prod-memory-eval/` (harness) | 1 |
+| `psm-model/prod-memory/results/prod-grounding-baseline.json` | 1 |
+| `psm-model/prod-memory/data/prod-extraction-v1.jsonl` | 5 |
 | `src/psm-core/src/segment-remember.ts` | 2 |
 | `src/psm-core` indexables schema | 3 |
