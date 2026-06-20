@@ -10,7 +10,7 @@ from prod_memory.hf_assets import (
     RESUME_STEP,
     SMOKE_TARGET_STEPS,
 )
-from prod_memory.upload_hf import upload_prod_dataset
+from prod_memory.upload_hf import upload_prod_curriculum
 
 
 class UploadProdHfTest(unittest.TestCase):
@@ -21,8 +21,9 @@ class UploadProdHfTest(unittest.TestCase):
             manifest = root / "mix.manifest.json"
             curriculum.write_text('{"id":"row"}\n', encoding="utf-8")
             manifest.write_text("{}", encoding="utf-8")
-            report = upload_prod_dataset(
+            report = upload_prod_curriculum(
                 repo_id=DEFAULT_DATASET_REPO,
+                repo_type="dataset",
                 curriculum=curriculum,
                 manifest=manifest,
                 dry_run=True,
@@ -41,8 +42,9 @@ class UploadProdHfTest(unittest.TestCase):
             manifest.write_text("{}", encoding="utf-8")
             api = MagicMock()
             hf_api_cls.return_value = api
-            report = upload_prod_dataset(
+            report = upload_prod_curriculum(
                 repo_id=DEFAULT_DATASET_REPO,
+                repo_type="dataset",
                 curriculum=curriculum,
                 manifest=manifest,
             )

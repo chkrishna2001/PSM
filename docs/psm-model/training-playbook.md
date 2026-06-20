@@ -364,6 +364,66 @@ Tmux on pod: `psm-gate5` (train), `psm-gate5-sync` (HF upload), `psm-gate5-eval`
 
 Before first launch, tar-push local `psm-model/src` + `psm-model/scripts` (ctl does this on warm/cold paths). Optionally upload new modules to HF dataset `psm-code/` for cold clones without `--sync-src`.
 
+## Prod-memory RunPod (teacher v3 curriculum)
+
+Resume prod-memory stem from prior smoke (e.g. **060000 → 065000**). Curriculum on dataset repo `chkrishna2001/psm-50m-action-mixed-v1` (`prod-memory/prod-extraction-v2.jsonl` — v3 content mirrored there; explicit v3 path needs script download support).
+
+**Do not walk away until Phase 3 verify passes.** Idle pod + GPU 0% = billing with no training.
+
+### Launch (two-phase — same as Gate 5)
+
+```powershell
+cd C:\Users\chkri\source\repos\PSM
+o runpodkey
+o chinnahftoken; $env:HF_TOKEN = (Get-Clipboard -Raw).Trim()
+$env:DATASET_HF_TOKEN = (Get-Content "$env:USERPROFILE\.cache\huggingface\token" -Raw).Trim()
+$env:PSM_HF_MODEL_REPO = 'subbu83/psm-50m-mixed-v1-run'
+
+# Phase 1 — deploy (~2 min)
+python psm-model\scripts\runpod_ctl.py deploy --auto-gpu --name psm-train-prod-memory --wait-ssh 300
+python psm-model\scripts\runpod_ctl.py ssh-info <pod_id>
+
+# Phase 2 — warm start ONLY (--pod-id; never --no-warm-pod after tar-push)
+python psm-model\scripts\runpod_ctl.py train-prod-memory `
+  --pod-id <pod_id> `
+  --proxy-user <pod_id>-<suffix>@ssh.runpod.io `
+  --resume-checkpoint psm-model/checkpoints/real-v3-50m-full-v2-prod-memory-step-060000.pt `
+  --tokenizer psm-model/checkpoints/real-v3-50m-full-v2-prod-memory-step-060000.tokenizer.json `
+  --curriculum psm-model/prod-memory/data/prod-extraction-v2.jsonl `
+  --target-steps 65000 `
+  --keep-pod
+
+# Phase 3 — verify within 90s (mandatory; stop pod if fail)
+python psm-model\scripts\runpod_ctl.py verify-pod `
+  --pod-id <pod_id> `
+  --proxy-user <pod_id>-<suffix>@ssh.runpod.io `
+  --tmux-session psm-prod-memory `
+  --train-log /tmp/psm-prod-memory-train.log `
+  --stop-on-fail
+```
+
+Tmux: `psm-prod-memory` (train), `psm-prod-memory-sync` (HF upload every 120s). Train log: `/tmp/psm-prod-memory-train.log`.
+
+`train-prod-memory` tar-pushes **`psm-model/src`** (full tree), **`psm-model/scripts`**, **`psm-model/prod-memory`** before starting tmux. Do not use `--no-warm-pod` on a pod that already received tar-push — partial `/workspace/PSM` breaks `git clone` in cold bootstrap.
+
+### Known failures (2026-06-20 — do not repeat)
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Repository not found` on checkpoint download | Pod `RUNPOD_SECRET_HF_TOKEN_C` is wrong; `hf download` without `--token` uses it | `runpod_start_prod_memory_train_only.sh` passes `--token "${HF_TOKEN:-}"`; always export `HF_TOKEN` from `o chinnahftoken` in launch env |
+| `ModuleNotFoundError: psm_model.configs` | Only `train.py` was synced, not full `psm_model` package | `train-prod-memory` must push all of `psm-model/src` (fixed in ctl) |
+| Pod up 5+ min, GPU 0%, no tmux | Launch failed silently after bootstrap | Run `verify-pod` with `--tmux-session psm-prod-memory` within 90s; `--stop-on-fail` to kill idle billing |
+| Cold bootstrap + tar-push | `/workspace/PSM` exists but is not a git repo → `git pull` fails, incomplete tree | After `deploy`, use **warm** `train-prod-memory --pod-id` only |
+| `verify-pod` says tmux missing on prod run | Default verify checks `psm-gate5` | Pass `--tmux-session psm-prod-memory --train-log /tmp/psm-prod-memory-train.log` |
+
+### Pre-flight (agent checklist)
+
+1. `HF_TOKEN` = `o chinnahftoken` (model repo checkpoints on `subbu83/...`)
+2. `DATASET_HF_TOKEN` = local HF cache (curriculum on `chkrishna2001/...`)
+3. Confirm resume `.pt` exists on HF (e.g. `...-prod-memory-step-060000.pt`)
+4. Deploy → warm `train-prod-memory` → **verify within 90s**
+5. GPU util >0% or stop pod — never leave billing after a failed launch
+
 ## Colab (after Gate 2)
 
 1. Upload filtered curricula + passing checkpoints to a **private** HF repo via `hf upload`.

@@ -1377,19 +1377,22 @@ def _ssh_push_dir(
         f"base64 -d /tmp/psm-push.b64 | tar -C '{remote_path}' -xzf -\n"
         "echo PSM_PUSH_OK\n"
     )
+    ssh_args = [
+        SSH_BIN,
+        "-i",
+        SSH_KEY_PATH,
+        "-o",
+        "ConnectTimeout=20",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        *_ssh_endpoint(host_alias, host=host, port=port, user=user),
+        "bash",
+        "-s",
+    ]
+    if os.name == "nt":
+        ssh_args.insert(1, "-tt")
     result = subprocess.run(
-        [
-            SSH_BIN,
-            "-i",
-            SSH_KEY_PATH,
-            "-o",
-            "ConnectTimeout=20",
-            "-o",
-            "StrictHostKeyChecking=accept-new",
-            *_ssh_endpoint(host_alias, host=host, port=port, user=user),
-            "bash",
-            "-s",
-        ],
+        ssh_args,
         input=f"{push_cmd}\nexit\n",
         capture_output=True,
         text=True,
@@ -2174,6 +2177,185 @@ def cmd_train_gate5(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_train_prod_memory(args: argparse.Namespace) -> int:
+    scripts_dir = Path(__file__).resolve().parent
+    warm_pod = getattr(args, "warm_pod", True) and bool(args.pod_id) and not args.deploy
+    script_path = scripts_dir / (
+        "runpod_start_prod_memory_train_only.sh" if warm_pod else "runpod_train_prod_memory.sh"
+    )
+    if not script_path.exists():
+        raise SystemExit(f"missing train script: {script_path}")
+
+    proxy_user = args.proxy_user or None
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+    repo_root = Path(__file__).resolve().parents[2]
+
+    scripts_dir_repo = repo_root / "psm-model" / "scripts"
+    if scripts_dir_repo.is_dir():
+        scripts_rc = _ssh_push_dir(
+            args.host_alias, scripts_dir_repo, "/workspace/PSM/psm-model/scripts", host=ssh_host, port=ssh_port, user=ssh_user
+        )
+        if scripts_rc != 0:
+            print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
+    prod_memory_dir = repo_root / "psm-model" / "prod-memory"
+    if prod_memory_dir.is_dir():
+        prod_rc = _ssh_push_dir(
+            args.host_alias,
+            prod_memory_dir,
+            "/workspace/PSM/psm-model/prod-memory",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if prod_rc != 0:
+            print(f"warning: prod-memory sync failed (exit {prod_rc})", file=sys.stderr)
+
+    src_dir = repo_root / "psm-model" / "src"
+    if src_dir.is_dir():
+        src_rc = _ssh_push_dir(
+            args.host_alias,
+            src_dir,
+            "/workspace/PSM/psm-model/src",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if src_rc != 0:
+            print(f"warning: src sync failed (exit {src_rc})", file=sys.stderr)
+
+    if not warm_pod:
+        scripts_rc = _ssh_push_dir(
+            args.host_alias,
+            scripts_dir_repo,
+            "/workspace/PSM/psm-model/scripts",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if scripts_rc != 0:
+            print(f"warning: cold scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
+    extra_env = {
+        "PSM_TRAIN_DEVICE": args.device,
+        "TARGET_STEPS": str(args.target_steps),
+        "RESUME_CHECKPOINT": args.resume_checkpoint,
+        "TOKENIZER": args.tokenizer,
+        "PROD_CURRICULUM": args.curriculum,
+        "CONTEXT_LENGTH": str(args.context_length),
+        "BATCH_SIZE": str(args.batch_size),
+        "LEARNING_RATE": str(args.learning_rate),
+        "MIN_LEARNING_RATE": str(args.min_learning_rate),
+        "WARMUP_STEPS": str(args.warmup_steps),
+        "SAVE_EVERY": str(args.save_every),
+        "KEEP_LOCAL": str(args.keep_local),
+        "SYNC_INTERVAL_SEC": str(args.sync_interval_sec),
+        "OUT_STEM": args.out_stem,
+        "PSM_HF_MODEL_REPO": os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO),
+    }
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        extra_env["HF_TOKEN"] = hf_token
+    dataset_hf_token = os.environ.get("DATASET_HF_TOKEN", "").strip()
+    if dataset_hf_token:
+        extra_env["DATASET_HF_TOKEN"] = dataset_hf_token
+    resume_step = ""
+    for part in Path(args.resume_checkpoint).stem.split("-"):
+        if part.isdigit():
+            resume_step = part
+    if resume_step:
+        extra_env["GATE4_PINNED_STEPS"] = resume_step
+
+    start_timeout = 300 if warm_pod else args.timeout_sec
+    rc = _ssh_run_script(
+        args.host_alias,
+        script_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=start_timeout,
+        extra_env=extra_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=True,
+    )
+    if rc == 0 and warm_pod:
+        if not _verify_pod_job(
+            args.host_alias,
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            tmux_session="psm-prod-memory",
+            process_pattern="psm_model.train",
+            label="prod-memory-train",
+        ):
+            return 1
+
+    args.required_hf_steps = _gate4_best_steps_for_verify() or [int(args.target_steps)]
+    _delete_pod_unless_kept(args, pod_id, rc, job="training")
+    return rc
+
+
+def cmd_eval_prod_memory(args: argparse.Namespace) -> int:
+    script_path = Path(__file__).resolve().parent / "runpod_eval_prod_memory.sh"
+    if not script_path.exists():
+        raise SystemExit(f"missing eval script: {script_path}")
+
+    proxy_user = args.proxy_user or None
+    pod_id, ssh_host, ssh_port, ssh_user = _resolve_train_pod_ssh(args, proxy_user=proxy_user)
+    repo_root = Path(__file__).resolve().parents[2]
+
+    prod_memory_dir = repo_root / "psm-model" / "prod-memory"
+    if prod_memory_dir.is_dir():
+        prod_rc = _ssh_push_dir(
+            args.host_alias,
+            prod_memory_dir,
+            "/workspace/PSM/psm-model/prod-memory",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        if prod_rc != 0:
+            print(f"warning: prod-memory sync failed (exit {prod_rc})", file=sys.stderr)
+
+    scripts_dir = repo_root / "psm-model" / "scripts"
+    if scripts_dir.is_dir():
+        scripts_rc = _ssh_push_dir(
+            args.host_alias, scripts_dir, "/workspace/PSM/psm-model/scripts", host=ssh_host, port=ssh_port, user=ssh_user
+        )
+        if scripts_rc != 0:
+            print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
+    extra_env: dict[str, str] = {
+        "EVAL_STEP": f"{int(args.eval_step):06d}",
+        "RUN_STEM": args.run_stem,
+        "PSM_EVAL_DEVICE": args.device,
+        "MAX_NEW_TOKENS": str(args.max_new_tokens),
+        "PSM_HF_MODEL_REPO": os.environ.get("PSM_HF_MODEL_REPO", DEFAULT_HF_MODEL_REPO),
+    }
+    if not args.no_compare_baseline:
+        extra_env["COMPARE_BASELINE_STEP"] = f"{int(args.compare_baseline_step):06d}"
+    hf_token = os.environ.get("HF_TOKEN", "").strip()
+    if hf_token:
+        extra_env["HF_TOKEN"] = hf_token
+    dataset_hf_token = os.environ.get("DATASET_HF_TOKEN", "").strip()
+    if dataset_hf_token:
+        extra_env["DATASET_HF_TOKEN"] = dataset_hf_token
+
+    rc = _ssh_run_script(
+        args.host_alias,
+        script_path,
+        host=ssh_host,
+        port=ssh_port,
+        user=ssh_user,
+        timeout_sec=args.timeout_sec,
+        extra_env=extra_env,
+        ssh_ready_timeout_sec=args.ssh_ready_timeout_sec,
+        skip_ssh_wait=bool(args.pod_id),
+    )
+    _delete_pod_unless_kept(args, pod_id, rc, job="eval")
+    return rc if isinstance(rc, int) else rc[0]
+
+
 def cmd_eval_gate5_dual(args: argparse.Namespace) -> int:
     script_path = Path(__file__).resolve().parent / "runpod_eval_gate5_dual.sh"
     if not script_path.exists():
@@ -2666,6 +2848,70 @@ def main() -> int:
         help=argparse.SUPPRESS,
     )
     train_gate4.set_defaults(func=cmd_train_gate4)
+
+    train_prod_memory = sub.add_parser(
+        "train-prod-memory",
+        help="Prod-memory v2 smoke train: resume 058000, context 4096, prod-extraction-v2",
+    )
+    train_prod_memory.add_argument("--deploy", action="store_true")
+    train_prod_memory.add_argument("--pod-id", default="")
+    train_prod_memory.add_argument("--name", default="psm-train-prod-memory")
+    train_prod_memory.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    train_prod_memory.add_argument("--gpu", default=DEFAULT_GPU)
+    train_prod_memory.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
+    train_prod_memory.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
+    _add_auto_gpu_arguments(train_prod_memory)
+    train_prod_memory.set_defaults(auto_gpu=True)
+    train_prod_memory.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    train_prod_memory.add_argument("--proxy-user", default="")
+    train_prod_memory.add_argument("--warm-pod", action=argparse.BooleanOptionalAction, default=True)
+    train_prod_memory.add_argument("--device", default="cuda")
+    train_prod_memory.add_argument("--target-steps", type=int, default=60_000)
+    train_prod_memory.add_argument(
+        "--resume-checkpoint",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-058000.pt",
+    )
+    train_prod_memory.add_argument(
+        "--tokenizer",
+        default="psm-model/checkpoints/real-v3-50m-full-v2-step-058000.tokenizer.json",
+    )
+    train_prod_memory.add_argument(
+        "--curriculum",
+        default="psm-model/prod-memory/data/prod-extraction-v2.jsonl",
+    )
+    train_prod_memory.add_argument("--context-length", type=int, default=4096)
+    train_prod_memory.add_argument("--batch-size", type=int, default=1)
+    train_prod_memory.add_argument("--learning-rate", type=float, default=2e-5)
+    train_prod_memory.add_argument("--min-learning-rate", type=float, default=5e-6)
+    train_prod_memory.add_argument("--warmup-steps", type=int, default=50)
+    train_prod_memory.add_argument("--save-every", type=int, default=200)
+    train_prod_memory.add_argument("--keep-local", type=int, default=2)
+    train_prod_memory.add_argument("--sync-interval-sec", type=int, default=120)
+    train_prod_memory.add_argument("--out-stem", default="real-v3-50m-full-v2-prod-memory")
+    train_prod_memory.add_argument("--wait-ssh", type=int, default=300)
+    train_prod_memory.add_argument("--timeout-sec", type=int, default=28800)
+    train_prod_memory.add_argument("--ssh-ready-timeout-sec", type=int, default=420)
+    train_prod_memory.add_argument("--keep-pod", action="store_true")
+    train_prod_memory.add_argument("--force-delete-pod", action="store_true")
+    train_prod_memory.set_defaults(func=cmd_train_prod_memory)
+
+    eval_prod_memory = sub.add_parser(
+        "eval-prod-memory",
+        help="Prod grounding eval on RunPod CUDA (fixtures + remember path)",
+    )
+    eval_prod_memory.add_argument("--pod-id", default="")
+    eval_prod_memory.add_argument("--proxy-user", default="")
+    eval_prod_memory.add_argument("--host-alias", default=SSH_CONFIG_HOST)
+    eval_prod_memory.add_argument("--eval-step", type=int, default=60_000)
+    eval_prod_memory.add_argument("--run-stem", default="real-v3-50m-full-v2-prod-memory")
+    eval_prod_memory.add_argument("--compare-baseline-step", type=int, default=58_000)
+    eval_prod_memory.add_argument("--no-compare-baseline", action="store_true")
+    eval_prod_memory.add_argument("--device", default="cuda")
+    eval_prod_memory.add_argument("--max-new-tokens", type=int, default=384)
+    eval_prod_memory.add_argument("--timeout-sec", type=int, default=1800)
+    eval_prod_memory.add_argument("--ssh-ready-timeout-sec", type=int, default=120)
+    eval_prod_memory.add_argument("--keep-pod", action="store_true")
+    eval_prod_memory.set_defaults(func=cmd_eval_prod_memory)
 
     train_gate5 = sub.add_parser(
         "train-gate5",

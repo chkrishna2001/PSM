@@ -412,9 +412,19 @@ def train_texts(
     if resume is not None:
         resume_payload = torch.load(resume, map_location="cpu")
         model_config = TinyDecoderConfig(**resume_payload["config"])
+        longer_context_only = False
         if asdict(model_config) != asdict(config):
-            raise ValueError(f"resume checkpoint config does not match requested config: {resume}")
-        model = TinyDecoderModel(model_config)
+            resume_values = asdict(model_config)
+            target_values = asdict(config)
+            longer_context_only = (
+                resume_values.keys() == target_values.keys()
+                and all(resume_values[key] == target_values[key] for key in resume_values if key != "context_length")
+                and int(target_values["context_length"]) >= int(resume_values["context_length"])
+            )
+            if not longer_context_only:
+                raise ValueError(f"resume checkpoint config does not match requested config: {resume}")
+        effective_config = config if longer_context_only or asdict(model_config) == asdict(config) else model_config
+        model = TinyDecoderModel(effective_config)
         missing, unexpected = model.load_state_dict(resume_payload["state_dict"], strict=False)
         allowed_missing = {"action_head.weight", "action_head.bias"}
         if set(missing) - allowed_missing or unexpected:
