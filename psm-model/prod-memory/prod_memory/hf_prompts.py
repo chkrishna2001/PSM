@@ -72,6 +72,15 @@ def row_messages(
     ]
 
 
+def storage_inference_messages(llm_response: str, *, output_format: str = "tagged") -> list[dict[str, str]]:
+    system = JSON_SYSTEM_INSTRUCTION if output_format == "json" else TAGGED_SYSTEM_INSTRUCTION
+    user = f"{PROD_STORAGE_USER_PREFIX}{llm_response.strip()}"
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+
 def apply_chat_text(messages: list[dict[str, str]], tokenizer: Any) -> str:
     return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
 

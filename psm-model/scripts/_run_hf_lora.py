@@ -63,7 +63,9 @@ def _deploy() -> tuple[str, str]:
         for target in payload.get("targets") or []:
             if target.get("user"):
                 proxy_user = target["user"]
-    if pod_id and not proxy_user:
+    if not pod_id:
+        return "", ""
+    if not proxy_user:
         info = subprocess.run(
             [sys.executable, str(SCRIPTS / "runpod_ctl.py"), "ssh-info", pod_id],
             cwd=REPO,
@@ -78,6 +80,7 @@ def _deploy() -> tuple[str, str]:
                 payload = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            proxy_user = payload.get("pod_host_id") or proxy_user
             for target in payload.get("targets") or []:
                 if target.get("user"):
                     proxy_user = target["user"]
