@@ -15,10 +15,25 @@ import runpod_ctl as rc  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "psm-model" / "scripts"
-ADAPTER = "psm-model/prod-memory/checkpoints/hf-prod-v1-qwen0.5b/adapter"
-EVAL_OUT = "psm-model/prod-memory/results/hf-prod-v1-qwen0.5b-prod-grounding.json"
 MODEL_REPO = "krishnach7262/psm-prod-memory-hf"
 GIT_URL = "https://github.com/chkrishna2001/PSM.git"
+
+PROFILES: dict[str, dict[str, str]] = {
+    "v1": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v1-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v1-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v1-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v1-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v1-qwen0.5b-prod-grounding.json",
+    },
+    "v2": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v2-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v2-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v2-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v2-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v2-qwen0.5b-prod-grounding.json",
+    },
+}
 
 
 def _hf_token() -> str:
@@ -143,8 +158,9 @@ def _push_eval_files(pod_id: str, proxy_user: str) -> None:
     )
 
 
-def cmd_pull_eval(pod_id: str, proxy_user: str) -> int:
-    local = REPO / EVAL_OUT
+def cmd_pull_eval(profile: dict[str, str]) -> int:
+    eval_out = profile["eval_out"]
+    local = REPO / eval_out
     local.parent.mkdir(parents=True, exist_ok=True)
     token = _hf_token()
     if not token:
@@ -154,7 +170,7 @@ def cmd_pull_eval(pod_id: str, proxy_user: str) -> int:
 
     path = hf_hub_download(
         repo_id=MODEL_REPO,
-        filename="eval/hf-prod-v1-qwen0.5b-prod-grounding.json",
+        filename=profile["hf_eval"],
         repo_type="model",
         token=token,
         local_dir=str(local.parent / "_hf_eval_dl"),
@@ -167,12 +183,12 @@ def cmd_pull_eval(pod_id: str, proxy_user: str) -> int:
     return 0
 
 
-def cmd_upload_eval_hf() -> int:
+def cmd_upload_eval_hf(profile: dict[str, str]) -> int:
     token = _hf_token()
     if not token:
         print("HF_TOKEN missing", file=sys.stderr)
         return 1
-    local = REPO / EVAL_OUT
+    local = REPO / profile["eval_out"]
     if not local.is_file():
         print(f"missing local eval: {local}", file=sys.stderr)
         return 1
@@ -181,12 +197,12 @@ def cmd_upload_eval_hf() -> int:
     api = HfApi(token=token)
     api.upload_file(
         path_or_fileobj=str(local),
-        path_in_repo="eval/hf-prod-v1-qwen0.5b-prod-grounding.json",
+        path_in_repo=profile["hf_eval"],
         repo_id=MODEL_REPO,
         repo_type="model",
         commit_message="upload prod grounding eval report",
     )
-    print(f"uploaded eval to {MODEL_REPO}/eval/hf-prod-v1-qwen0.5b-prod-grounding.json")
+    print(f"uploaded eval to {MODEL_REPO}/{profile['hf_eval']}")
     return 0
 
 
@@ -194,13 +210,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pod-id", default="")
     parser.add_argument("--proxy-user", default="")
+    parser.add_argument("--profile", choices=sorted(PROFILES), default="v2")
     parser.add_argument("--deploy", action="store_true", help="Deploy new eval pod")
     parser.add_argument("--pull-only", action="store_true")
     parser.add_argument("--upload-eval-hf", action="store_true")
     args = parser.parse_args()
+    profile = PROFILES[args.profile]
 
     if args.upload_eval_hf:
-        return cmd_upload_eval_hf()
+        return cmd_upload_eval_hf(profile)
 
     pod_id = args.pod_id.strip()
     proxy_user = args.proxy_user.strip()
@@ -212,7 +230,7 @@ def main() -> int:
         print(json.dumps({"pod_id": pod_id, "proxy_user": proxy_user}), flush=True)
 
     if args.pull_only:
-        return cmd_pull_eval("", "")
+        return cmd_pull_eval(profile)
 
     if not pod_id or not proxy_user:
         print("--deploy or --pod-id + --proxy-user required", file=sys.stderr)
@@ -230,6 +248,11 @@ def main() -> int:
         "PSM_GIT_URL": GIT_URL,
         "PSM_HF_MODEL_REPO": MODEL_REPO,
         "HF_MODEL_KEY": "qwen0.5b",
+        "HF_ADAPTER_DIR": profile["adapter"],
+        "HF_EVAL_OUT": profile["eval_out"],
+        "HF_ADAPTER_PREFIX": profile["hf_adapter_prefix"],
+        "HF_EVAL_REPO_PATH": profile["hf_eval"],
+        "HF_CHECKPOINT_LABEL": profile["label"],
     }
     code = int(
         rc._ssh_run_script(
@@ -262,9 +285,9 @@ def main() -> int:
         print(f"eval bootstrap failed exit={code}", file=sys.stderr)
         return code
 
-    if cmd_pull_eval(pod_id, proxy_user) != 0:
+    if cmd_pull_eval(profile) != 0:
         return 1
-    return cmd_upload_eval_hf()
+    return cmd_upload_eval_hf(profile)
 
 
 if __name__ == "__main__":

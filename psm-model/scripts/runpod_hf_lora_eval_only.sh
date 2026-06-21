@@ -36,14 +36,14 @@ mkdir -p "$(dirname "$ADAPTER_DIR")" psm-model/prod-memory/results
 
 if [[ ! -f "$ADAPTER_DIR/adapter_model.safetensors" ]]; then
   echo "Downloading adapter from $MODEL_REPO..."
-  hf download "$MODEL_REPO" \
+    hf download "$MODEL_REPO" \
     --repo-type model \
-    --include "hf-prod-v1-${MODEL_KEY}/*" \
+    --include "${HF_ADAPTER_PREFIX:-hf-prod-v1-${MODEL_KEY}}/*" \
     --local-dir "psm-model/prod-memory/checkpoints/_hf_dl" \
     --token "$HF_TOKEN"
   mkdir -p "$ADAPTER_DIR"
   shopt -s nullglob
-  for f in "psm-model/prod-memory/checkpoints/_hf_dl/hf-prod-v1-${MODEL_KEY}"/*; do
+  for f in "psm-model/prod-memory/checkpoints/_hf_dl/${HF_ADAPTER_PREFIX:-hf-prod-v1-${MODEL_KEY}}"/*; do
     cp -a "$f" "$ADAPTER_DIR/"
   done
   shopt -u nullglob
@@ -54,7 +54,7 @@ python -m prod_memory.eval_hf_grounding \
   --model "$MODEL_KEY" \
   --device cuda \
   --output-format tagged \
-  --checkpoint-label "hf-prod-v1-${MODEL_KEY}" \
+  --checkpoint-label "${HF_CHECKPOINT_LABEL:-hf-prod-v1-${MODEL_KEY}}" \
   --out "$EVAL_OUT"
 export HF_EVAL_OUT="$EVAL_OUT"
 
@@ -69,10 +69,11 @@ from pathlib import Path
 
 repo = os.environ.get("PSM_HF_MODEL_REPO", "krishnach7262/psm-prod-memory-hf")
 path = Path(os.environ["HF_EVAL_OUT"])
+eval_repo_path = os.environ.get("HF_EVAL_REPO_PATH", "eval/hf-prod-v1-qwen0.5b-prod-grounding.json")
 api = HfApi(token=os.environ["HF_TOKEN"])
 api.upload_file(
     path_or_fileobj=str(path),
-    path_in_repo="eval/hf-prod-v1-qwen0.5b-prod-grounding.json",
+    path_in_repo=eval_repo_path,
     repo_id=repo,
     repo_type="model",
     commit_message="upload prod grounding eval report",
