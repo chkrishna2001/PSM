@@ -15,11 +15,16 @@ from prod_memory.row_validation import remember_target_from_input, validate_prod
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = PACKAGE_ROOT / "data" / "prod-extraction-v3.jsonl"
+DEFAULT_SOURCE_V5 = PACKAGE_ROOT / "data" / "prod-extraction-v5.jsonl"
+DEFAULT_FIXTURES = PACKAGE_ROOT / "fixtures" / "cases.json"
 DEFAULT_OUTPUT = PACKAGE_ROOT / "data" / "hf-prod-v1.jsonl"
+DEFAULT_OUTPUT_V2 = PACKAGE_ROOT / "data" / "hf-prod-v2.jsonl"
 DEFAULT_DATASET_REPO = "krishnach7262/psm-prod-memory-data"
 DEFAULT_MODEL_REPO = "krishnach7262/psm-prod-memory-hf"
 MIN_STORAGE_P50_CHARS = 500
+MIN_STORAGE_V5_CHARS = 80
 DEFAULT_RECALL_FRACTION = 0.28
+DEFAULT_FIXTURE_COPIES = 25
 
 
 def _download_v3(source: Path, *, dataset_repo: str) -> None:
@@ -70,6 +75,30 @@ def _copy_rows(rows: list[dict[str, Any]], *, prefix: str, copies: int) -> list[
     return out
 
 
+def _storage_rows_from_source(
+    source: Path,
+    *,
+    min_input_chars: int,
+) -> list[dict[str, Any]]:
+    storage_rows: list[dict[str, Any]] = []
+    for row in _load_rows(source):
+        if infer_row_task(row) != "storage":
+            continue
+        if not row.get("expected", {}).get("action"):
+            continue
+        validate_prod_row(row)
+        if len(remember_target_from_input(row["input"])) < min_input_chars:
+            continue
+        storage_rows.append(row)
+    return storage_rows
+
+
+def _fixture_ids(fixtures_path: Path) -> set[str]:
+    payload = json.loads(fixtures_path.read_text(encoding="utf-8"))
+    cases = payload.get("cases") or []
+    return {str(case["id"]) for case in cases if isinstance(case, dict) and case.get("id")}
+
+
 def build_hf_curriculum(
     output: Path,
     *,
@@ -79,28 +108,50 @@ def build_hf_curriculum(
     min_input_chars: int = MIN_STORAGE_P50_CHARS,
     dataset_repo: str = DEFAULT_DATASET_REPO,
     download: bool = True,
+    extra_sources: list[Path] | None = None,
+    extra_min_chars: dict[Path, int] | None = None,
+    fixture_copies: int = 0,
+    fixtures_path: Path | None = None,
+    profile: str = "hf-prod-v1",
 ) -> dict[str, Any]:
     if download:
         _download_v3(source, dataset_repo=dataset_repo)
-    if not source.exists():
-        raise FileNotFoundError(f"teacher source not found: {source}")
 
-    storage_rows: list[dict[str, Any]] = []
-    for row in _load_rows(source):
-        if infer_row_task(row) != "storage":
-            continue
-        validate_prod_row(row)
-        if len(remember_target_from_input(row["input"])) < min_input_chars:
-            continue
-        storage_rows.append(row)
+    storage_rows: list[dict[str, Any]] = _storage_rows_from_source(source, min_input_chars=min_input_chars)
+    for extra in extra_sources or []:
+        min_chars = (extra_min_chars or {}).get(extra, min_input_chars)
+        if extra.exists():
+            storage_rows.extend(_storage_rows_from_source(extra, min_input_chars=min_chars))
 
     if not storage_rows:
         raise ValueError("no storage rows after filter")
 
+    fixture_ids = _fixture_ids(fixtures_path or DEFAULT_FIXTURES) if fixture_copies > 0 else set()
+    fixture_rows = [
+        row
+        for row in storage_rows
+        if str(row.get("input", {}).get("source_id") or "") in fixture_ids
+        or any(fid in str(row.get("id") or "") for fid in fixture_ids)
+    ]
+    if fixture_copies > 0 and fixture_rows:
+        storage_rows.extend(_copy_rows(fixture_rows, prefix="fx", copies=fixture_copies - 1))
+
+    # ponytail: dedupe by id, keep fixture copies distinct via _copy_rows ids.
+    seen: set[str] = set()
+    unique_storage: list[dict[str, Any]] = []
+    for row in storage_rows:
+        row_id = str(row["id"])
+        if row_id in seen:
+            continue
+        seen.add(row_id)
+        unique_storage.append(row)
+    storage_rows = unique_storage
+
     storage_lengths = sorted(len(remember_target_from_input(row["input"])) for row in storage_rows)
     storage_p50 = storage_lengths[len(storage_lengths) // 2]
-    if storage_p50 < MIN_STORAGE_P50_CHARS:
-        raise ValueError(f"storage input p50 {storage_p50} below {MIN_STORAGE_P50_CHARS}")
+    min_p50 = MIN_STORAGE_V5_CHARS if profile == "hf-prod-v2" else MIN_STORAGE_P50_CHARS
+    if storage_p50 < min_p50:
+        raise ValueError(f"storage input p50 {storage_p50} below {min_p50}")
 
     recall_seed = build_recall_probe_rows()
     if recall_fraction <= 0:
@@ -139,10 +190,13 @@ def build_hf_curriculum(
     with_facts = sum(1 for row in storage_rows if row.get("expected", {}).get("facts"))
     with_indexables = sum(1 for row in storage_rows if row.get("expected", {}).get("indexables"))
     manifest = {
-        "profile": "hf-prod-v1",
+        "profile": profile,
         "source": str(source),
+        "extra_sources": [str(p) for p in (extra_sources or [])],
         "output": str(output),
         "output_format": output_format,
+        "fixture_copies": fixture_copies,
+        "fixture_rows": len(fixture_rows),
         "total_rows": len(hf_rows),
         "storage_rows": len(storage_rows),
         "recall_rows": len(recall_rows),
@@ -170,16 +224,39 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-input-chars", type=int, default=MIN_STORAGE_P50_CHARS)
     parser.add_argument("--dataset-repo", default=DEFAULT_DATASET_REPO)
     parser.add_argument("--no-download", action="store_true")
+    parser.add_argument("--profile", choices=["hf-prod-v1", "hf-prod-v2"], default="hf-prod-v1")
+    parser.add_argument("--source-v5", type=Path, default=DEFAULT_SOURCE_V5)
+    parser.add_argument("--fixture-copies", type=int, default=0)
     args = parser.parse_args(argv)
-    manifest = build_hf_curriculum(
-        args.output,
-        source=args.source,
-        output_format=args.output_format,
-        recall_fraction=args.recall_fraction,
-        min_input_chars=args.min_input_chars,
-        dataset_repo=args.dataset_repo,
-        download=not args.no_download,
-    )
+
+    if args.profile == "hf-prod-v2":
+        args.output = args.output if args.output != DEFAULT_OUTPUT else DEFAULT_OUTPUT_V2
+        recall_fraction = 0.12 if args.recall_fraction == DEFAULT_RECALL_FRACTION else args.recall_fraction
+        fixture_copies = args.fixture_copies or DEFAULT_FIXTURE_COPIES
+        manifest = build_hf_curriculum(
+            args.output,
+            source=args.source,
+            output_format=args.output_format,
+            recall_fraction=recall_fraction,
+            min_input_chars=MIN_STORAGE_P50_CHARS,
+            dataset_repo=args.dataset_repo,
+            download=not args.no_download,
+            extra_sources=[args.source_v5],
+            extra_min_chars={args.source_v5: MIN_STORAGE_V5_CHARS},
+            fixture_copies=fixture_copies,
+            profile="hf-prod-v2",
+        )
+    else:
+        manifest = build_hf_curriculum(
+            args.output,
+            source=args.source,
+            output_format=args.output_format,
+            recall_fraction=args.recall_fraction,
+            min_input_chars=args.min_input_chars,
+            dataset_repo=args.dataset_repo,
+            download=not args.no_download,
+            profile="hf-prod-v1",
+        )
     print(json.dumps(manifest, indent=2))
     return 0
 

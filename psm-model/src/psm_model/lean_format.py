@@ -221,16 +221,17 @@ def parse_tagged_decision(text: str) -> tuple[dict[str, Any] | None, tuple[Valid
             issues.append(ValidationIssue(f"$.line[{line_number}]", "missing ':' separator"))
             continue
         if key == "A":
-            action = value
+            action = value.strip()
             if action not in ACTIONS:
                 issues.append(ValidationIssue("$.action", f"unsupported action: {action}"))
-        elif key == "M" and value == "-":
+        elif key == "M" and value.strip() == "-":
             memory = None
         elif key == "T":
-            if value not in MEMORY_TYPES:
-                issues.append(ValidationIssue("$.memory.type", f"unsupported memory type: {value}"))
+            mem_type = value.strip()
+            if mem_type not in MEMORY_TYPES:
+                issues.append(ValidationIssue("$.memory.type", f"unsupported memory type: {mem_type}"))
             memory = _ensure_memory(memory)
-            memory["type"] = value
+            memory["type"] = mem_type
         elif key == "C":
             memory = _ensure_memory(memory)
             memory["content"] = _unescape(value)

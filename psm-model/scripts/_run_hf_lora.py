@@ -97,6 +97,7 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=1200)
     parser.add_argument("--upload-only", action="store_true")
     parser.add_argument("--git-url", default=os.environ.get("PSM_GIT_URL", DEFAULT_GIT_URL))
+    parser.add_argument("--sync-code", action="store_true", help="Tar-push train fixes before launch (ahead of git remote).")
     args = parser.parse_args()
 
     hf_token = _load_hf_token()
@@ -152,16 +153,47 @@ def main() -> int:
         "HF_MODEL_KEY": args.model,
         "HF_TRAIN_STEPS": str(args.steps),
     }
-    rc._ssh_run_script(
-        "runpod-psm-proxy",
-        SCRIPTS / "runpod_hf_lora_bootstrap.sh",
-        host=ssh_host,
-        port=ssh_port,
-        user=ssh_user,
-        timeout_sec=120,
-        extra_env=extra,
-        skip_ssh_wait=True,
-    )
+
+    if args.sync_code:
+        rc._push_repo_files_via_tar(
+            "runpod-psm-proxy",
+            REPO,
+            [
+                "psm-model/scripts/runpod_hf_lora_train.sh",
+                "psm-model/scripts/runpod_hf_lora_bootstrap.sh",
+                "psm-model/src/psm_model/hf_lora_train.py",
+                "psm-model/src/psm_model/lean_format.py",
+                "psm-model/src/psm_model/prompts.py",
+                "psm-model/prod-memory/prod_memory/build_hf_curriculum.py",
+                "psm-model/prod-memory/prod_memory/hf_prompts.py",
+                "psm-model/prod-memory/prod_memory/row_validation.py",
+            ],
+            "/workspace/PSM",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+        )
+        rc._ssh_run_script(
+            "runpod-psm-proxy",
+            SCRIPTS / "runpod_hf_lora_train.sh",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            timeout_sec=120,
+            extra_env=extra,
+            skip_ssh_wait=True,
+        )
+    else:
+        rc._ssh_run_script(
+            "runpod-psm-proxy",
+            SCRIPTS / "runpod_hf_lora_bootstrap.sh",
+            host=ssh_host,
+            port=ssh_port,
+            user=ssh_user,
+            timeout_sec=120,
+            extra_env=extra,
+            skip_ssh_wait=True,
+        )
 
     verify = subprocess.run(
         [

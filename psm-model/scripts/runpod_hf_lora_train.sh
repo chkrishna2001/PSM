@@ -12,16 +12,17 @@ DATASET_REPO="${PSM_HF_DATASET_REPO:-krishnach7262/psm-prod-memory-data}"
 MODEL_REPO="${PSM_HF_MODEL_REPO:-krishnach7262/psm-prod-memory-hf}"
 MODEL_KEY="${HF_MODEL_KEY:-qwen0.5b}"
 OUTPUT_FORMAT="${HF_OUTPUT_FORMAT:-tagged}"
-RECALL_FRACTION="${HF_RECALL_FRACTION:-0.28}"
-STEPS="${HF_TRAIN_STEPS:-1200}"
-MAX_LENGTH="${HF_MAX_LENGTH:-2048}"
-BATCH_SIZE="${HF_BATCH_SIZE:-2}"
-GRAD_ACCUM="${HF_GRAD_ACCUM:-4}"
+RECALL_FRACTION="${HF_RECALL_FRACTION:-0.12}"
+STEPS="${HF_TRAIN_STEPS:-2400}"
+MAX_LENGTH="${HF_MAX_LENGTH:-3072}"
+BATCH_SIZE="${HF_BATCH_SIZE:-1}"
+GRAD_ACCUM="${HF_GRAD_ACCUM:-8}"
 LEARNING_RATE="${HF_LEARNING_RATE:-2e-4}"
-SAVE_STEPS="${HF_SAVE_STEPS:-200}"
-OUT_DIR="${HF_OUTPUT_DIR:-psm-model/prod-memory/checkpoints/hf-prod-v1-${MODEL_KEY}}"
-CURRICULUM="${HF_CURRICULUM:-psm-model/prod-memory/data/hf-prod-v1.jsonl}"
+SAVE_STEPS="${HF_SAVE_STEPS:-400}"
+OUT_DIR="${HF_OUTPUT_DIR:-psm-model/prod-memory/checkpoints/hf-prod-v2-${MODEL_KEY}}"
+CURRICULUM="${HF_CURRICULUM:-psm-model/prod-memory/data/hf-prod-v2.jsonl}"
 SOURCE_V3="${HF_SOURCE_V3:-psm-model/prod-memory/data/prod-extraction-v3.jsonl}"
+SOURCE_V5="${HF_SOURCE_V5:-psm-model/prod-memory/data/prod-extraction-v5.jsonl}"
 HF_TOKEN="${HF_TOKEN:-}"
 
 echo "=== hf lora train $(date -u +%Y-%m-%dT%H:%M:%SZ) model=$MODEL_KEY dataset=$DATASET_REPO model_repo=$MODEL_REPO ==="
@@ -53,6 +54,24 @@ if [[ ! -f "$SOURCE_V3" ]]; then
   download_dataset "prod-memory/$(basename "$SOURCE_V3")" "$SOURCE_V3" || true
 fi
 
+if [[ ! -f "$SOURCE_V5" ]]; then
+  echo "Downloading teacher v5 from $DATASET_REPO..."
+  download_dataset "prod-memory/$(basename "$SOURCE_V5")" "$SOURCE_V5" || true
+fi
+
+if [[ ! -f "$CURRICULUM" ]]; then
+  echo "Building HF curriculum v2 (v3 + v5 fixtures)..."
+  python -m prod_memory.build_hf_curriculum \
+    --profile hf-prod-v2 \
+    --source "$SOURCE_V3" \
+    --source-v5 "$SOURCE_V5" \
+    --output "$CURRICULUM" \
+    --output-format "$OUTPUT_FORMAT" \
+    --recall-fraction "$RECALL_FRACTION" \
+    --dataset-repo "$DATASET_REPO" \
+    --no-download || true
+fi
+
 if [[ ! -f "$CURRICULUM" ]]; then
   echo "Downloading HF curriculum from $DATASET_REPO..."
   download_dataset "prod-memory/$(basename "$CURRICULUM")" "$CURRICULUM" || true
@@ -60,7 +79,9 @@ fi
 
 if [[ ! -f "$CURRICULUM" ]]; then
   python -m prod_memory.build_hf_curriculum \
+    --profile hf-prod-v2 \
     --source "$SOURCE_V3" \
+    --source-v5 "$SOURCE_V5" \
     --output "$CURRICULUM" \
     --output-format "$OUTPUT_FORMAT" \
     --recall-fraction "$RECALL_FRACTION" \
@@ -88,7 +109,7 @@ for path in sorted(out.rglob("*")):
     if not path.is_file():
         continue
     rel = path.relative_to(out).as_posix()
-    api.upload_file(path_or_fileobj=str(path), path_in_repo=f"hf-prod-v1-${MODEL_KEY}/{rel}", repo_id=repo, commit_message=f"upload {rel}")
+    api.upload_file(path_or_fileobj=str(path), path_in_repo=f"hf-prod-v2-${MODEL_KEY}/{rel}", repo_id=repo, repo_type="model", commit_message=f"upload {rel}")
 print("uploaded adapter to", repo)
 PY
 EOF

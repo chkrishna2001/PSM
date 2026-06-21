@@ -23,25 +23,31 @@ def _load_rows(path: Path) -> list[dict[str, Any]]:
 def _tokenize_sft_row(row: dict[str, Any], tokenizer: Any, max_length: int) -> dict[str, list[int]]:
     messages = row["messages"]
     prompt_messages = messages[:-1]
+    assistant_text = messages[-1]["content"]
     prompt_text = tokenizer.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
     full_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
     if not full_text.startswith(prompt_text):
         raise ValueError(f"prompt prefix mismatch for row {row.get('id')}")
     prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
-    full_ids = tokenizer(full_text, add_special_tokens=False)["input_ids"]
-    prompt_len = min(len(prompt_ids), len(full_ids))
-    labels = [-100] * prompt_len + full_ids[prompt_len:]
-    if len(full_ids) > max_length:
-        full_ids = full_ids[:max_length]
-        labels = labels[:max_length]
+    assistant_ids = tokenizer(assistant_text, add_special_tokens=False)["input_ids"]
+    # ponytail: never truncate assistant labels — trim prompt prefix if needed.
+    if len(prompt_ids) + len(assistant_ids) > max_length:
+        keep_prompt = max(256, max_length - len(assistant_ids))
+        prompt_ids = prompt_ids[-keep_prompt:]
+    full_ids = prompt_ids + assistant_ids
+    prompt_len = len(prompt_ids)
+    labels = [-100] * prompt_len + assistant_ids
     pad_id = tokenizer.pad_token_id or 0
     if len(full_ids) < max_length:
         pad = max_length - len(full_ids)
         full_ids = full_ids + [pad_id] * pad
         labels = labels + [-100] * pad
+    elif len(full_ids) > max_length:
+        full_ids = full_ids[:max_length]
+        labels = labels[:max_length]
     return {
         "input_ids": full_ids,
-        "attention_mask": [1 if label != -100 else 0 for label in labels],
+        "attention_mask": [1 if tid != pad_id else 0 for tid in full_ids],
         "labels": labels,
     }
 

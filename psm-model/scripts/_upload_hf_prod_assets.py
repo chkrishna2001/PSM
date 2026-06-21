@@ -24,6 +24,11 @@ def main() -> int:
         type=Path,
         default=Path("psm-model/prod-memory/data/prod-extraction-v3.jsonl"),
     )
+    parser.add_argument(
+        "--source-v5",
+        type=Path,
+        default=Path("psm-model/prod-memory/data/prod-extraction-v5.jsonl"),
+    )
     args = parser.parse_args()
 
     token = os.environ.get("HF_TOKEN", "").strip()
@@ -49,6 +54,7 @@ def main() -> int:
         (args.curriculum.with_suffix(".manifest.json"), f"prod-memory/{args.curriculum.stem}.manifest.json"),
         (args.source_v3, f"prod-memory/{args.source_v3.name}"),
         (args.source_v3.with_suffix(".manifest.json"), f"prod-memory/{args.source_v3.stem}.manifest.json"),
+        (args.source_v5, f"prod-memory/{args.source_v5.name}"),
     ):
         if local.exists():
             uploads.append((local, remote))
