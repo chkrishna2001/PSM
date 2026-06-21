@@ -3,18 +3,22 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from psm_model.lean_format import encode_at_tag_decision, encode_tagged_decision
+from psm_model.lean_format import encode_at_tag_decision, encode_binary_decision, encode_minimal_decision, encode_tagged_decision
 
 
 JSON_SYSTEM_INSTRUCTION = """You are the PSM storage model.
 Return one strict JSON object compatible with the PSM StorageDecision schema.
+Include action, memory (or null), facts[], indexables[], and reasoning.
 Do not include markdown, prose, comments, or fallback text outside JSON.
 Facts must be explicit and supported by evidence_text from the current input."""
 
 
 TAGGED_SYSTEM_INSTRUCTION = """You are the PSM storage model.
 Return one strict tagged StorageDecision.
-Use only these line prefixes: A:, M:, T:, C:, Q:, G:, TE:, RT:, F:, R:, END.
+Use only these line prefixes: A:, M:, T:, C:, Q:, G:, TE:, RT:, F:, X:, R:, END.
+A: is the action (ignore, store_episodic, promote_semantic, update_existing, flag_conflict, flag_and_store).
+T: is memory type (episodic or semantic) when storing.
+X: lines are indexables: kind|key|salience|reconstructive_hint|evidence_text|optional,step,ids
 Do not include markdown, prose, comments, JSON, or fallback text outside the tagged decision.
 Facts must be explicit and supported by evidence_text from the current input."""
 
@@ -31,6 +35,22 @@ Return only the storage action in this strict format:
 A:<action>
 END
 Choose from: ignore, store_episodic, promote_semantic, update_existing, flag_conflict, flag_and_store."""
+
+MINIMAL_SYSTEM_INSTRUCTION = """You are the PSM storage model.
+Return exactly one line and nothing else.
+If there is nothing durable to store, output: ignore
+If there is durable information to store, output: store: <one grounded sentence from the input>
+Do not use JSON, tags, markdown, or extra lines."""
+
+BINARY_SYSTEM_INSTRUCTION = """You are the PSM storage classifier.
+Return exactly one word and nothing else: ignore or store
+Output ignore when there is nothing durable to remember from the input.
+Output store when the input contains durable facts, procedures, or preferences worth remembering."""
+
+MINIMAL_EXTRACT_SYSTEM_INSTRUCTION = """You are the PSM memory extractor.
+Classification is already store. Return exactly one line:
+store: <one grounded sentence copied or paraphrased from the input>
+Do not output ignore. Do not use JSON, tags, markdown, or extra lines."""
 
 RECALL_SYSTEM_INSTRUCTION = """You are the PSM memory planner.
 Return one strict JSON recall plan object with intent, target_tables, filters, ranking_hints, temporal_intent, and top_k.
@@ -120,6 +140,10 @@ def render_expected_output(expected_output: dict[str, Any], *, output_format: st
         return encode_at_tag_decision(expected_output)
     if output_format == "action":
         return f"A:{expected_output['action']}\nEND"
+    if output_format in {"minimal", "minimal_extract"}:
+        return encode_minimal_decision(expected_output)
+    if output_format == "binary":
+        return encode_binary_decision(expected_output)
     raise ValueError(f"unsupported output format: {output_format}")
 
 
@@ -132,6 +156,12 @@ def _system_instruction(output_format: str) -> str:
         return AT_TAG_SYSTEM_INSTRUCTION
     if output_format == "action":
         return ACTION_SYSTEM_INSTRUCTION
+    if output_format == "minimal":
+        return MINIMAL_SYSTEM_INSTRUCTION
+    if output_format == "minimal_extract":
+        return MINIMAL_EXTRACT_SYSTEM_INSTRUCTION
+    if output_format == "binary":
+        return BINARY_SYSTEM_INSTRUCTION
     raise ValueError(f"unsupported output format: {output_format}")
 
 
@@ -144,4 +174,10 @@ def _output_name(output_format: str) -> str:
         return "at-tag DSL"
     if output_format == "action":
         return "action-only DSL"
+    if output_format == "minimal":
+        return "minimal one-line decision"
+    if output_format == "minimal_extract":
+        return "minimal extract line"
+    if output_format == "binary":
+        return "binary store/ignore label"
     raise ValueError(f"unsupported output format: {output_format}")

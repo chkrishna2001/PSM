@@ -195,6 +195,8 @@ def encode_tagged_decision(decision: dict[str, Any]) -> str:
                 ]
             )
         )
+    for indexable in decision.get("indexables") or []:
+        lines.append(_encode_indexable_line(indexable))
     lines.append(f"R:{_escape(decision['reasoning'])}")
     lines.append("END")
     return "\n".join(lines)
@@ -205,6 +207,7 @@ def parse_tagged_decision(text: str) -> tuple[dict[str, Any] | None, tuple[Valid
     action: str | None = None
     memory: dict[str, Any] | None = {}
     facts: list[dict[str, Any]] = []
+    indexables: list[dict[str, Any]] = []
     reasoning: str | None = None
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
@@ -248,12 +251,14 @@ def parse_tagged_decision(text: str) -> tuple[dict[str, Any] | None, tuple[Valid
             memory["resolved_time"] = _unescape(value)
         elif key == "F":
             facts.append(_parse_fact(value, len(facts), issues))
+        elif key == "X":
+            indexables.append(_parse_indexable(value, len(indexables), issues))
         elif key == "R":
             reasoning = _unescape(value)
         else:
             issues.append(ValidationIssue(f"$.line[{line_number}]", f"unknown tag: {key}"))
 
-    decision = {"action": action, "memory": memory, "facts": facts, "reasoning": reasoning}
+    decision = {"action": action, "memory": memory, "facts": facts, "indexables": indexables, "reasoning": reasoning}
     result = validate_storage_decision(decision)
     issues.extend(result.issues)
     return (decision if not issues else None), tuple(issues)
@@ -292,6 +297,40 @@ def compact_json_array(decision: dict[str, Any]) -> str:
         for fact in decision.get("facts", [])
     ]
     return json.dumps([decision["action"], memory_array, facts, decision["reasoning"]], ensure_ascii=False, separators=(",", ":"))
+
+
+def _encode_indexable_line(indexable: dict[str, Any]) -> str:
+    parts = [
+        _escape(str(indexable["kind"])),
+        _escape(str(indexable["key"])),
+        _number_text(indexable.get("salience")),
+        _escape(str(indexable.get("reconstructive_hint") or "")),
+        _escape(str(indexable.get("evidence_text") or "")),
+    ]
+    steps = indexable.get("steps") or []
+    if steps:
+        parts.append(",".join(_escape(str(step)) for step in steps))
+    return "X:" + "|".join(parts)
+
+
+def _parse_indexable(value: str, index: int, issues: list[ValidationIssue]) -> dict[str, Any]:
+    parts = value.split("|")
+    if len(parts) < 5:
+        issues.append(ValidationIssue(f"$.indexables[{index}]", "indexable line must have at least 5 pipe-delimited fields"))
+        return {}
+    if len(parts) > 6:
+        parts = parts[:5] + ["|".join(parts[5:])]
+    kind, key, salience, hint, evidence = (_unescape(part) for part in parts[:5])
+    row: dict[str, Any] = {
+        "kind": kind,
+        "key": key,
+        "salience": _parse_float(salience, f"$.indexables[{index}].salience", issues) if salience else None,
+        "reconstructive_hint": hint or None,
+        "evidence_text": evidence or None,
+    }
+    if len(parts) == 6 and parts[5]:
+        row["steps"] = [_unescape(step) for step in parts[5].split(",") if step]
+    return row
 
 
 def _ensure_memory(memory: dict[str, Any] | None) -> dict[str, Any]:
@@ -355,3 +394,97 @@ def _unescape(value: str) -> str:
     if escaping:
         output.append("\\")
     return "".join(output)
+
+
+def encode_minimal_decision(decision: dict[str, Any]) -> str:
+    action = str(decision.get("action") or "ignore").strip().lower()
+    if action in {"ignore", "ignore_noise"}:
+        return "ignore"
+    memory = decision.get("memory")
+    content = ""
+    if isinstance(memory, dict):
+        content = str(memory.get("content") or "").strip()
+    if not content:
+        raise ValueError("minimal store decision requires memory.content")
+    return f"store: {content}"
+
+
+def encode_binary_decision(decision: dict[str, Any]) -> str:
+    action = str(decision.get("action") or "ignore").strip().lower()
+    if action in {"ignore", "ignore_noise"}:
+        return "ignore"
+    return "store"
+
+
+def parse_binary_decision(text: str) -> tuple[dict[str, Any] | None, tuple[ValidationIssue, ...]]:
+    issues: list[ValidationIssue] = []
+    line = ""
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if stripped:
+            line = stripped.lower()
+            break
+    if not line:
+        issues.append(ValidationIssue("$.output", "empty binary output"))
+        return None, tuple(issues)
+    if line == "ignore":
+        return {
+            "action": "ignore",
+            "memory": None,
+            "facts": [],
+            "indexables": [],
+            "reasoning": "No durable memory.",
+        }, ()
+    if line == "store":
+        return {
+            "action": "store_episodic",
+            "memory": None,
+            "facts": [],
+            "indexables": [],
+            "reasoning": "Classify store.",
+        }, ()
+    issues.append(ValidationIssue("$.output", f"unsupported binary line: {line[:80]}"))
+    return None, tuple(issues)
+
+
+def parse_minimal_decision(text: str) -> tuple[dict[str, Any] | None, tuple[ValidationIssue, ...]]:
+    issues: list[ValidationIssue] = []
+    line = ""
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if stripped:
+            line = stripped
+            break
+    if not line:
+        issues.append(ValidationIssue("$.output", "empty minimal output"))
+        return None, tuple(issues)
+    if line == "ignore":
+        return {
+            "action": "ignore",
+            "memory": None,
+            "facts": [],
+            "indexables": [],
+            "reasoning": "No durable memory.",
+        }, ()
+    if line.lower().startswith("store:"):
+        content = line.split(":", 1)[1].strip()
+        if not content:
+            issues.append(ValidationIssue("$.memory.content", "store line missing content"))
+            return None, tuple(issues)
+        return {
+            "action": "store_episodic",
+            "memory": {
+                "content": content,
+                "type": "episodic",
+                "strength": 0.86,
+                "decay_rate": 0.02,
+                "emotional_weight": 0.22,
+                "confidence": 0.92,
+                "tags": [],
+            },
+            "facts": [],
+            "indexables": [],
+            "reasoning": content,
+        }, ()
+    issues.append(ValidationIssue("$.output", f"unsupported minimal line: {line[:80]}"))
+    return None, tuple(issues)
