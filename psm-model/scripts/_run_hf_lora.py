@@ -59,6 +59,8 @@ def _deploy() -> tuple[str, str]:
         except json.JSONDecodeError:
             continue
         pod_id = payload.get("pod_id") or payload.get("id") or pod_id
+        if payload.get("event") == "pod_created" and payload.get("id"):
+            pod_id = payload.get("id") or pod_id
         proxy_user = payload.get("pod_host_id") or proxy_user
         for target in payload.get("targets") or []:
             if target.get("user"):
