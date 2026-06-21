@@ -1,5 +1,5 @@
 ---
-description: Delete idle RunPod pods without waiting for user confirmation
+description: RunPod pod lifecycle — never delete until all artifacts are off the pod and verified
 alwaysApply: true
 ---
 
@@ -14,8 +14,14 @@ alwaysApply: true
 
 ## Delete policy (every delete path)
 
+- **NEVER delete or `--force-delete-pod` until all required artifacts are retrieved and verified:**
+  1. **Local copy** — eval reports, train logs, metrics JSON pulled to repo (or user-confirmed path).
+  2. **HF copy** — checkpoints/adapters/eval JSON uploaded and listed on the target repo.
+  3. **Manifest check** — `verify-hf` or equivalent passes for the run type (Gate 4 triple, HF LoRA adapter + eval, etc.).
+- **Idle billing is cheaper than re-running train/eval.** Prefer **`stop-pod`** over **`delete-pod`** when artifacts are not yet local. Only delete after the checklist above passes or the user explicitly confirms.
 - **`train-gate4`:** Pull registry from pod → verify best step has **all 3 files** on HF → only then delete pod.
-- **`delete-pod` / `delete-all`:** Block if registry best checkpoint is missing any HF file. Use `--force-delete-pod` only to override.
+- **`delete-pod` / `delete-all`:** Block if registry best checkpoint is missing any HF file. **`--force-delete-pod` is not a skip-checklist flag** — use only when HF manifest is verified but the Gate 4 guard misfires.
+- **Agents must never delete a pod proactively** to save billing. Stop only if user asks; delete only after artifact checklist + user confirmation.
 - **Scripts:** Always sync `psm-model/scripts/` to pod at train start (upload script must exist).
 
 ## General
@@ -33,4 +39,4 @@ alwaysApply: true
 6. **Never SCP** to RunPod proxy — tar-push via `_ssh_push_dir` only.
 7. **tmux must export `PSM_RUNPOD=1`** or training silently runs on CPU.
 8. **After every launch**, run `python psm-model/scripts/runpod_ctl.py verify-pod --pod-id <id> --proxy-user <user>` or confirm dashboard GPU util >0%.
-9. **GPU 0% for >5 min after bootstrap** → stop/delete pod (`verify-pod --stop-on-fail`).
+9. **GPU 0% for >5 min after bootstrap** → `stop-pod` (not delete) unless artifact checklist is complete and user confirmed delete.

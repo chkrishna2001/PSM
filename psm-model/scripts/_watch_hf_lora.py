@@ -6,8 +6,10 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import runpod_ctl as rc  # noqa: E402
@@ -96,14 +98,22 @@ python -m prod_memory.eval_hf_grounding \\
   --checkpoint-label hf-prod-v1-qwen0.5b \\
   --out {EVAL_OUT}
 """
-    return rc._ssh_run_bash(
-        "runpod-psm-proxy",
-        remote,
-        host=ssh_host,
-        port=ssh_port,
-        user=ssh_user,
-        timeout_sec=600,
-    )
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False, encoding="utf-8") as tmp:
+        tmp.write(remote)
+        script_path = Path(tmp.name)
+    try:
+        return int(
+            rc._ssh_run_script(
+                "runpod-psm-proxy",
+                script_path,
+                host=ssh_host,
+                port=ssh_port,
+                user=ssh_user,
+                timeout_sec=900,
+            )
+        )
+    finally:
+        script_path.unlink(missing_ok=True)
 
 
 def main() -> int:

@@ -68,12 +68,12 @@ Cold bootstrap (first time on pod, downloads checkpoint): add `--no-warm-pod` (l
 |------|-------------|---------|
 | 0 | `training` or `eval_finished` | Healthy or fully done |
 | 1 | — | Launch/verify failure (no tmux, no CUDA, GPU too low during train) |
-| 2 | `train_finished` or `idle_billing` | **Train done or pod idle — stop/delete now** |
+| 2 | `train_finished` or `idle_billing` | Train done or pod idle — **pull artifacts first**, then stop (not delete) unless checklist complete |
 
 ```powershell
 python psm-model\scripts\runpod_ctl.py verify-pod --pod-id <id> --proxy-user <user>
-# exit 2 → TRAIN_FINISHED_IDLE or IDLE_BILLING
-python psm-model\scripts\runpod_ctl.py verify-pod ... --stop-on-fail   # auto-stop
+# exit 2 → pull eval/logs/metrics locally + verify HF → then stop-pod (never delete without checklist)
+python psm-model\scripts\runpod_ctl.py verify-pod ... --stop-on-fail   # auto-stop only, never auto-delete
 ```
 
 Re-run anytime (≤60s). Use in `/loop` or cron to catch finished jobs.
@@ -120,7 +120,7 @@ Built into `runpod_ctl.py` `train-gate5` warm path via `_verify_pod_job` (~15s).
 | Local terminal silent 30+ min | Blocking 8h `train-gate5 --deploy` | Kill local python; use two-phase launch |
 | SSH probe timeout | Stacked SSH sessions | Stop pod; one launch at a time |
 
-**Idle >5 min with GPU 0% after bootstrap should complete → `stop-pod` or `delete-pod`.**
+**Idle >5 min with GPU 0% after bootstrap should complete → `stop-pod` only.** Never `delete-pod` until eval reports, logs, and checkpoints are local + on HF (see `.cursor/rules/runpod-auto-delete.mdc`).
 
 ## Gate 5 quick reference
 

@@ -88,7 +88,7 @@ for path in sorted(out.rglob("*")):
     if not path.is_file():
         continue
     rel = path.relative_to(out).as_posix()
-    api.upload_file(str(path), path_in_repo=f"hf-prod-v1-${MODEL_KEY}/{rel}", repo_id=repo, commit_message=f"upload {rel}")
+    api.upload_file(path_or_fileobj=str(path), path_in_repo=f"hf-prod-v1-${MODEL_KEY}/{rel}", repo_id=repo, commit_message=f"upload {rel}")
 print("uploaded adapter to", repo)
 PY
 EOF
