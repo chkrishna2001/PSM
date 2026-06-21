@@ -57,7 +57,7 @@ def _default_max_new_tokens(output_format: str) -> int:
     env = __import__("os").environ.get("PSM_MAX_NEW_TOKENS")
     if env and env.isdigit():
         return int(env)
-    return 128 if output_format == "tagged" else 384
+    return 128 if output_format in {"tagged", "minimal", "minimal_extract", "binary"} else 384
 
 
 def generate_storage_json(

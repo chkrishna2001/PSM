@@ -415,6 +415,8 @@ Tmux: `psm-prod-memory` (train), `psm-prod-memory-sync` (HF upload every 120s). 
 | Pod up 5+ min, GPU 0%, no tmux | Launch failed silently after bootstrap | Run `verify-pod` with `--tmux-session psm-prod-memory` within 90s; `--stop-on-fail` to kill idle billing |
 | Cold bootstrap + tar-push | `/workspace/PSM` exists but is not a git repo → `git pull` fails, incomplete tree | After `deploy`, use **warm** `train-prod-memory --pod-id` only |
 | `verify-pod` says tmux missing on prod run | Default verify checks `psm-gate5` | Pass `--tmux-session psm-prod-memory --train-log /tmp/psm-prod-memory-train.log` |
+| `hf: command not found` on fresh pod | Warm path skips cold bootstrap apt/pip | Start script installs `huggingface_hub` if `hf` missing |
+| `tmux: command not found` on fresh pod | Warm path skips `apt-get install tmux` | Start script installs `tmux` if missing |
 
 ### Pre-flight (agent checklist)
 

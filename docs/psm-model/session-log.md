@@ -390,3 +390,23 @@ See [2026-06-08-end-of-day-handoff.md](2026-06-08-end-of-day-handoff.md): resume
 ### Next
 
 See [2026-06-09-end-of-day-handoff.md](2026-06-09-end-of-day-handoff.md): micro v4 from 42k, mine 42400 failures, fact-format drills.
+
+## 2026-06-20 — Prod-memory v3/v4 RunPod (train + eval complete)
+
+**Handoff:** [2026-06-20-end-of-day-handoff.md](2026-06-20-end-of-day-handoff.md) — read first tomorrow.
+
+**Summary:**
+
+- v3 teacher labeling done (2,654 rows); v3 train 060000→065000 = lateral (1/10 effective_stored).
+- v4 fixture-repair micro-train 058000→060000 = regression (0/10); checkpoints recovered to HF (32 files).
+- **Keep:** `real-v3-50m-full-v2-step-058000` (1/10). **Reject:** prod-memory 065000, v4 @ 060000.
+- **Tomorrow:** failure mining → v5 curriculum design → micro-train only after review.
+- Launch failures on pod `7ryzehtgdv92vc` documented in playbook; fixes in ctl + start scripts.
+
+**Early session (failed launches on `7ryzehtgdv92vc`):**
+
+| Attempt | Failure | Root cause |
+|---------|---------|------------|
+| 1 | `Repository not found` on HF checkpoint | Pod secret token; `hf download` without `--token` |
+| 2 | `ModuleNotFoundError: psm_model.configs` | `train-prod-memory` synced only `train.py`, not full `src/` |
+| 3 | GPU 0%, no tmux 6+ min | Attempt 2 train crashed; no verify + stop before walk-away |

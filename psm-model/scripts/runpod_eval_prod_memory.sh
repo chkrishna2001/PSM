@@ -17,13 +17,17 @@ COMPARE_BASELINE_STEP="${COMPARE_BASELINE_STEP:-}"
 
 echo "=== prod-memory grounding eval $(date -u +%Y-%m-%dT%H:%M:%SZ) step=$EVAL_STEP device=$DEVICE ==="
 
+if ! command -v hf >/dev/null 2>&1; then
+  pip install -q huggingface_hub hf_transfer 2>/dev/null || pip install -q huggingface_hub
+fi
+
 mkdir -p psm-model/checkpoints psm-model/prod-memory/results psm-model/prod-memory/fixtures
 
 download_ckpt() {
   local rel="$1"
   if [[ ! -f "$rel" ]]; then
     echo "Downloading $rel from $MODEL_REPO..."
-    HF_TOKEN="${HF_TOKEN:-}" hf download "$MODEL_REPO" "$rel" --local-dir .
+    hf download "$MODEL_REPO" "$rel" --local-dir . --token "${HF_TOKEN:-}"
   fi
 }
 
@@ -59,9 +63,10 @@ PY
 
 if [[ ! -f psm-model/prod-memory/fixtures/cases.json ]]; then
   echo "Downloading prod-memory fixtures from dataset repo..."
-  HF_TOKEN="${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" hf download "$DATASET_REPO" \
+  hf download "$DATASET_REPO" \
     prod-memory/fixtures/cases.json \
-    --repo-type dataset --local-dir . 2>/dev/null || true
+    --repo-type dataset --local-dir . \
+    --token "${DATASET_HF_TOKEN:-${HF_TOKEN:-}}" 2>/dev/null || true
   if [[ -f prod-memory/fixtures/cases.json && ! -f psm-model/prod-memory/fixtures/cases.json ]]; then
     cp -f prod-memory/fixtures/cases.json psm-model/prod-memory/fixtures/cases.json
   fi

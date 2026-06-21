@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from psm_model.gates import gate_report
-from psm_model.lean_format import parse_at_tag_decision, parse_tagged_decision
+from psm_model.lean_format import parse_at_tag_decision, parse_binary_decision, parse_minimal_decision, parse_tagged_decision
 from psm_model.model import TinyDecoderConfig
 from psm_model.prompts import render_storage_prompt
 from psm_model.schema import parse_and_validate_storage_decision, validate_storage_decision
@@ -231,6 +231,12 @@ def _parse_output(raw: str, output_format: str) -> tuple[dict[str, Any] | None, 
         return parse_tagged_decision(raw)
     if output_format == "at_tag":
         return parse_at_tag_decision(raw)
+    if output_format == "minimal":
+        return parse_minimal_decision(raw)
+    if output_format == "minimal_extract":
+        return parse_minimal_decision(raw)
+    if output_format == "binary":
+        return parse_binary_decision(raw)
     raise ValueError(f"unsupported output format: {output_format}")
 
 

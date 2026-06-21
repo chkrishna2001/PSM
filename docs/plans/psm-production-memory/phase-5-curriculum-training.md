@@ -1,10 +1,12 @@
 # Phase 5 — Curriculum and training
 
-**Status:** Dataset on HF + Colab notebook ready — run smoke train in Colab  
+**Status:** v3/v4 RunPod iteration complete (2026-06-20) — **v5 suite micro-run ready for review**  
 **Goal:** Train extraction from `remember_target` (= `llmResponse`), not gate preservation.  
 **Depends on:** [Phase 2](phase-2-chunking-pipeline.md), [Phase 3](phase-3-indexables-workflows.md), [Phase 4](phase-4-guardrails-prod.md)
 
-**Infrastructure:** **Hugging Face + Google Colab** (not RunPod for this phase).
+**Infrastructure:** HF dataset + Colab notebook **or** prod-memory RunPod (`runpod_ctl.py train-prod-memory`). Eval bar is always Phase 1 harness.
+
+**2026-06-21 iteration:** [phase-5-failure-mining-2026-06-21.md](phase-5-failure-mining-2026-06-21.md) — v4 ×40 fail-copy rejected; v5 builder follows v1 mix with suite-focused micro-runs. **Mandatory pre-flight:** [training-pitfalls.md](../../psm-model/training-pitfalls.md).
 
 ---
 
@@ -110,10 +112,34 @@ PYTHONPATH=psm-model/src:psm-model/prod-memory python -m prod_memory.colab_sync 
 
 ---
 
+## v5 suite micro (plan-aligned, 2026-06-21)
+
+Builder: [`build_prod_extraction_v5_suite_micro.py`](../../../psm-model/prod-memory/prod_memory/build_prod_extraction_v5_suite_micro.py)
+
+| Parameter | v5a (plan_chunks) |
+|-----------|-------------------|
+| Resume | **058000** gate stem only |
+| Focus | plan fixtures ×5 + plan handoff seeds ×15 |
+| Anchors | recall ×50, expanded ×2, cursor-01 ×5, noise ×8 |
+| Target steps | ~59200 (+1200) |
+| Abort if | cursor_shaped effective drops vs 058000 |
+
+```powershell
+$env:PYTHONPATH = "psm-model\src;psm-model\prod-memory"
+python -m prod_memory.build_prod_extraction_v5_suite_micro --focus-suite plan_chunks
+```
+
+Output: `psm-model/prod-memory/data/prod-extraction-v5.jsonl` — upload to HF before train.
+
+---
+
 ## Results
 
 | Artifact | Notes |
 |----------|-------|
 | HF `prod-memory/prod-extraction-v1.jsonl` | 1353 rows uploaded |
 | `prod-memory/data/prod-extraction-v1.manifest.json` | Local + HF copy |
-| Colab `prod-grounding-step-*.json` | Pending smoke run |
+| v3 teacher train 060→065 | Lateral (1/10) — do not promote |
+| v4 fixture-repair 058→060 | Regression (0/10) — rejected |
+| v5 plan_chunks mix | Built locally — pending HF upload + train sign-off |
+| Colab / RunPod smoke | Pending v5a |

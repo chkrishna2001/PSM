@@ -23,6 +23,8 @@ BATCH_SIZE="${BATCH_SIZE:-1}"
 LEARNING_RATE="${LEARNING_RATE:-2e-5}"
 MIN_LEARNING_RATE="${MIN_LEARNING_RATE:-5e-6}"
 WARMUP_STEPS="${WARMUP_STEPS:-50}"
+ACTION_LOSS_WEIGHT="${ACTION_LOSS_WEIGHT:-0}"
+SAMPLING="${SAMPLING:-random}"
 RESUME_STEP="$(basename "$RESUME" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
 OUT_STEM="${OUT_STEM:-real-v3-50m-full-v2-prod-memory}"
 
@@ -30,6 +32,13 @@ echo "=== start prod-memory train-only $(date -u +%Y-%m-%dT%H:%M:%SZ) resume=$RE
 
 sed -i 's/\r$//' psm-model/scripts/*.sh 2>/dev/null || true
 chmod +x psm-model/scripts/runpod_upload_gate4.sh 2>/dev/null || true
+if ! command -v hf >/dev/null 2>&1; then
+  pip install -q huggingface_hub hf_transfer 2>/dev/null || pip install -q huggingface_hub
+fi
+if ! command -v tmux >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq tmux >/dev/null 2>&1 || true
+fi
 mkdir -p psm-model/checkpoints psm-model/prod-memory/data psm-model/prod-memory/results
 
 download_ckpt() {
@@ -49,18 +58,20 @@ if [[ ! -f "$RESUME" ]]; then
 fi
 
 if [[ ! -f "$CURRICULUM" ]]; then
+  CUR_BASENAME="$(basename "$CURRICULUM")"
+  CUR_MANIFEST="${CUR_BASENAME%.jsonl}.manifest.json"
   echo "Downloading prod curriculum from dataset repo $DATASET_REPO..."
   hf download "$DATASET_REPO" \
-    prod-memory/prod-extraction-v2.jsonl \
-    prod-memory/prod-extraction-v2.manifest.json \
+    "prod-memory/$CUR_BASENAME" \
+    "prod-memory/$CUR_MANIFEST" \
     --repo-type dataset --local-dir . \
     --token "${DATASET_HF_TOKEN:-${HF_TOKEN:-}}"
-  if [[ ! -f "$CURRICULUM" && -f prod-memory/prod-extraction-v2.jsonl ]]; then
-    cp -f prod-memory/prod-extraction-v2.jsonl "$CURRICULUM"
+  if [[ ! -f "$CURRICULUM" && -f "prod-memory/$CUR_BASENAME" ]]; then
+    cp -f "prod-memory/$CUR_BASENAME" "$CURRICULUM"
   fi
 fi
 if [[ ! -f "$CURRICULUM" ]]; then
-  echo "Fallback: downloading prod curriculum from model repo $MODEL_REPO..."
+  echo "Fallback: downloading prod curriculum v2 from dataset repo $DATASET_REPO..."
   hf download "$MODEL_REPO" \
     prod-memory/prod-extraction-v2.jsonl \
     prod-memory/prod-extraction-v2.manifest.json \
@@ -102,7 +113,8 @@ tmux new-session -d -s psm-prod-memory bash -lc "
     --warmup-steps '$WARMUP_STEPS' \
     --preset 50m \
     --output-format tagged \
-    --sampling random \
+    --sampling '$SAMPLING' \
+    --action-loss-weight '$ACTION_LOSS_WEIGHT' \
     --device '$DEVICE' \
     --save-every '$SAVE_EVERY' \
     --metrics-out psm-model/checkpoints/${OUT_STEM}.metrics.jsonl \

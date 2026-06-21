@@ -813,8 +813,8 @@ def _verify_pod_job(
         "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader 2>/dev/null || echo GPU_NA\n"
     )
     time.sleep(8)
-    attempts = 12 if "eval" in label else 4
-    pause_sec = 15 if "eval" in label else 5
+    attempts = 12 if "eval" in label else (12 if "prod-memory" in label else 4)
+    pause_sec = 15 if "eval" in label else (10 if "prod-memory" in label else 5)
     for attempt in range(attempts):
         proc = subprocess.run(
             [
@@ -2247,6 +2247,8 @@ def cmd_train_prod_memory(args: argparse.Namespace) -> int:
         "LEARNING_RATE": str(args.learning_rate),
         "MIN_LEARNING_RATE": str(args.min_learning_rate),
         "WARMUP_STEPS": str(args.warmup_steps),
+        "ACTION_LOSS_WEIGHT": str(args.action_loss_weight),
+        "SAMPLING": args.sampling,
         "SAVE_EVERY": str(args.save_every),
         "KEEP_LOCAL": str(args.keep_local),
         "SYNC_INTERVAL_SEC": str(args.sync_interval_sec),
@@ -2266,7 +2268,7 @@ def cmd_train_prod_memory(args: argparse.Namespace) -> int:
     if resume_step:
         extra_env["GATE4_PINNED_STEPS"] = resume_step
 
-    start_timeout = 300 if warm_pod else args.timeout_sec
+    start_timeout = 600 if warm_pod else args.timeout_sec
     rc = _ssh_run_script(
         args.host_alias,
         script_path,
@@ -2324,6 +2326,14 @@ def cmd_eval_prod_memory(args: argparse.Namespace) -> int:
         )
         if scripts_rc != 0:
             print(f"warning: scripts sync failed (exit {scripts_rc})", file=sys.stderr)
+
+    src_dir = repo_root / "psm-model" / "src"
+    if src_dir.is_dir():
+        src_rc = _ssh_push_dir(
+            args.host_alias, src_dir, "/workspace/PSM/psm-model/src", host=ssh_host, port=ssh_port, user=ssh_user
+        )
+        if src_rc != 0:
+            print(f"warning: src sync failed (exit {src_rc})", file=sys.stderr)
 
     extra_env: dict[str, str] = {
         "EVAL_STEP": f"{int(args.eval_step):06d}",
@@ -2884,6 +2894,12 @@ def main() -> int:
     train_prod_memory.add_argument("--learning-rate", type=float, default=2e-5)
     train_prod_memory.add_argument("--min-learning-rate", type=float, default=5e-6)
     train_prod_memory.add_argument("--warmup-steps", type=int, default=50)
+    train_prod_memory.add_argument("--action-loss-weight", type=float, default=0.0)
+    train_prod_memory.add_argument(
+        "--sampling",
+        choices=("random", "action_balanced"),
+        default="random",
+    )
     train_prod_memory.add_argument("--save-every", type=int, default=200)
     train_prod_memory.add_argument("--keep-local", type=int, default=2)
     train_prod_memory.add_argument("--sync-interval-sec", type=int, default=120)

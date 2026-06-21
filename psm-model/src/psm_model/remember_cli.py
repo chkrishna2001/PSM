@@ -113,10 +113,52 @@ def _repair_json_decision(raw: str) -> RepairResult:
     )
 
 
+def _looks_minimal(raw: str) -> bool:
+    line = ""
+    for raw_line in raw.splitlines():
+        stripped = raw_line.strip()
+        if stripped:
+            line = stripped
+            break
+    return line == "ignore" or line.lower().startswith("store:")
+
+
+def _looks_binary(raw: str) -> bool:
+    line = ""
+    for raw_line in raw.splitlines():
+        stripped = raw_line.strip().lower()
+        if stripped:
+            line = stripped
+            break
+    return line in {"ignore", "store"}
+
+
 def apply_product_boundary(raw: str, *, output_format: str = "tagged") -> dict[str, Any]:
     """Product boundary: strict model parse + deterministic repair + fail-safe ignore."""
     if raw.lstrip().startswith("{"):
         result = _repair_json_decision(raw)
+    elif output_format == "binary" or _looks_binary(raw):
+        parsed, parse_issues = _parse_output(raw, "binary")
+        validation = validate_storage_decision(parsed) if parsed is not None else None
+        if validation and validation.ok and not parse_issues:
+            result = RepairResult(status="parsed", decision=parsed)
+        else:
+            result = RepairResult(
+                status="failed_safe",
+                decision=dict(FAILSAFE_DECISION),
+                issues=[f"{issue.path}: {issue.message}" for issue in (parse_issues or ())],
+            )
+    elif output_format == "minimal" or _looks_minimal(raw):
+        parsed, parse_issues = _parse_output(raw, "minimal")
+        validation = validate_storage_decision(parsed) if parsed is not None else None
+        if validation and validation.ok and not parse_issues:
+            result = RepairResult(status="parsed", decision=parsed)
+        else:
+            result = RepairResult(
+                status="failed_safe",
+                decision=dict(FAILSAFE_DECISION),
+                issues=[f"{issue.path}: {issue.message}" for issue in (parse_issues or ())],
+            )
     elif output_format == "tagged" or _looks_tagged(raw):
         result = repair_storage_decision(raw)
     else:

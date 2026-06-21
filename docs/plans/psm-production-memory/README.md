@@ -18,7 +18,7 @@ This folder is the **single source of truth** for making PSM production-ready: g
 | 2 | [phase-2-chunking-pipeline.md](phase-2-chunking-pipeline.md) | **Complete** | Phase 1 |
 | 3 | [phase-3-indexables-workflows.md](phase-3-indexables-workflows.md) | **Complete** | Phase 2 |
 | 4 | [phase-4-guardrails-prod.md](phase-4-guardrails-prod.md) | **Complete** | Phase 1 |
-| 5 | [phase-5-curriculum-training.md](phase-5-curriculum-training.md) | **HF + Colab ready** (smoke run pending) | Phase 2, 3, 4 |
+| 5 | [phase-5-curriculum-training.md](phase-5-curriculum-training.md) | **v5 micro-run ready** ([failure mining](phase-5-failure-mining-2026-06-21.md)) | Phase 2, 3, 4 |
 | 6 | [phase-6-promotion-ship.md](phase-6-promotion-ship.md) | **Not started** | Phase 5 |
 | 7 | [phase-7-cursor-integration.md](phase-7-cursor-integration.md) | **Not started** | Phase 6 |
 | 8 | [phase-8-scale-optional.md](phase-8-scale-optional.md) | **Gated** | Phase 5 plateau |

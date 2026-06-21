@@ -47,6 +47,22 @@ python -m prod_memory.upload_hf
 
 Remote: `chkrishna2001/psm-50m-action-mixed-v1` → `prod-memory/prod-extraction-v1.jsonl`
 
+### RunPod train (v3 curriculum, resume prod-memory stem)
+
+Full launch checklist and **known failure modes** are in [`docs/psm-model/training-playbook.md`](../../docs/psm-model/training-playbook.md) (section “Prod-memory RunPod”). Summary:
+
+1. Set `HF_TOKEN` (`o chinnahftoken`) + `DATASET_HF_TOKEN` (local cache)
+2. `deploy` → warm `train-prod-memory --pod-id` (not `--no-warm-pod`)
+3. `verify-pod --tmux-session psm-prod-memory --train-log /tmp/psm-prod-memory-train.log --stop-on-fail`
+
+```powershell
+python psm-model\scripts\runpod_ctl.py train-prod-memory `
+  --pod-id <pod_id> --proxy-user <pod_id>-<suffix>@ssh.runpod.io `
+  --resume-checkpoint psm-model/checkpoints/real-v3-50m-full-v2-prod-memory-step-060000.pt `
+  --curriculum psm-model/prod-memory/data/prod-extraction-v2.jsonl `
+  --target-steps 65000 --keep-pod
+```
+
 ### Colab smoke train
 
 Open [`notebooks/prod-extraction-v1-colab.ipynb`](notebooks/prod-extraction-v1-colab.ipynb) in Colab (GPU runtime).

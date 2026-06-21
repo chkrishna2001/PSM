@@ -39,10 +39,11 @@ def run_case(
     output_format: str,
     device: str,
     max_new_tokens: int,
+    raw_input: bool = False,
 ) -> dict[str, Any]:
     llm_response = str(case["llmResponse"])
     payload = build_remember_payload(llm_response)
-    model_input = to_model_input(payload)
+    model_input = payload if raw_input else to_model_input(payload)
     raw = generate_storage_json(
         checkpoint,
         model_input,
@@ -135,15 +136,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checkpoint-label", default="")
     parser.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "at_tag"])
+    parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "at_tag", "minimal", "minimal_extract", "binary"])
+    parser.add_argument("--raw-input", action="store_true", help="Skip to_model_input rewrite (match training JSON input).")
+    parser.add_argument("--fixture-ids", default="", help="Comma-separated case ids; default all")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--max-new-tokens", type=int, default=384)
     args = parser.parse_args(argv)
+    if args.output_format in {"minimal", "binary"} and args.max_new_tokens == 384:
+        args.max_new_tokens = 128
 
     fixture = json.loads(args.fixtures.read_text(encoding="utf-8"))
     cases = fixture.get("cases")
     if not isinstance(cases, list):
         raise SystemExit(f"Invalid fixtures file: {args.fixtures}")
+    if args.fixture_ids.strip():
+        want = {x.strip() for x in args.fixture_ids.split(",") if x.strip()}
+        cases = [c for c in cases if isinstance(c, dict) and c.get("id") in want]
 
     label = args.checkpoint_label or args.checkpoint.stem
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -157,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
             output_format=args.output_format,
             device=args.device,
             max_new_tokens=args.max_new_tokens,
+            raw_input=args.raw_input,
         )
         for case in cases
         if isinstance(case, dict)

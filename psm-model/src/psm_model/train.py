@@ -247,6 +247,10 @@ def merge_loss_weights(*weights: Any | None) -> Any | None:
 def _action_span_token_ids(action: str, tokenizer: Any, *, output_format: str) -> list[int]:
     if output_format in {"tagged", "action"}:
         text = f"A:{action}"
+    elif output_format in {"minimal", "minimal_extract"}:
+        text = "ignore" if action == "ignore" else "store:"
+    elif output_format == "binary":
+        text = "ignore" if action == "ignore" else "store"
     elif output_format == "at_tag":
         text = f"@a {action}"
     elif output_format == "json":
@@ -289,6 +293,10 @@ def _structural_token_ids(tokenizer: Any, *, output_format: str) -> list[int]:
         )
     elif output_format == "json":
         pieces = ('"action"', '"memory"', '"facts"', '"reasoning"', "{", "}", "[", "]", ":", ",", '"')
+    elif output_format in {"minimal", "minimal_extract"}:
+        pieces = ("ignore", "store:", " ")
+    elif output_format == "binary":
+        pieces = ("ignore", "store")
     else:
         raise ValueError(f"unsupported output format: {output_format}")
     ids: set[int] = set()
@@ -919,7 +927,7 @@ def main() -> int:
         default=1.0,
         help="LM loss multiplier for DSL/JSON structural tokens such as tags, separators, and END.",
     )
-    parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action"], default="tagged")
+    parser.add_argument("--output-format", choices=["json", "tagged", "at_tag", "action", "minimal", "minimal_extract", "binary"], default="tagged")
     parser.add_argument("--tokenizer", type=Path, help=f"Tokenizer JSON. Defaults to {DEFAULT_REAL_TOKENIZER} when present.")
     parser.add_argument("--sampling", choices=["random", "action_balanced"], default="random")
     parser.add_argument("--resume", help="Continue from a checkpoint path, or use 'auto' to pick the latest checkpoint for --out.")

@@ -11,7 +11,7 @@ description: >-
 
 **Goal:** GPU billing only while `psm_model.train` (or eval) is actually on CUDA. Never leave a pod running after a silent launch failure.
 
-Read also: `.cursor/rules/runpod-auto-delete.mdc`, `docs/psm-model/training-playbook.md`.
+Read also: `.cursor/rules/runpod-auto-delete.mdc`, `docs/psm-model/training-playbook.md`, **`docs/psm-model/training-pitfalls.md`** (mandatory before prod-memory curriculum/train).
 
 ## HF tokens (set before every launch)
 
@@ -127,6 +127,25 @@ Built into `runpod_ctl.py` `train-gate5` warm path via `_verify_pod_job` (~15s).
 - Resume: `057000` → target `058000`, recall-heavy curriculum
 - After train: dual eval @ target step; promote only if `passed: true`
 - Keep pod until HF triple verified for resume step
+
+## Prod-memory quick reference
+
+Same two-phase launch as Gate 5. **Playbook:** `docs/psm-model/training-playbook.md` → “Prod-memory RunPod”.
+
+```powershell
+python psm-model\scripts\runpod_ctl.py train-prod-memory `
+  --pod-id <pod_id> --proxy-user <user> `
+  --resume-checkpoint psm-model/checkpoints/real-v3-50m-full-v2-prod-memory-step-060000.pt `
+  --target-steps 65000 --keep-pod
+
+python psm-model\scripts\runpod_ctl.py verify-pod `
+  --pod-id <pod_id> --proxy-user <user> `
+  --tmux-session psm-prod-memory `
+  --train-log /tmp/psm-prod-memory-train.log `
+  --stop-on-fail
+```
+
+**Never `--no-warm-pod` after deploy tar-push.** **Never skip verify-pod** — GPU 0% + no tmux = stop pod immediately.
 
 ## Agent rules
 
