@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from psm_model.generate import generate_storage_json, open_generation_session
 from psm_model.remember_cli import apply_product_boundary, to_model_input
 
 from prod_memory.grounding import (
@@ -44,6 +43,8 @@ def run_case(
     llm_response = str(case["llmResponse"])
     payload = build_remember_payload(llm_response)
     model_input = payload if raw_input else to_model_input(payload)
+    from psm_model.generate import generate_storage_json
+
     raw = generate_storage_json(
         checkpoint,
         model_input,
@@ -155,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
 
     label = args.checkpoint_label or args.checkpoint.stem
     args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    from psm_model.generate import open_generation_session
 
     session = open_generation_session(args.checkpoint, output_format=args.output_format, device=args.device)
     results = [

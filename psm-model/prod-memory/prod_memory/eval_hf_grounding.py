@@ -31,6 +31,16 @@ from prod_memory.grounding import (
 from prod_memory.hf_prompts import apply_chat_prompt, storage_inference_messages
 
 
+from prod_memory.eval_classify import binary_predicts_store
+
+
+def _binary_classify_match(expect_action: str, raw: str) -> bool:
+    predicts_store = binary_predicts_store(raw)
+    if expect_action == "ignore":
+        return not predicts_store
+    return predicts_store
+
+
 class HfGenerationSession:
     def __init__(self, model: Any, tokenizer: Any) -> None:
         self.model = model
@@ -52,15 +62,39 @@ class HfGenerationSession:
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
-def open_hf_session(
-    adapter_dir: Path,
+def open_hf_base_session(
     *,
     model_key: str = "qwen0.5b",
     model_id: str | None = None,
     device: str = "cuda",
 ) -> HfGenerationSession:
     resolved = model_id or DEFAULT_MODELS.get(model_key) or model_key
-    tokenizer = AutoTokenizer.from_pretrained(str(adapter_dir), trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(resolved, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    dtype = torch.float16 if device == "cuda" and torch.cuda.is_available() else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        resolved,
+        torch_dtype=dtype,
+        device_map="auto" if device == "cuda" and torch.cuda.is_available() else None,
+        trust_remote_code=True,
+    )
+    model.eval()
+    return HfGenerationSession(model, tokenizer)
+
+
+def open_hf_session(
+    adapter_dir: Path | None,
+    *,
+    model_key: str = "qwen0.5b",
+    model_id: str | None = None,
+    device: str = "cuda",
+) -> HfGenerationSession:
+    if adapter_dir is None:
+        return open_hf_base_session(model_key=model_key, model_id=model_id, device=device)
+    resolved = model_id or DEFAULT_MODELS.get(model_key) or model_key
+    # ponytail: tokenizer lives on base model, not LoRA adapter dir
+    tokenizer = AutoTokenizer.from_pretrained(resolved, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     dtype = torch.float16 if device == "cuda" and torch.cuda.is_available() else torch.float32
@@ -97,7 +131,7 @@ def run_hf_case(
     content_grounded = effective_stored and (
         key_tokens_grounded([str(token) for token in key_tokens], stored_text) or bool(overlap["grounded"])
     )
-    return {
+    row: dict[str, Any] = {
         "id": case["id"],
         "suite": case["suite"],
         "expectAction": case.get("expectAction"),
@@ -116,6 +150,9 @@ def run_hf_case(
         "issues": report.get("issues"),
         "raw_output": raw[:500] if raw else None,
     }
+    if output_format == "binary" and case.get("expectAction"):
+        row["classify_match"] = _binary_classify_match(str(case["expectAction"]), raw)
+    return row
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -126,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model-id", default=None)
     parser.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--output-format", default="tagged", choices=["json", "tagged"])
+    parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "minimal", "binary", "minimal_extract"])
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-new-tokens", type=int, default=384)
     args = parser.parse_args(argv)
@@ -151,6 +188,10 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(case, dict)
     ]
     aggregate = aggregate_metrics(results)
+    if any(row.get("classify_match") is not None for row in results):
+        hits = sum(1 for row in results if row.get("classify_match"))
+        aggregate["classify_match"] = hits
+        aggregate["classify_match_rate"] = round(hits / max(1, len(results)), 4)
     report = {
         "checkpoint": label,
         "adapter_dir": str(args.adapter_dir.resolve()),

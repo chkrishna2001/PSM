@@ -11,6 +11,10 @@ export interface PsmModelRuntimeOptions {
   outputFormat?: "tagged" | "json" | "at_tag";
   device?: string;
   maxNewTokens?: number;
+  /** ponytail: temporary HF two-pass LoRA (gate + extract adapters) */
+  hfBinaryAdapter?: string;
+  hfExtractAdapter?: string;
+  hfModelKey?: string;
 }
 
 function resolveRepoRoot(explicit?: string): string {
@@ -77,6 +81,9 @@ export class PsmModelRuntime implements ModelRuntime {
   private readonly outputFormat: "tagged" | "json" | "at_tag";
   private readonly device: string;
   private readonly maxNewTokens: number;
+  private readonly hfBinaryAdapter?: string;
+  private readonly hfExtractAdapter?: string;
+  private readonly hfModelKey: string;
 
   constructor(options: PsmModelRuntimeOptions) {
     this.checkpoint = resolve(options.checkpoint);
@@ -85,12 +92,19 @@ export class PsmModelRuntime implements ModelRuntime {
     this.outputFormat = options.outputFormat ?? "tagged";
     this.device = options.device ?? "auto";
     this.maxNewTokens = options.maxNewTokens ?? Number(process.env.PSM_MAX_NEW_TOKENS ?? 384);
+    this.hfBinaryAdapter = options.hfBinaryAdapter ? resolve(options.hfBinaryAdapter) : undefined;
+    this.hfExtractAdapter = options.hfExtractAdapter ? resolve(options.hfExtractAdapter) : undefined;
+    this.hfModelKey = options.hfModelKey ?? "qwen0.5b";
   }
 
   private runtimeEnv(): NodeJS.ProcessEnv {
+    const pyPath = [
+      resolve(this.repoRoot, "psm-model", "src"),
+      resolve(this.repoRoot, "psm-model", "prod-memory")
+    ].join(process.platform === "win32" ? ";" : ":");
     return {
       ...process.env,
-      PYTHONPATH: resolve(this.repoRoot, "psm-model", "src"),
+      PYTHONPATH: pyPath,
       PSM_FORCE_CPU: process.env.PSM_FORCE_CPU ?? (process.env.PSM_RUNPOD === "1" ? "0" : "1")
     };
   }
@@ -103,7 +117,10 @@ export class PsmModelRuntime implements ModelRuntime {
       outputFormat: this.outputFormat,
       device: this.device,
       maxNewTokens: this.maxNewTokens,
-      env: this.runtimeEnv()
+      env: this.runtimeEnv(),
+      hfBinaryAdapter: this.hfBinaryAdapter,
+      hfExtractAdapter: this.hfExtractAdapter,
+      hfModelKey: this.hfModelKey
     });
   }
 

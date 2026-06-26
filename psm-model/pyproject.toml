@@ -11,7 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 train = ["torch"]
-hf = ["torch", "transformers", "peft", "datasets", "accelerate", "huggingface_hub"]
+hf = ["torch", "transformers", "peft", "datasets", "accelerate", "huggingface_hub", "trl"]
 
 [tool.setuptools.packages.find]
 where = ["src", "prod-memory"]

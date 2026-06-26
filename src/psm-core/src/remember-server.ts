@@ -35,10 +35,16 @@ export class RememberServer {
     device: string;
     maxNewTokens: number;
     env: NodeJS.ProcessEnv;
+    hfBinaryAdapter?: string;
+    hfExtractAdapter?: string;
+    hfModelKey?: string;
   }): RememberServer {
+    const hfMode = Boolean(options.hfBinaryAdapter && options.hfExtractAdapter);
     const key = [
       options.python,
-      options.checkpoint,
+      hfMode ? "hf-two-pass" : options.checkpoint,
+      options.hfBinaryAdapter ?? "",
+      options.hfExtractAdapter ?? "",
       options.outputFormat,
       options.device,
       options.maxNewTokens
@@ -47,25 +53,37 @@ export class RememberServer {
     if (existing) return existing;
 
     const pythonPath = isAbsolute(options.python) ? options.python : resolve(options.repoRoot, options.python);
-    const proc = spawn(
-      pythonPath,
-      [
-        "-m",
-        "psm_model.remember_server",
-        options.checkpoint,
-        "--output-format",
-        options.outputFormat,
-        "--device",
-        options.device,
-        "--max-new-tokens",
-        String(options.maxNewTokens)
-      ],
-      {
-        cwd: options.repoRoot,
-        env: options.env,
-        stdio: ["pipe", "pipe", "pipe"]
-      }
-    );
+    const spawnArgs = hfMode
+      ? [
+          "-m",
+          "psm_model.hf_remember_server",
+          "--binary-adapter",
+          options.hfBinaryAdapter!,
+          "--extract-adapter",
+          options.hfExtractAdapter!,
+          "--model",
+          options.hfModelKey ?? "qwen0.5b",
+          "--device",
+          options.device,
+          "--max-new-tokens",
+          String(options.maxNewTokens)
+        ]
+      : [
+          "-m",
+          "psm_model.remember_server",
+          options.checkpoint,
+          "--output-format",
+          options.outputFormat,
+          "--device",
+          options.device,
+          "--max-new-tokens",
+          String(options.maxNewTokens)
+        ];
+    const proc = spawn(pythonPath, spawnArgs, {
+      cwd: options.repoRoot,
+      env: options.env,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
     const pending: PendingCall[] = [];
     const reader = createInterface({ input: proc.stdout });
     const ready = new Promise<void>((resolveReady, rejectReady) => {

@@ -33,6 +33,141 @@ PROFILES: dict[str, dict[str, str]] = {
         "hf_adapter_prefix": "hf-prod-v2-qwen0.5b",
         "hf_eval": "eval/hf-prod-v2-qwen0.5b-prod-grounding.json",
     },
+    "v4": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v4-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v4-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v4-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v4-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v4-qwen0.5b-prod-grounding.json",
+    },
+    "v5b": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5b-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5b-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5b-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5b-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5b-qwen0.5b-prod-grounding.json",
+        "output_format": "tagged",
+    },
+    "v5c": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5c-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5c-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5c-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5c-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5c-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5d": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5d-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5d-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5d-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5d-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5d-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5e": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5e-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5e-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5e-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5e-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5e-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5f": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5f-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5f-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5f-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5f-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5f-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5f-b": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5f-b-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5f-b-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5f-b-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5f-b-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5f-b-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5g": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5g-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5g-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5g-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5g-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5g-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5h": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5h-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5h-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5h-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5h-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5h-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
+    "v5i": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5i-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5i-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5i-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5i-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5i-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5j": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5j-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5j-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5j-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5j-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5j-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal",
+    },
+    "v5k-gate": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5k-gate-qwen0.5b-classify.json",
+        "label": "hf-prod-v5k-gate-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5k-gate-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5k-gate-qwen0.5b-classify.json",
+        "output_format": "binary",
+    },
+    "v5k-gate-fix": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-fix-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5k-gate-fix-qwen0.5b-classify.json",
+        "label": "hf-prod-v5k-gate-fix-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5k-gate-fix-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5k-gate-fix-qwen0.5b-classify.json",
+        "output_format": "binary",
+    },
+    "v5k-gate-distill": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-distill-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5k-gate-distill-qwen0.5b-classify.json",
+        "label": "hf-prod-v5k-gate-distill-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5k-gate-distill-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5k-gate-distill-qwen0.5b-classify.json",
+        "output_format": "binary",
+    },
+    "v5k-gate-dpo": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-dpo-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5k-gate-dpo-qwen0.5b-classify.json",
+        "label": "hf-prod-v5k-gate-dpo-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5k-gate-dpo-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5k-gate-dpo-qwen0.5b-classify.json",
+        "output_format": "binary",
+    },
+    "v5k-extract": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-extract-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5k-extract-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5k-extract-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5k-extract-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5k-extract-qwen0.5b-prod-grounding.json",
+        "output_format": "minimal_extract",
+    },
+    "v5k-two-pass": {
+        "binary_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-distill-qwen0.5b/adapter",
+        "extract_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-extract-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5k-two-pass-prod-grounding.json",
+        "label": "hf-prod-v5k-two-pass",
+        "hf_eval": "eval/hf-prod-v5k-two-pass-prod-grounding.json",
+        "two_pass": "1",
+    },
 }
 
 
@@ -97,12 +232,14 @@ def _deploy() -> tuple[str, str]:
             text=True,
         )
         for line in (info.stdout + info.stderr).splitlines():
-            if not line.strip().startswith("{"):
+            line = line.strip()
+            if not line.startswith("{"):
                 continue
             try:
-                payload = json.loads(line.strip())
+                payload = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            pod_id = payload.get("pod_id") or payload.get("id") or pod_id
             proxy_user = payload.get("pod_host_id") or proxy_user
             for target in payload.get("targets") or []:
                 if target.get("user"):
@@ -142,6 +279,7 @@ def _push_eval_files(pod_id: str, proxy_user: str) -> None:
         [
             "psm-model/scripts/runpod_hf_lora_eval_only.sh",
             "psm-model/prod-memory/prod_memory/eval_hf_grounding.py",
+            "psm-model/prod-memory/prod_memory/eval_classify.py",
             "psm-model/prod-memory/prod_memory/hf_prompts.py",
             "psm-model/prod-memory/prod_memory/eval_grounding.py",
             "psm-model/prod-memory/prod_memory/grounding.py",
@@ -150,6 +288,8 @@ def _push_eval_files(pod_id: str, proxy_user: str) -> None:
             "psm-model/src/psm_model/lean_format.py",
             "psm-model/src/psm_model/prompts.py",
             "psm-model/src/psm_model/remember_cli.py",
+            "psm-model/src/psm_model/schema.py",
+            "psm-model/src/psm_model/storage_decision_repair.py",
         ],
         "/workspace/PSM",
         host=host,
@@ -210,7 +350,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pod-id", default="")
     parser.add_argument("--proxy-user", default="")
-    parser.add_argument("--profile", choices=sorted(PROFILES), default="v2")
+    parser.add_argument("--profile", choices=sorted(PROFILES), default="v5b")
     parser.add_argument("--deploy", action="store_true", help="Deploy new eval pod")
     parser.add_argument("--pull-only", action="store_true")
     parser.add_argument("--upload-eval-hf", action="store_true")
@@ -248,32 +388,43 @@ def main() -> int:
         "PSM_GIT_URL": GIT_URL,
         "PSM_HF_MODEL_REPO": MODEL_REPO,
         "HF_MODEL_KEY": "qwen0.5b",
-        "HF_ADAPTER_DIR": profile["adapter"],
         "HF_EVAL_OUT": profile["eval_out"],
-        "HF_ADAPTER_PREFIX": profile["hf_adapter_prefix"],
         "HF_EVAL_REPO_PATH": profile["hf_eval"],
         "HF_CHECKPOINT_LABEL": profile["label"],
     }
-    code = int(
-        rc._ssh_run_script(
+    if profile.get("two_pass"):
+        extra["HF_BINARY_ADAPTER_DIR"] = profile["binary_adapter"]
+        extra["HF_EXTRACT_ADAPTER_DIR"] = profile["extract_adapter"]
+        extra["HF_BINARY_ADAPTER_PREFIX"] = "hf-prod-v5k-gate-distill-qwen0.5b"
+        extra["HF_EXTRACT_ADAPTER_PREFIX"] = "hf-prod-v5k-extract-qwen0.5b"
+        eval_script = SCRIPTS / "runpod_hf_lora_two_pass_eval.sh"
+    else:
+        extra["HF_ADAPTER_DIR"] = profile["adapter"]
+        extra["HF_ADAPTER_PREFIX"] = profile["hf_adapter_prefix"]
+        if profile.get("output_format"):
+            extra["HF_OUTPUT_FORMAT"] = profile["output_format"]
+        eval_script = SCRIPTS / "runpod_hf_lora_eval_only.sh"
+    _push_eval_files(pod_id, proxy_user)
+    if profile.get("two_pass"):
+        alias, host, port, user = _ssh(pod_id, proxy_user)
+        rc._push_repo_files_via_tar(
             alias,
-            SCRIPTS / "runpod_hf_lora_eval_only.sh",
+            REPO,
+            [
+                "psm-model/scripts/runpod_hf_lora_two_pass_eval.sh",
+                "psm-model/prod-memory/prod_memory/eval_hf_two_pass.py",
+                "psm-model/prod-memory/prod_memory/eval_classify.py",
+            ],
+            "/workspace/PSM",
             host=host,
             port=port,
             user=user,
-            timeout_sec=600,
-            extra_env=extra,
         )
-    )
-    if code != 0:
-        print(f"git clone/setup failed exit={code}", file=sys.stderr)
-        return code
-    _push_eval_files(pod_id, proxy_user)
     extra_run = {**extra, "HF_SKIP_CLONE": "1"}
     code = int(
         rc._ssh_run_script(
             alias,
-            SCRIPTS / "runpod_hf_lora_eval_only.sh",
+            eval_script,
             host=host,
             port=port,
             user=user,
@@ -281,10 +432,13 @@ def main() -> int:
             extra_env=extra_run,
         )
     )
-    if code != 0:
-        print(f"eval bootstrap failed exit={code}", file=sys.stderr)
-        return code
 
+    if code != 0:
+        print(f"eval on pod failed exit={code}", file=sys.stderr)
+        return code
+    local_eval = REPO / profile["eval_out"]
+    if local_eval.is_file():
+        return cmd_upload_eval_hf(profile)
     if cmd_pull_eval(profile) != 0:
         return 1
     return cmd_upload_eval_hf(profile)

@@ -1,0 +1,13 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_key": "qwen0.5b",
+  "curriculum": "psm-model/prod-memory/data/hf-prod-v5j.jsonl",
+  "output_dir": "psm-model/prod-memory/checkpoints/hf-prod-v5j-qwen0.5b",
+  "rows": 1385,
+  "steps": 200,
+  "input_ids_p50": 3072,
+  "input_ids_p90": 3072,
+  "input_ids_max": 3072,
+  "train_loss": 1.1178032112121583,
+  "resume_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5c-qwen0.5b/adapter"
+}

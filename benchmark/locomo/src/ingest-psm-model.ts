@@ -50,15 +50,27 @@ export async function main(argv: string[]): Promise<number> {
   const debugRaw = argv.includes("--debug-raw");
   const debugOut = getOption(argv, "debug-out", options.db.replace(/\.db$/i, "-ingest-debug.json"));
 
+  const hfBinary = getOption(argv, "hf-binary-adapter", "");
+  const hfExtract = getOption(argv, "hf-extract-adapter", "");
+  const hfModelKey = getOption(argv, "hf-model", "qwen0.5b");
+  const useHfTwoPass = Boolean(hfBinary && hfExtract);
+
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
   store.initializeSchema();
   const modelRuntime = new PsmModelRuntime({
-    checkpoint: path.resolve(repoRoot, checkpoint),
+    checkpoint: useHfTwoPass ? "hf-two-pass" : path.resolve(repoRoot, checkpoint),
     python: resolvePythonExecutable(repoRoot, python),
     repoRoot,
     outputFormat,
-    device
+    device,
+    ...(useHfTwoPass
+      ? {
+          hfBinaryAdapter: path.resolve(repoRoot, hfBinary),
+          hfExtractAdapter: path.resolve(repoRoot, hfExtract),
+          hfModelKey
+        }
+      : {})
   });
   const runtime = useLocomoWrapper ? createLocomoIngestRuntime(modelRuntime) : modelRuntime;
   const service = new PsmService(store, runtime);
@@ -66,7 +78,7 @@ export async function main(argv: string[]): Promise<number> {
   const stats: IngestStats = {
     db: options.db,
     data: options.data,
-    checkpoint,
+    checkpoint: useHfTwoPass ? `hf-two-pass:${hfBinary}+${hfExtract}` : checkpoint,
     device,
     seen: 0,
     stored: 0,

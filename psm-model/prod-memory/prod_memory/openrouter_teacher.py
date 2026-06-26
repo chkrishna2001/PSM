@@ -20,8 +20,8 @@ from prod_memory.label_from_assistant import (
     should_ignore_assistant_text,
 )
 
-DEFAULT_MODEL = "openai/gpt-4o-mini"
-FALLBACK_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MODEL = "google/gemma-4-31b-it"
+FALLBACK_MODEL = "z-ai/glm-5.2"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 ALLOWED_ACTIONS = {"ignore", "store_episodic", "promote_semantic"}
 

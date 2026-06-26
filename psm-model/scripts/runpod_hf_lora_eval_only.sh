@@ -16,7 +16,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1 || true
 
 GIT_URL="${PSM_GIT_URL:-https://github.com/chkrishna2001/PSM.git}"
-if [[ "${HF_SKIP_CLONE:-0}" != "1" ]]; then
+if [[ "${HF_SKIP_CLONE:-0}" != "1" && ! -f "$ROOT/psm-model/prod-memory/prod_memory/eval_hf_grounding.py" ]]; then
   if [[ ! -d "$ROOT/.git" ]]; then
     if [[ -d "$ROOT" ]]; then
       rm -rf "$ROOT"
@@ -29,21 +29,23 @@ cd "$ROOT"
 export PYTHONPATH=psm-model/src:psm-model/prod-memory
 export PSM_RUNPOD=1
 
-pip install -q torch transformers peft accelerate huggingface_hub 2>/dev/null \
-  || pip install -q torch transformers peft accelerate huggingface_hub
+pip install -q torch transformers peft accelerate huggingface_hub sentencepiece 2>/dev/null \
+  || pip install -q torch transformers peft accelerate huggingface_hub sentencepiece
 
 mkdir -p "$(dirname "$ADAPTER_DIR")" psm-model/prod-memory/results
+
+ADAPTER_HF_SUBPATH="${HF_ADAPTER_PREFIX:-hf-prod-v1-${MODEL_KEY}}/adapter"
 
 if [[ ! -f "$ADAPTER_DIR/adapter_model.safetensors" ]]; then
   echo "Downloading adapter from $MODEL_REPO..."
     hf download "$MODEL_REPO" \
     --repo-type model \
-    --include "${HF_ADAPTER_PREFIX:-hf-prod-v1-${MODEL_KEY}}/*" \
+    --include "${ADAPTER_HF_SUBPATH}/*" \
     --local-dir "psm-model/prod-memory/checkpoints/_hf_dl" \
     --token "$HF_TOKEN"
   mkdir -p "$ADAPTER_DIR"
   shopt -s nullglob
-  for f in "psm-model/prod-memory/checkpoints/_hf_dl/${HF_ADAPTER_PREFIX:-hf-prod-v1-${MODEL_KEY}}"/*; do
+  for f in "psm-model/prod-memory/checkpoints/_hf_dl/${ADAPTER_HF_SUBPATH}"/*; do
     cp -a "$f" "$ADAPTER_DIR/"
   done
   shopt -u nullglob
@@ -53,7 +55,7 @@ python -m prod_memory.eval_hf_grounding \
   --adapter-dir "$ADAPTER_DIR" \
   --model "$MODEL_KEY" \
   --device cuda \
-  --output-format tagged \
+  --output-format "${HF_OUTPUT_FORMAT:-tagged}" \
   --checkpoint-label "${HF_CHECKPOINT_LABEL:-hf-prod-v1-${MODEL_KEY}}" \
   --out "$EVAL_OUT"
 export HF_EVAL_OUT="$EVAL_OUT"
@@ -78,6 +80,6 @@ api.upload_file(
     repo_type="model",
     commit_message="upload prod grounding eval report",
 )
-print("uploaded eval to", repo, "eval/hf-prod-v1-qwen0.5b-prod-grounding.json")
+print("uploaded eval to", repo, eval_repo_path)
 PY
 fi

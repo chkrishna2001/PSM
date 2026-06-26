@@ -12,7 +12,7 @@ DATASET_REPO="${PSM_HF_DATASET_REPO:-krishnach7262/psm-prod-memory-data}"
 MODEL_REPO="${PSM_HF_MODEL_REPO:-krishnach7262/psm-prod-memory-hf}"
 MODEL_KEY="${HF_MODEL_KEY:-qwen0.5b}"
 OUTPUT_FORMAT="${HF_OUTPUT_FORMAT:-tagged}"
-RECALL_FRACTION="${HF_RECALL_FRACTION:-0.12}"
+RECALL_FRACTION="${HF_RECALL_FRACTION:-0}"
 STEPS="${HF_TRAIN_STEPS:-2400}"
 MAX_LENGTH="${HF_MAX_LENGTH:-3072}"
 BATCH_SIZE="${HF_BATCH_SIZE:-1}"
@@ -21,8 +21,18 @@ LEARNING_RATE="${HF_LEARNING_RATE:-2e-4}"
 SAVE_STEPS="${HF_SAVE_STEPS:-400}"
 OUT_DIR="${HF_OUTPUT_DIR:-psm-model/prod-memory/checkpoints/hf-prod-v2-${MODEL_KEY}}"
 CURRICULUM="${HF_CURRICULUM:-psm-model/prod-memory/data/hf-prod-v2.jsonl}"
+HF_RUN_PREFIX="${HF_RUN_PREFIX:-hf-prod-v2-${MODEL_KEY}}"
 SOURCE_V3="${HF_SOURCE_V3:-psm-model/prod-memory/data/prod-extraction-v3.jsonl}"
 SOURCE_V5="${HF_SOURCE_V5:-psm-model/prod-memory/data/prod-extraction-v5.jsonl}"
+SOURCE_V4="${HF_SOURCE_V4:-psm-model/prod-memory/data/prod-extraction-v4.jsonl}"
+SOURCE_V6="${HF_SOURCE_V6:-psm-model/prod-memory/data/prod-extraction-v6-v4.jsonl}"
+RESUME_ADAPTER="${HF_RESUME_ADAPTER:-}"
+RESUME_PREFIX="${HF_RESUME_PREFIX:-}"
+if [[ -n "$RESUME_PREFIX" && -z "$RESUME_ADAPTER" ]]; then
+  RESUME_ADAPTER="psm-model/prod-memory/checkpoints/${RESUME_PREFIX}/adapter"
+fi
+HF_TRAIN_MODE="${HF_TRAIN_MODE:-sft}"
+DPO_BETA="${HF_DPO_BETA:-0.2}"
 HF_TOKEN="${HF_TOKEN:-}"
 
 echo "=== hf lora train $(date -u +%Y-%m-%dT%H:%M:%SZ) model=$MODEL_KEY dataset=$DATASET_REPO model_repo=$MODEL_REPO ==="
@@ -35,7 +45,6 @@ fi
 
 pip install -q torch transformers peft datasets accelerate huggingface_hub bitsandbytes 2>/dev/null \
   || pip install -q torch transformers peft datasets accelerate huggingface_hub
-
 mkdir -p psm-model/prod-memory/data psm-model/prod-memory/checkpoints psm-model/prod-memory/results
 
 download_dataset() {
@@ -59,12 +68,39 @@ if [[ ! -f "$SOURCE_V5" ]]; then
   download_dataset "prod-memory/$(basename "$SOURCE_V5")" "$SOURCE_V5" || true
 fi
 
+if [[ ! -f "$SOURCE_V4" ]]; then
+  echo "Downloading teacher v4 from $DATASET_REPO..."
+  download_dataset "prod-memory/$(basename "$SOURCE_V4")" "$SOURCE_V4" || true
+fi
+
+if [[ ! -f "$SOURCE_V6" ]]; then
+  echo "Downloading teacher v6 from $DATASET_REPO..."
+  download_dataset "prod-memory/$(basename "$SOURCE_V6")" "$SOURCE_V6" || true
+fi
+
+if [[ -n "$RESUME_PREFIX" && ! -f "${RESUME_ADAPTER:-}/adapter_model.safetensors" ]]; then
+  echo "Downloading resume adapter from $MODEL_REPO/$RESUME_PREFIX/adapter ..."
+  hf download "$MODEL_REPO" \
+    --repo-type model \
+    --include "${RESUME_PREFIX}/adapter/*" \
+    --local-dir "psm-model/prod-memory/checkpoints/_hf_resume_dl" \
+    --token "$HF_TOKEN" || true
+  mkdir -p "${RESUME_ADAPTER:-psm-model/prod-memory/checkpoints/${RESUME_PREFIX}/adapter}"
+  shopt -s nullglob
+  for f in "psm-model/prod-memory/checkpoints/_hf_resume_dl/${RESUME_PREFIX}/adapter"/*; do
+    cp -a "$f" "${RESUME_ADAPTER:-psm-model/prod-memory/checkpoints/${RESUME_PREFIX}/adapter}/"
+  done
+  shopt -u nullglob
+fi
+
 if [[ ! -f "$CURRICULUM" ]]; then
-  echo "Building HF curriculum v2 (v3 + v5 fixtures)..."
+  echo "Building HF curriculum ${HF_CURRICULUM_PROFILE:-hf-prod-v2}..."
   python -m prod_memory.build_hf_curriculum \
-    --profile hf-prod-v2 \
+    --profile "${HF_CURRICULUM_PROFILE:-hf-prod-v2}" \
     --source "$SOURCE_V3" \
     --source-v5 "$SOURCE_V5" \
+    --source-v4 "$SOURCE_V4" \
+    --source-v6 "$SOURCE_V6" \
     --output "$CURRICULUM" \
     --output-format "$OUTPUT_FORMAT" \
     --recall-fraction "$RECALL_FRACTION" \
@@ -79,9 +115,11 @@ fi
 
 if [[ ! -f "$CURRICULUM" ]]; then
   python -m prod_memory.build_hf_curriculum \
-    --profile hf-prod-v2 \
+    --profile "${HF_CURRICULUM_PROFILE:-hf-prod-v2}" \
     --source "$SOURCE_V3" \
     --source-v5 "$SOURCE_V5" \
+    --source-v4 "$SOURCE_V4" \
+    --source-v6 "$SOURCE_V6" \
     --output "$CURRICULUM" \
     --output-format "$OUTPUT_FORMAT" \
     --recall-fraction "$RECALL_FRACTION" \
@@ -109,14 +147,31 @@ for path in sorted(out.rglob("*")):
     if not path.is_file():
         continue
     rel = path.relative_to(out).as_posix()
-    api.upload_file(path_or_fileobj=str(path), path_in_repo=f"hf-prod-v2-${MODEL_KEY}/{rel}", repo_id=repo, repo_type="model", commit_message=f"upload {rel}")
+    api.upload_file(path_or_fileobj=str(path), path_in_repo=f"${HF_RUN_PREFIX}/{rel}", repo_id=repo, repo_type="model", commit_message=f"upload {rel}")
 print("uploaded adapter to", repo)
 PY
 EOF
 chmod +x "$UPLOAD_SCRIPT"
 
+SYNC_LOOP="/tmp/psm-hf-lora-sync-loop.sh"
+SYNC_INTERVAL="${HF_SYNC_INTERVAL_SEC:-120}"
+cat > "$SYNC_LOOP" <<EOF
+#!/bin/bash
+set -uo pipefail
+while [[ ! -f "$TRAIN_DONE" ]]; do
+  sleep "$SYNC_INTERVAL"
+  if [[ -d "$OUT_DIR" ]]; then
+    bash '$UPLOAD_SCRIPT' 2>&1 | tail -5 >> /tmp/psm-hf-lora-sync.log || true
+  fi
+done
+bash '$UPLOAD_SCRIPT' 2>&1 | tee -a /tmp/psm-hf-lora-sync.log
+EOF
+chmod +x "$SYNC_LOOP"
+
 rm -f "$TRAIN_DONE"
 tmux kill-session -t psm-hf-lora 2>/dev/null || true
+tmux kill-session -t psm-hf-sync 2>/dev/null || true
+tmux new-session -d -s psm-hf-sync "bash '$SYNC_LOOP'"
 tmux new-session -d -s psm-hf-lora bash -lc "
   set -euo pipefail
   cd '$ROOT'
@@ -125,10 +180,13 @@ tmux new-session -d -s psm-hf-lora bash -lc "
   export HF_TOKEN=\"\${HF_TOKEN:-}\"
   export PSM_HF_MODEL_REPO='$MODEL_REPO'
   export HF_HOME=\"\${HF_HOME:-/workspace/.cache/huggingface}\"
+  export HF_RESUME_ADAPTER='${RESUME_ADAPTER:-}'
   python -m psm_model.hf_lora_train \
     --curriculum '$CURRICULUM' \
     --output-dir '$OUT_DIR' \
     --model '$MODEL_KEY' \
+    --mode '${HF_TRAIN_MODE}' \
+    --beta '${DPO_BETA}' \
     --max-length '$MAX_LENGTH' \
     --steps '$STEPS' \
     --batch-size '$BATCH_SIZE' \
@@ -140,6 +198,7 @@ tmux new-session -d -s psm-hf-lora bash -lc "
   touch '$TRAIN_DONE'
 "
 echo "HF LoRA train started in tmux: psm-hf-lora"
+echo "HF sync loop in tmux: psm-hf-sync (every ${SYNC_INTERVAL}s → $MODEL_REPO/$HF_RUN_PREFIX)"
 echo "log: $TRAIN_LOG"
 echo "output: $OUT_DIR"
 echo "model_repo: $MODEL_REPO"

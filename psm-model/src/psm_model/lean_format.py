@@ -436,7 +436,7 @@ def parse_binary_decision(text: str) -> tuple[dict[str, Any] | None, tuple[Valid
             "indexables": [],
             "reasoning": "No durable memory.",
         }, ()
-    if line == "store":
+    if line == "store" or line.startswith("store") or line.startswith("store_"):
         return {
             "action": "store_episodic",
             "memory": None,

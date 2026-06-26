@@ -22,9 +22,16 @@ def _first_line(raw: str) -> str:
     return ""
 
 
+def binary_predicts_store(raw: str) -> bool:
+    line = _first_line(raw)
+    if not line or line in {"ignore", "ignore_noise"}:
+        return False
+    return line == "store" or line.startswith("store") or line.startswith("store_")
+
+
 def _predicts_store(raw: str, *, output_format: str) -> bool:
     if output_format == "binary":
-        return _first_line(raw) == "store"
+        return binary_predicts_store(raw)
     if output_format == "minimal":
         line = _first_line(raw)
         return line.startswith("store:")

@@ -7,9 +7,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from psm_model.eval_generation import _parse_output
-from psm_model.generate import generate_storage_json
-from psm_model.schema import validate_storage_decision
+from psm_model.lean_format import (
+    parse_at_tag_decision,
+    parse_binary_decision,
+    parse_minimal_decision,
+    parse_tagged_decision,
+)
+from psm_model.schema import parse_and_validate_storage_decision, validate_storage_decision
 from psm_model.storage_decision_repair import FAILSAFE_DECISION, RepairResult, repair_storage_decision
 
 _JSON_OBJECT_RE = re.compile(r"\{[\s\S]*\}")
@@ -133,12 +137,33 @@ def _looks_binary(raw: str) -> bool:
     return line in {"ignore", "store"}
 
 
+def _parse_boundary(raw: str, output_format: str) -> tuple[dict[str, Any] | None, tuple[Any, ...]]:
+    """Lean parsers for HF eval; avoid eval_generation (pulls train/model stack)."""
+    if output_format in ("minimal", "minimal_extract"):
+        return parse_minimal_decision(raw)
+    if output_format == "binary":
+        return parse_binary_decision(raw)
+    if output_format == "tagged":
+        return parse_tagged_decision(raw)
+    if output_format == "at_tag":
+        return parse_at_tag_decision(raw)
+    if output_format == "json":
+        result = parse_and_validate_storage_decision(raw)
+        decision = None
+        if result.decision is not None:
+            from dataclasses import asdict
+
+            decision = asdict(result.decision)
+        return decision, result.issues
+    raise ValueError(f"unsupported output format: {output_format}")
+
+
 def apply_product_boundary(raw: str, *, output_format: str = "tagged") -> dict[str, Any]:
     """Product boundary: strict model parse + deterministic repair + fail-safe ignore."""
     if raw.lstrip().startswith("{"):
         result = _repair_json_decision(raw)
     elif output_format == "binary" or _looks_binary(raw):
-        parsed, parse_issues = _parse_output(raw, "binary")
+        parsed, parse_issues = _parse_boundary(raw, "binary")
         validation = validate_storage_decision(parsed) if parsed is not None else None
         if validation and validation.ok and not parse_issues:
             result = RepairResult(status="parsed", decision=parsed)
@@ -149,7 +174,7 @@ def apply_product_boundary(raw: str, *, output_format: str = "tagged") -> dict[s
                 issues=[f"{issue.path}: {issue.message}" for issue in (parse_issues or ())],
             )
     elif output_format == "minimal" or _looks_minimal(raw):
-        parsed, parse_issues = _parse_output(raw, "minimal")
+        parsed, parse_issues = _parse_boundary(raw, "minimal")
         validation = validate_storage_decision(parsed) if parsed is not None else None
         if validation and validation.ok and not parse_issues:
             result = RepairResult(status="parsed", decision=parsed)
@@ -162,7 +187,7 @@ def apply_product_boundary(raw: str, *, output_format: str = "tagged") -> dict[s
     elif output_format == "tagged" or _looks_tagged(raw):
         result = repair_storage_decision(raw)
     else:
-        parsed, parse_issues = _parse_output(raw, output_format)
+        parsed, parse_issues = _parse_boundary(raw, output_format)
         validation = validate_storage_decision(parsed) if parsed is not None else None
         if validation and validation.ok and not parse_issues:
             result = RepairResult(status="parsed", decision=parsed)
@@ -211,6 +236,8 @@ def remember_storage_decision(
         model_input = payload
     else:
         model_input = to_model_input(payload)
+    from psm_model.generate import generate_storage_json
+
     raw = generate_storage_json(
         checkpoint,
         model_input,

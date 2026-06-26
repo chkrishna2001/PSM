@@ -12,6 +12,13 @@ alwaysApply: true
 3. **After expanded eval:** registry picks best → **keep best only** locally + on HF (`GATE4_KEEP_BEST_ONLY=1`); prune regressed/non-best from HF.
 4. **Final sync must pass** (`GATE4_FINAL_SYNC=1`) + `verify-hf` on pod before train script exits.
 
+## HF LoRA sync (prod-memory, every run)
+
+1. **Pod → HF every 120s** — `runpod_hf_lora_train.sh` runs `psm-hf-sync` tmux loop (`HF_SYNC_INTERVAL_SEC`, default 120).
+2. **Watcher → HF → local** — `_watch_hf_lora.py` calls `_sync_hf_lora.py --upload-from-pod` on each poll while training.
+3. **Manual sync** — `python psm-model/scripts/_sync_hf_lora.py --profile <v5d> --pod-id … --proxy-user … --upload-from-pod` then `--verify-only`.
+4. **Before maintenance / stop / delete** — train log + `checkpoint-*` + final `adapter/` on `krishnach7262/psm-prod-memory-hf`; eval JSON on HF; local copies under `psm-model/prod-memory/`.
+
 ## Delete policy (every delete path)
 
 - **NEVER delete or `--force-delete-pod` until all required artifacts are retrieved and verified:**

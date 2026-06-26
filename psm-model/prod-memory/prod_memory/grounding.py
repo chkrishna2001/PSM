@@ -104,3 +104,21 @@ def is_fail_safe_report(report: dict[str, Any]) -> bool:
         if re.search(r"model output unparseable|storing nothing", reasoning, re.IGNORECASE):
             return True
     return False
+
+
+def likely_noise_response(llm_response: str) -> bool:
+    """ponytail: short ack / meta-no-facts heuristics — gate pre-filter before LoRA."""
+    low = llm_response.strip().lower()
+    if len(low) > 200:
+        return False
+    markers = (
+        "let me know",
+        "don't have any durable",
+        "do not have any durable",
+        "no durable facts",
+        "just a acknowledgment",
+        "just an acknowledgment",
+        "okay, sure",
+        "sounds good",
+    )
+    return any(marker in low for marker in markers)

@@ -5,13 +5,10 @@ from typing import Any
 
 from psm_model.prompts import (
     RECALL_SYSTEM_INSTRUCTION,
-    TAGGED_SYSTEM_INSTRUCTION,
-    JSON_SYSTEM_INSTRUCTION,
     render_expected_output,
     row_task,
 )
-
-from prod_memory.row_validation import remember_target_from_input
+from psm_model.prompts import _system_instruction  # ponytail: shared binary/minimal prompts
 
 PROD_STORAGE_USER_PREFIX = (
     "Extract durable memory from the assistant response below.\n"
@@ -61,8 +58,10 @@ def row_messages(
             {"role": "assistant", "content": assistant},
         ]
 
+    from prod_memory.row_validation import remember_target_from_input
+
     llm_response = remember_target_from_input(input_payload)
-    system = JSON_SYSTEM_INSTRUCTION if output_format == "json" else TAGGED_SYSTEM_INSTRUCTION
+    system = _system_instruction(output_format)
     user = f"{PROD_STORAGE_USER_PREFIX}{llm_response.strip()}"
     assistant = render_storage_assistant_output(expected, output_format=output_format)
     return [
@@ -73,7 +72,7 @@ def row_messages(
 
 
 def storage_inference_messages(llm_response: str, *, output_format: str = "tagged") -> list[dict[str, str]]:
-    system = JSON_SYSTEM_INSTRUCTION if output_format == "json" else TAGGED_SYSTEM_INSTRUCTION
+    system = _system_instruction(output_format)
     user = f"{PROD_STORAGE_USER_PREFIX}{llm_response.strip()}"
     return [
         {"role": "system", "content": system},
@@ -86,5 +85,9 @@ def apply_chat_text(messages: list[dict[str, str]], tokenizer: Any) -> str:
 
 
 def apply_chat_prompt(messages: list[dict[str, str]], tokenizer: Any) -> str:
-    prompt_messages = messages[:-1]
+    # ponytail: training rows end with assistant target; inference is system+user only
+    if messages and messages[-1].get("role") == "assistant":
+        prompt_messages = messages[:-1]
+    else:
+        prompt_messages = messages
     return tokenizer.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)

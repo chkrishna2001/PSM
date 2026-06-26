@@ -5,9 +5,10 @@ set -euo pipefail
 ROOT="${PSM_REPO_ROOT:-/workspace/PSM}"
 GIT_URL="${PSM_GIT_URL:-https://github.com/chkrishna2001/PSM.git}"
 
-if [[ ! -d "$ROOT/psm-model/src" ]]; then
+if [[ ! -d "$ROOT/psm-model/src" ]] || [[ ! -f "$ROOT/package.json" ]]; then
   echo "PSM repo missing; cloning into $ROOT"
   mkdir -p "$(dirname "$ROOT")"
+  rm -rf "$ROOT"
   git clone --depth 1 "$GIT_URL" "$ROOT"
 fi
 cd "$ROOT"
@@ -21,16 +22,30 @@ TOP_K="${LOCOMO_TOP_K:-3}"
 WINDOW_SIZE="${LOCOMO_WINDOW_SIZE:-2}"
 WAIT_FOR_EVAL="${LOCOMO_WAIT_FOR_EVAL:-1}"
 PYTHON="${LOCOMO_PYTHON:-$(command -v python3)}"
+HF_BINARY="${LOCOMO_HF_BINARY_ADAPTER:-}"
+HF_EXTRACT="${LOCOMO_HF_EXTRACT_ADAPTER:-}"
+HF_BINARY_PREFIX="${LOCOMO_HF_BINARY_PREFIX:-hf-prod-v5k-gate-distill-qwen0.5b}"
+HF_EXTRACT_PREFIX="${LOCOMO_HF_EXTRACT_PREFIX:-hf-prod-v5k-extract-qwen0.5b}"
+HF_MODEL_KEY="${LOCOMO_HF_MODEL_KEY:-qwen0.5b}"
+HF_LABEL="${LOCOMO_HF_LABEL:-hf-prod-v5k-two-pass}"
 
-STEP="$(basename "$CHECKPOINT" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
-STEP="${STEP:-latest}"
-DB="benchmark/locomo/results/locomo-psm-model-step-${STEP}-n${LIMIT}.db"
-OUT="benchmark/locomo/results/locomo-psm-model-step-${STEP}-n${LIMIT}-results.json"
-LOG="benchmark/locomo/results/locomo-psm-model-step-${STEP}-n${LIMIT}.log"
+if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
+  LIMIT_TAG="${LIMIT}"
+  [[ "$LIMIT" == "0" ]] && LIMIT_TAG="full"
+  DB="benchmark/locomo/results/locomo-${HF_LABEL}-n${LIMIT_TAG}.db"
+  OUT="benchmark/locomo/results/locomo-${HF_LABEL}-n${LIMIT_TAG}-results.json"
+  LOG="benchmark/locomo/results/locomo-${HF_LABEL}-n${LIMIT_TAG}.log"
+else
+  STEP="$(basename "$CHECKPOINT" | sed -n 's/.*-step-\([0-9]*\)\.pt/\1/p')"
+  STEP="${STEP:-latest}"
+  DB="benchmark/locomo/results/locomo-psm-model-step-${STEP}-n${LIMIT}.db"
+  OUT="benchmark/locomo/results/locomo-psm-model-step-${STEP}-n${LIMIT}-results.json"
+  LOG="benchmark/locomo/results/locomo-psm-model-step-${STEP}-n${LIMIT}.log"
+fi
 
-echo "=== PSM LoCoMo $(date -u +%Y-%m-%dT%H:%M:%SZ) checkpoint=$CHECKPOINT limit=$LIMIT device=$DEVICE ==="
+echo "=== PSM LoCoMo $(date -u +%Y-%m-%dT%H:%M:%SZ) checkpoint=$CHECKPOINT hf=$HF_BINARY limit=$LIMIT device=$DEVICE ==="
 
-export PYTHONPATH="${ROOT}/psm-model/src"
+export PYTHONPATH="${ROOT}/psm-model/src:${ROOT}/psm-model/prod-memory"
 export PSM_RUNPOD=1
 export DEBIAN_FRONTEND=noninteractive
 
@@ -53,6 +68,32 @@ fi
 pip install -q huggingface_hub 2>/dev/null || true
 mkdir -p psm-model/checkpoints benchmark/locomo/data
 
+_fetch_hf_adapter() {
+  local prefix="$1"
+  local dest="$2"
+  if [[ -f "$dest/adapter_model.safetensors" ]]; then
+    return 0
+  fi
+  echo "Downloading adapter $prefix from $MODEL_REPO..."
+  hf download "$MODEL_REPO" \
+    --repo-type model \
+    --include "${prefix}/adapter/*" \
+    --local-dir "psm-model/prod-memory/checkpoints/_hf_dl" \
+    --token "${HF_TOKEN:-}"
+  mkdir -p "$dest"
+  shopt -s nullglob
+  for f in "psm-model/prod-memory/checkpoints/_hf_dl/${prefix}/adapter"/*; do
+    cp -a "$f" "$dest/"
+  done
+  shopt -u nullglob
+}
+
+if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
+  pip install -q torch transformers peft accelerate sentencepiece 2>/dev/null \
+    || pip install -q torch transformers peft accelerate sentencepiece
+  _fetch_hf_adapter "$HF_BINARY_PREFIX" "$HF_BINARY"
+  _fetch_hf_adapter "$HF_EXTRACT_PREFIX" "$HF_EXTRACT"
+else
 if [[ ! -f "$CHECKPOINT" ]]; then
   echo "Downloading $CHECKPOINT from $MODEL_REPO..."
   hf download "$MODEL_REPO" "$CHECKPOINT" --local-dir .
@@ -62,6 +103,7 @@ fi
 if [[ ! -f "$CHECKPOINT" ]]; then
   echo "Checkpoint missing after HF fetch: $CHECKPOINT" >&2
   exit 1
+fi
 fi
 
 if [[ ! -f benchmark/locomo/data/locomo10.json ]]; then
@@ -87,15 +129,21 @@ fi
 npm run build
 
 echo "--- LoCoMo ingest (limit=$LIMIT) ---"
-node dist/benchmark/locomo/src/ingest-psm-model.js \
-  --limit "$LIMIT" \
-  --batch-size "$BATCH_SIZE" \
-  --db "$DB" \
-  --checkpoint "$CHECKPOINT" \
-  --device "$DEVICE" \
-  --python "$PYTHON" \
-  --window-size "$WINDOW_SIZE" \
+INGEST_ARGS=(
+  --limit "$LIMIT"
+  --batch-size "$BATCH_SIZE"
+  --db "$DB"
+  --device "$DEVICE"
+  --python "$PYTHON"
+  --window-size "$WINDOW_SIZE"
   --repo-root "$ROOT"
+)
+if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
+  INGEST_ARGS+=(--hf-binary-adapter "$HF_BINARY" --hf-extract-adapter "$HF_EXTRACT" --hf-model "$HF_MODEL_KEY")
+else
+  INGEST_ARGS+=(--checkpoint "$CHECKPOINT")
+fi
+node dist/benchmark/locomo/src/ingest-psm-model.js "${INGEST_ARGS[@]}"
 
 INGEST_RC=$?
 if [[ "$INGEST_RC" -ne 0 ]]; then

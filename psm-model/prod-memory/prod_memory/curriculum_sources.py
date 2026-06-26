@@ -27,8 +27,8 @@ MEMORY_SUMMARIES: dict[str, str] = {
         "reviewing each file, then approving or requesting changes."
     ),
     "workflow-runpod": (
-        "Remote GPU launch uses two-phase deploy, verify tmux and GPU util, "
-        "and set the training environment flag so jobs use the GPU."
+        "RunPod launch uses two-phase deploy, verify tmux and GPU util, "
+        "and export PSM_RUNPOD=1 so training uses the GPU."
     ),
     "technical-eslint": (
         "Use explicit return types on exported psm-core functions and avoid default exports."

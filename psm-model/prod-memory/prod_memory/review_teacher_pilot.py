@@ -172,13 +172,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--heuristic-fallback", action="store_true")
     args = parser.parse_args(argv)
 
+    mix_path = args.mix if args.mix.is_file() else None
     report = review_pilot(
         args.training_data,
         limit=args.limit,
         seed=args.seed,
         model=args.model,
         use_heuristic_fallback=args.heuristic_fallback,
-        mix_path=args.mix,
+        mix_path=mix_path,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
