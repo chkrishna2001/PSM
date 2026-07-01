@@ -39,7 +39,7 @@ BUNDLE_TREE: list[tuple[str, str]] = [
     ("benchmark/locomo/package.json", "benchmark/locomo/package.json"),
     ("benchmark/locomo/data", "benchmark/locomo/data"),
     ("psm-model/src", "psm-model/src"),
-    ("psm-model/prod-memory", "psm-model/prod-memory"),
+    ("psm-model/prod-memory/prod_memory", "psm-model/prod-memory/prod_memory"),
     ("psm-model/scripts", "psm-model/scripts"),
 ]
 
@@ -183,7 +183,7 @@ def _ensure_pod_running(pod_id: str, proxy_user: str) -> bool:
 
 
 def _ignore_bundle(_dir: str, names: list[str]) -> set[str]:
-    skip = {"node_modules", "__pycache__", ".git", "checkpoints", "results", ".pytest_cache"}
+    skip = {"node_modules", "__pycache__", ".git", "checkpoints", "results", "data", ".pytest_cache"}
     return {name for name in names if name in skip or name.endswith((".db", ".pt", ".pyc"))}
 
 
@@ -307,10 +307,11 @@ def _verify_tmux(pod_id: str, proxy_user: str, *, require_gpu: bool) -> bool:
     return proc.returncode == 0
 
 
-def _log_tail(proxy_user: str) -> str:
+def _ssh_pod(proxy_user: str, script: str, *, timeout_sec: int = 60) -> str:
     proc = subprocess.run(
         [
             rc.SSH_BIN,
+            "-tt",
             "-i",
             rc.SSH_KEY_PATH,
             "-o",
@@ -318,14 +319,20 @@ def _log_tail(proxy_user: str) -> str:
             "-p",
             "22",
             f"{proxy_user}@ssh.runpod.io",
-            f"tail -100 {LOCOMO_LOG} 2>/dev/null || true",
+            "bash",
+            "-s",
         ],
+        input=f"{script}\nexit\n",
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=timeout_sec,
         errors="replace",
     )
     return proc.stdout or ""
+
+
+def _log_tail(proxy_user: str) -> str:
+    return _ssh_pod(proxy_user, f"tail -100 {LOCOMO_LOG} 2>/dev/null || true")
 
 
 def _wait_log(
