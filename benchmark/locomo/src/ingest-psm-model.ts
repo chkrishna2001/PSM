@@ -54,6 +54,7 @@ export async function main(argv: string[]): Promise<number> {
   const hfExtract = getOption(argv, "hf-extract-adapter", "");
   const hfModelKey = getOption(argv, "hf-model", "qwen0.5b");
   const useHfTwoPass = Boolean(hfBinary && hfExtract);
+  const offset = Math.max(0, Number(getOption(argv, "offset", "0")) || 0);
 
   const samples = loadSamples(options.data);
   const store = new MemoryStore(options.db);
@@ -87,6 +88,7 @@ export async function main(argv: string[]): Promise<number> {
     errors: []
   };
   const debugRecords: DebugRecord[] = [];
+  let globalIndex = 0;
 
   for (const sample of samples) {
     const sampleId = String(sample.sample_id ?? "unknown");
@@ -94,6 +96,10 @@ export async function main(argv: string[]): Promise<number> {
     const turns = flattenTurns(sample);
     for (let index = 0; index < turns.length; index++) {
       const turn = turns[index];
+      if (globalIndex < offset) {
+        globalIndex++;
+        continue;
+      }
       if (options.limit > 0 && stats.seen >= options.limit) return finish(store, stats, debugRaw ? debugOut : undefined, debugRecords);
       const diaId = String(turn.dia_id ?? "");
       const source = `${sampleId}:${diaId || stats.seen}`;
@@ -153,6 +159,7 @@ export async function main(argv: string[]): Promise<number> {
       if (stats.seen % options.batchSize === 0) {
         process.stdout.write(`ingested ${stats.seen} | stored=${stats.stored} ignored=${stats.ignored} failed=${stats.failed}\n`);
       }
+      globalIndex++;
     }
   }
 
@@ -199,9 +206,4 @@ function resolvePythonExecutable(repoRoot: string, python: string): string {
 function getOption(argv: string[], key: string, fallback: string): string {
   const index = argv.indexOf(`--${key}`);
   return index >= 0 && argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[index + 1] : fallback;
-}
-
-if (process.argv[1]?.endsWith("ingest-psm-model.js")) {
-  const code = await main(process.argv.slice(2));
-  process.exit(code);
 }

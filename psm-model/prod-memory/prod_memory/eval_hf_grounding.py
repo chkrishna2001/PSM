@@ -42,15 +42,23 @@ def _binary_classify_match(expect_action: str, raw: str) -> bool:
 
 
 class HfGenerationSession:
-    def __init__(self, model: Any, tokenizer: Any) -> None:
+    def __init__(self, model: Any, tokenizer: Any, *, adapter_name: str | None = None) -> None:
         self.model = model
         self.tokenizer = tokenizer
+        self.adapter_name = adapter_name
+
+    def _input_device(self) -> torch.device:
+        # ponytail: device_map="auto" has no model.device
+        return next(self.model.parameters()).device
 
     def generate(self, llm_response: str, *, output_format: str, max_new_tokens: int) -> str:
+        if self.adapter_name:
+            self.model.set_adapter(self.adapter_name)
         messages = storage_inference_messages(llm_response, output_format=output_format)
         prompt = apply_chat_prompt(messages, self.tokenizer)
         inputs = self.tokenizer(prompt, return_tensors="pt")
-        inputs = {key: value.to(self.model.device) for key, value in inputs.items()}
+        device = self._input_device()
+        inputs = {key: value.to(device) for key, value in inputs.items()}
         with torch.inference_mode():
             output_ids = self.model.generate(
                 **inputs,
@@ -81,6 +89,35 @@ def open_hf_base_session(
     )
     model.eval()
     return HfGenerationSession(model, tokenizer)
+
+
+def open_hf_two_pass_sessions(
+    binary_dir: Path,
+    extract_dir: Path,
+    *,
+    model_key: str = "qwen0.5b",
+    model_id: str | None = None,
+    device: str = "cuda",
+) -> tuple[HfGenerationSession, HfGenerationSession]:
+    """One base model + two LoRA adapters (half the VRAM of two open_hf_session calls)."""
+    resolved = model_id or DEFAULT_MODELS.get(model_key) or model_key
+    tokenizer = AutoTokenizer.from_pretrained(resolved, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    dtype = torch.float16 if device == "cuda" and torch.cuda.is_available() else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(
+        resolved,
+        torch_dtype=dtype,
+        device_map="auto" if device == "cuda" and torch.cuda.is_available() else None,
+        trust_remote_code=True,
+    )
+    model = PeftModel.from_pretrained(model, str(binary_dir), adapter_name="binary")
+    model.load_adapter(str(extract_dir), adapter_name="extract")
+    model.eval()
+    return (
+        HfGenerationSession(model, tokenizer, adapter_name="binary"),
+        HfGenerationSession(model, tokenizer, adapter_name="extract"),
+    )
 
 
 def open_hf_session(

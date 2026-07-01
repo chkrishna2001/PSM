@@ -52,7 +52,11 @@ export class RememberServer {
     const existing = servers.get(key);
     if (existing) return existing;
 
-    const pythonPath = isAbsolute(options.python) ? options.python : resolve(options.repoRoot, options.python);
+    const bareName =
+      !options.python.includes("/") && !options.python.includes("\\");
+    const pythonPath = isAbsolute(options.python) || bareName
+      ? options.python
+      : resolve(options.repoRoot, options.python);
     const spawnArgs = hfMode
       ? [
           "-m",
@@ -84,23 +88,43 @@ export class RememberServer {
       env: options.env,
       stdio: ["pipe", "pipe", "pipe"]
     });
+    let stderrTail = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderrTail = (stderrTail + chunk.toString()).slice(-4000);
+      process.stderr.write(chunk);
+    });
     const pending: PendingCall[] = [];
+    const forgetServer = () => {
+      servers.delete(key);
+    };
     const reader = createInterface({ input: proc.stdout });
     const ready = new Promise<void>((resolveReady, rejectReady) => {
-      let sawReady = false;
+      let readySettled = false;
+      const settleReady = (ok: boolean, error?: Error) => {
+        if (readySettled) return;
+        readySettled = true;
+        if (!ok) forgetServer();
+        const detail = stderrTail.trim();
+        if (ok) resolveReady();
+        else {
+          rejectReady(
+            error ??
+              new Error(detail ? `remember server failed to start: ${detail}` : "remember server failed to start")
+          );
+        }
+      };
       reader.on("line", (line: string) => {
-        if (!sawReady) {
-          sawReady = true;
+        if (!readySettled) {
           try {
             const message = JSON.parse(line) as { ready?: boolean };
             if (message.ready) {
-              resolveReady();
+              settleReady(true);
               return;
             }
+            settleReady(false, new Error(`remember server bad ready line: ${line}`));
           } catch {
-            // fall through
+            settleReady(false, new Error(`remember server bad ready line: ${line}`));
           }
-          rejectReady(new Error(`remember server bad ready line: ${line}`));
           return;
         }
         const waiter = pending.shift();
@@ -116,7 +140,29 @@ export class RememberServer {
           waiter.reject(error instanceof Error ? error : new Error(String(error)));
         }
       });
-      proc.on("error", rejectReady);
+      proc.stdout.on("close", () => {
+        if (!readySettled) {
+          const detail = stderrTail.trim();
+          settleReady(
+            false,
+            new Error(detail ? `remember server stdout closed before ready: ${detail}` : "remember server stdout closed before ready")
+          );
+        }
+      });
+      proc.on("error", (error) => {
+        settleReady(false, error instanceof Error ? error : new Error(String(error)));
+      });
+      proc.on("exit", (code, signal) => {
+        const detail = stderrTail.trim();
+        settleReady(
+          false,
+          new Error(
+            detail
+              ? `remember server exited with status ${code ?? signal ?? "unknown"} before ready: ${detail}`
+              : `remember server exited with status ${code ?? signal ?? "unknown"} before ready`
+          )
+        );
+      });
     });
     const server = new RememberServer(proc, ready, pending);
     servers.set(key, server);

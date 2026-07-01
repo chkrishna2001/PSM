@@ -73,10 +73,14 @@ def main() -> int:
     parser.add_argument("--max-new-tokens", type=int, default=384)
     args = parser.parse_args()
 
-    from prod_memory.eval_hf_grounding import open_hf_session
+    from prod_memory.eval_hf_grounding import open_hf_two_pass_sessions
 
-    binary_session = open_hf_session(args.binary_adapter, model_key=args.model, device=args.device)
-    extract_session = open_hf_session(args.extract_adapter, model_key=args.model, device=args.device)
+    binary_session, extract_session = open_hf_two_pass_sessions(
+        args.binary_adapter,
+        args.extract_adapter,
+        model_key=args.model,
+        device=args.device,
+    )
 
     sys.stdout.write(json.dumps({"ready": True, "mode": "hf_two_pass"}) + "\n")
     sys.stdout.flush()

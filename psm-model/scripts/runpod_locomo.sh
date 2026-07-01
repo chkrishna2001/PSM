@@ -5,11 +5,22 @@ set -euo pipefail
 ROOT="${PSM_REPO_ROOT:-/workspace/PSM}"
 GIT_URL="${PSM_GIT_URL:-https://github.com/chkrishna2001/PSM.git}"
 
-if [[ ! -d "$ROOT/psm-model/src" ]] || [[ ! -f "$ROOT/package.json" ]]; then
+if [[ ! -f "$ROOT/package.json" ]]; then
+  if [[ "${PSM_SKIP_GIT_PULL:-0}" == "1" ]]; then
+    echo "PSM repo missing at $ROOT (expected tar-push bootstrap)" >&2
+    exit 1
+  fi
   echo "PSM repo missing; cloning into $ROOT"
   mkdir -p "$(dirname "$ROOT")"
   rm -rf "$ROOT"
   git clone --depth 1 "$GIT_URL" "$ROOT"
+else
+  if [[ "${PSM_SKIP_GIT_PULL:-0}" != "1" ]]; then
+    echo "Updating PSM repo..."
+    git -C "$ROOT" fetch --depth 1 origin && git -C "$ROOT" reset --hard FETCH_HEAD
+  else
+    echo "Skipping git pull (PSM_SKIP_GIT_PULL=1)"
+  fi
 fi
 cd "$ROOT"
 
@@ -17,6 +28,7 @@ MODEL_REPO="${PSM_HF_MODEL_REPO:-subbu83/psm-50m-mixed-v1-run}"
 CHECKPOINT="${LOCOMO_CHECKPOINT:-psm-model/checkpoints/real-v3-50m-full-v2-step-048000.pt}"
 DEVICE="${LOCOMO_DEVICE:-cuda}"
 LIMIT="${LOCOMO_LIMIT:-25}"
+OFFSET="${LOCOMO_OFFSET:-0}"
 BATCH_SIZE="${LOCOMO_BATCH_SIZE:-5}"
 TOP_K="${LOCOMO_TOP_K:-3}"
 WINDOW_SIZE="${LOCOMO_WINDOW_SIZE:-2}"
@@ -88,11 +100,55 @@ _fetch_hf_adapter() {
   shopt -u nullglob
 }
 
+_install_hf_python_stack() {
+  echo "--- HF Python stack (matched cu124 wheels) ---"
+  pip install -q --upgrade pip
+  # ponytail: pin matched torch/torchvision/torchaudio — upgrading torch alone breaks peft import
+  pip install -q \
+    torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
+    --index-url https://download.pytorch.org/whl/cu124
+  pip install -q transformers peft accelerate sentencepiece 'torchao>=0.16.0' huggingface_hub
+  "$PYTHON" - <<'PY'
+import torch, torchvision, torchaudio
+from peft import PeftModel
+assert torch.cuda.is_available(), "CUDA not available"
+print(
+    "python-imports ok",
+    f"torch={torch.__version__}",
+    f"torchvision={torchvision.__version__}",
+    f"torchaudio={torchaudio.__version__}",
+    f"cuda={torch.cuda.get_device_name(0)}",
+)
+PY
+}
+
+_hf_gpu_preflight() {
+  echo "--- HF GPU preflight (must pass before ingest) ---"
+  local binary_abs="${ROOT}/${HF_BINARY}"
+  local extract_abs="${ROOT}/${HF_EXTRACT}"
+  if ! "$PYTHON" - <<PY
+import sys
+from pathlib import Path
+sys.path.insert(0, "${ROOT}/psm-model/src")
+sys.path.insert(0, "${ROOT}/psm-model/prod-memory")
+from prod_memory.eval_hf_grounding import open_hf_two_pass_sessions
+binary = Path("${binary_abs}")
+extract = Path("${extract_abs}")
+b, e = open_hf_two_pass_sessions(binary, extract, model_key="${HF_MODEL_KEY}", device="${DEVICE}")
+out = b.generate("User said they enjoy hiking on weekends.", output_format="binary", max_new_tokens=16)
+print("HF preflight PASS", f"binary={out[:80]!r}")
+PY
+  then
+    echo "PREFLIGHT FAIL: HF GPU smoke failed" >&2
+    return 1
+  fi
+}
+
 if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
-  pip install -q torch transformers peft accelerate sentencepiece 2>/dev/null \
-    || pip install -q torch transformers peft accelerate sentencepiece
+  _install_hf_python_stack
   _fetch_hf_adapter "$HF_BINARY_PREFIX" "$HF_BINARY"
   _fetch_hf_adapter "$HF_EXTRACT_PREFIX" "$HF_EXTRACT"
+  _hf_gpu_preflight
 else
 if [[ ! -f "$CHECKPOINT" ]]; then
   echo "Downloading $CHECKPOINT from $MODEL_REPO..."
@@ -117,6 +173,16 @@ if [[ ! -f benchmark/locomo/data/locomo10.json ]]; then
 fi
 
 mkdir -p benchmark/locomo/results
+if [[ -n "${LOCOMO_RESUME_DB:-}" && -f "${LOCOMO_RESUME_DB}" ]]; then
+  src="$(readlink -f "${LOCOMO_RESUME_DB}")"
+  dst="$(readlink -f "$DB" 2>/dev/null || readlink -f "$ROOT/$DB")"
+  if [[ "$src" != "$dst" ]]; then
+    cp -f "${LOCOMO_RESUME_DB}" "$DB"
+    echo "Seeded resume DB: $DB"
+  else
+    echo "Resume DB already in place: $DB"
+  fi
+fi
 exec > >(tee -a "$LOG") 2>&1
 
 echo "--- npm install + build (skip postinstall; LoCoMo uses psm_model Python, not GGUF) ---"
@@ -126,12 +192,19 @@ if [[ -f package-lock.json ]]; then
 else
   npm install --no-audit --no-fund --ignore-scripts
 fi
-npm run build
+if [[ "${LOCOMO_SKIP_BUILD:-0}" == "1" && -f dist/benchmark/locomo/src/ingest-psm-model.js && -f src/psm-core/dist/index.js ]]; then
+  echo "Using pre-pushed dist (LOCOMO_SKIP_BUILD=1)"
+else
+  npm run build
+fi
 
-echo "--- LoCoMo ingest (limit=$LIMIT) ---"
+echo "--- LoCoMo ingest (limit=$LIMIT offset=$OFFSET) ---"
+export PSM_FORCE_CPU=0
 INGEST_ARGS=(
   --limit "$LIMIT"
+  --offset "$OFFSET"
   --batch-size "$BATCH_SIZE"
+  --input-format locomo
   --db "$DB"
   --device "$DEVICE"
   --python "$PYTHON"
@@ -143,7 +216,11 @@ if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
 else
   INGEST_ARGS+=(--checkpoint "$CHECKPOINT")
 fi
-node dist/benchmark/locomo/src/ingest-psm-model.js "${INGEST_ARGS[@]}"
+if [[ -f psm-model/scripts/ingest-cli.mjs ]]; then
+  PSM_REPO_ROOT="$ROOT" node psm-model/scripts/ingest-cli.mjs "${INGEST_ARGS[@]}"
+else
+  node dist/benchmark/locomo/src/ingest-psm-model.js "${INGEST_ARGS[@]}"
+fi
 
 INGEST_RC=$?
 if [[ "$INGEST_RC" -ne 0 ]]; then

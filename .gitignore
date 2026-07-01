@@ -68,6 +68,10 @@ hf-upload/
 .worktrees/
 manual-scripts/
 
+# Generated RunPod launch scripts (may contain env secrets)
+psm-model/scripts/_runpod_locomo_tmux_start.sh
+psm-model/scripts/_runpod_locomo_nohup.sh
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
