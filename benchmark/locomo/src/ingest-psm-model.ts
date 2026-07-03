@@ -223,3 +223,7 @@ function getOption(argv: string[], key: string, fallback: string): string {
   const index = argv.indexOf(`--${key}`);
   return index >= 0 && argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[index + 1] : fallback;
 }
+
+if (process.argv[1]?.endsWith("ingest-psm-model.js")) {
+  process.exitCode = await main(process.argv.slice(2));
+}

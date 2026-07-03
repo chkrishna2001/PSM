@@ -169,6 +169,8 @@ ROOT=/workspace/PSM
 if [[ ! -f "$ROOT/package.json" ]]; then
   rm -rf "$ROOT"
   git clone --depth 1 "{GIT_URL}" "$ROOT"
+else
+  git -C "$ROOT" pull --ff-only
 fi
 echo clone_ok
 """,

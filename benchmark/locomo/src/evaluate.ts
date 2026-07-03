@@ -9,6 +9,7 @@ export function main(argv: string[]): number {
   const sampleIds = parseSampleIds(getOption(argv, "sample-ids", ""));
   const samples = filterSamples(loadSamples(options.data), sampleIds);
   const store = new MemoryStore(options.db);
+  store.initializeSchema();
   const records: Array<Record<string, unknown>> = [];
 
   for (const sample of samples) {

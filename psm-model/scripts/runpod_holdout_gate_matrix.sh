@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT="${PSM_REPO_ROOT:-/workspace/PSM}"
 cd "$ROOT"
 
+# ponytail: tar-push from Windows may leave CRLF; bash treats pipefail\r as invalid
+for f in psm-model/scripts/runpod_holdout_gate.sh psm-model/scripts/runpod_holdout_gate_matrix.sh; do
+  [[ -f "$f" ]] && sed -i 's/\r$//' "$f"
+done
+
 MODEL_REPO="${PSM_HF_MODEL_REPO:-krishnach7262/psm-prod-memory-hf}"
 SAMPLE_IDS="${HOLDOUT_SAMPLE_IDS:-conv-30,conv-41}"
 ANSWER_LIMIT="${GATE_ANSWER_LIMIT:-30}"
