@@ -25,6 +25,7 @@ ANSWER_OUT="benchmark/locomo/results/holdout-gate-${TAG}-answer.json"
 GATE_OUT="benchmark/locomo/results/holdout-gate-${TAG}.json"
 INGEST_SUMMARY_OUT="benchmark/locomo/results/holdout-gate-${TAG}-ingest-summary.json"
 LOG="benchmark/locomo/results/holdout-gate-${TAG}.log"
+export INGEST_SUMMARY_OUT
 
 echo "=== holdout gate $(date -u +%Y-%m-%dT%H:%M:%SZ) profile=$PROFILE samples=$SAMPLE_IDS adapter=$ADAPTER_DIR ==="
 
@@ -83,6 +84,16 @@ else
   npm run build
 fi
 
+if [[ "${GATE_SKIP_INGEST:-0}" == "1" ]]; then
+  if [[ ! -f "$DB" ]]; then
+    echo "GATE_SKIP_INGEST=1 but missing DB: $DB" >&2
+    exit 1
+  fi
+  if [[ ! -f "$INGEST_SUMMARY_OUT" ]]; then
+    echo "warn: missing ingest summary $INGEST_SUMMARY_OUT (merge will fail without it)" >&2
+  fi
+  echo "--- skip ingest (reuse $DB) ---"
+else
 echo "--- ingest holdout convs → SQLite ---"
 export PSM_FORCE_CPU=0
 export INGEST_SUMMARY_OUT
@@ -98,6 +109,7 @@ node dist/benchmark/locomo/src/ingest-psm-model.js \
   --device "$DEVICE" \
   --python "$PYTHON" \
   --repo-root "$ROOT"
+fi
 
 echo "--- retrieval eval (real LoCoMo QA) ---"
 node dist/benchmark/locomo/src/evaluate.js \

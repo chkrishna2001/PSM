@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -128,22 +129,48 @@ def _deploy(name: str) -> tuple[str, str]:
                 pod_id = str(payload["id"])
                 break
     if pod_id and not proxy_user:
-        info = subprocess.run(
-            [sys.executable, str(SCRIPTS / "runpod_ctl.py"), "ssh-info", pod_id],
-            cwd=REPO,
-            capture_output=True,
-            text=True,
-        )
-        for line in (info.stdout + info.stderr).splitlines():
-            if not line.strip().startswith("{"):
-                continue
+        for attempt in range(6):
+            info = subprocess.run(
+                [sys.executable, str(SCRIPTS / "runpod_ctl.py"), "ssh-info", pod_id],
+                cwd=REPO,
+                capture_output=True,
+                text=True,
+            )
+            info_text = info.stdout + info.stderr
             try:
-                payload = json.loads(line.strip())
+                payload = json.loads(info_text)
+                proxy_user = str(payload.get("pod_host_id") or "")
+                rec = payload.get("recommended") or {}
+                if isinstance(rec, dict) and rec.get("user"):
+                    proxy_user = str(rec["user"])
+                for target in payload.get("targets") or []:
+                    if isinstance(target, dict) and target.get("user"):
+                        proxy_user = str(target["user"])
             except json.JSONDecodeError:
-                continue
-            for target in payload.get("targets") or []:
-                if isinstance(target, dict) and target.get("user"):
-                    proxy_user = str(target["user"])
+                for line in info_text.splitlines():
+                    line = line.strip()
+                    if not line.startswith("{"):
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    rec = payload.get("recommended") or {}
+                    if isinstance(rec, dict) and rec.get("user"):
+                        proxy_user = str(rec["user"])
+                    proxy_user = str(payload.get("pod_host_id") or proxy_user)
+                    for target in payload.get("targets") or []:
+                        if isinstance(target, dict) and target.get("user"):
+                            proxy_user = str(target["user"])
+            if proxy_user:
+                break
+            time.sleep(10)
+    if not pod_id:
+        import re
+
+        match = re.search(r'"id"\s*:\s*"([a-z0-9]+)"', combined)
+        if match:
+            pod_id = match.group(1)
     if not pod_id or not proxy_user:
         raise RuntimeError(f"deploy missing pod_id/proxy_user: {combined[-2000:]}")
     return pod_id, proxy_user
@@ -178,6 +205,8 @@ echo clone_ok
     )
     if rc._ssh_run_script(alias, clone_script, host=host, port=port, user=user, timeout_sec=300, skip_ssh_wait=True) != 0:
         raise RuntimeError("clone failed")
+    if os.environ.get("PSM_HOLDOUT_SKIP_TAR_PUSH", "1") == "1":
+        return
     rc._push_repo_files_via_tar(alias, REPO, PUSH_FILES, "/workspace/PSM", host=host, port=port, user=user)
 
 
@@ -197,6 +226,49 @@ def _pull_file(pod_id: str, proxy_user: str, remote: str, local: Path) -> bool:
         return False
     local.write_bytes(proc.stdout)
     return True
+
+
+def _start_poller(
+    pod_id: str,
+    proxy_user: str,
+    profiles: str,
+    sample_ids: str,
+    interval_sec: int,
+) -> subprocess.Popen | None:
+    if interval_sec <= 0:
+        return None
+    progress_out = REPO / "benchmark/locomo/results/holdout-gate-progress.jsonl"
+    return subprocess.Popen(
+        [
+            sys.executable,
+            str(SCRIPTS / "_poll_holdout_gate.py"),
+            "--pod-id",
+            pod_id,
+            "--proxy-user",
+            proxy_user,
+            "--profiles",
+            profiles,
+            "--sample-ids",
+            sample_ids,
+            "--interval",
+            str(interval_sec),
+            "--out",
+            str(progress_out),
+            "--local-log",
+            str(REPO / "benchmark/locomo/results/holdout-gate-run.log"),
+        ],
+        cwd=REPO,
+    )
+
+
+def _stop_poller(proc: subprocess.Popen | None) -> None:
+    if proc is None or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 
 def _pull_results(pod_id: str, proxy_user: str, profiles: list[str]) -> list[dict]:
@@ -223,6 +295,7 @@ def main() -> int:
     parser.add_argument("--keep-pod", action="store_true")
     parser.add_argument("--pod-id", default="")
     parser.add_argument("--proxy-user", default="")
+    parser.add_argument("--poll-interval", type=int, default=60, help="direct-TCP progress poll seconds (0=off)")
     args = parser.parse_args()
 
     if not _hf_token():
@@ -251,17 +324,23 @@ def main() -> int:
         "GATE_ANSWER_LIMIT": str(args.answer_limit),
         **_cf_env(),
     }
-    code = int(
-        rc._ssh_run_script(
-            alias,
-            SCRIPTS / "runpod_holdout_gate_matrix.sh",
-            host=host,
-            port=port,
-            user=user,
-            timeout_sec=10800,
-            extra_env=extra,
+    poller = _start_poller(pod_id, proxy_user, args.profiles, args.sample_ids, args.poll_interval)
+    run_log = REPO / "benchmark/locomo/results/holdout-gate-run.log"
+    try:
+        code = int(
+            rc._ssh_run_script(
+                alias,
+                SCRIPTS / "runpod_holdout_gate_matrix.sh",
+                host=host,
+                port=port,
+                user=user,
+                timeout_sec=10800,
+                extra_env=extra,
+                log_out=run_log,
+            )
         )
-    )
+    finally:
+        _stop_poller(poller)
     rows = _pull_results(pod_id, proxy_user, profiles)
     if MATRIX_OUT.is_file():
         matrix = json.loads(MATRIX_OUT.read_text(encoding="utf-8"))

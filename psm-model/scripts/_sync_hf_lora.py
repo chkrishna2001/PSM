@@ -34,6 +34,7 @@ PROFILE_PREFIX: dict[str, str] = {
     "v5o-dpo": "hf-prod-v5o-dpo-qwen0.5b",
     "v5p": "hf-prod-v5p-qwen0.5b",
     "v5n-dpo": "hf-prod-v5n-dpo-qwen0.5b",
+    "v5q": "hf-prod-v5q-qwen0.5b",
     "v5m": "hf-prod-v5m-qwen0.5b",
     "v5i": "hf-prod-v5i-qwen0.5b",
     "v5j": "hf-prod-v5j-qwen0.5b",

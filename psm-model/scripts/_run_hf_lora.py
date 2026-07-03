@@ -211,6 +211,20 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "resume_prefix": "hf-prod-v5n-qwen0.5b",
         "resume_adapter": "psm-model/prod-memory/checkpoints/_hf_dl/hf-prod-v5n-qwen0.5b/adapter",
     },
+    "v5q": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-v5q-sft.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-v5q-qwen0.5b",
+        "run_prefix": "hf-prod-v5q-qwen0.5b",
+        "curriculum_profile": "hf-prod-v5q",
+        "steps": 150,
+        "save_steps": 50,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "5e-6",
+        "max_length": "2048",
+        "resume_prefix": "hf-prod-v5n-dpo-qwen0.5b",
+        "resume_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5n-dpo-qwen0.5b/adapter",
+    },
     "v5i": {
         "curriculum": "psm-model/prod-memory/data/hf-prod-v5i.jsonl",
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-v5i-qwen0.5b",
@@ -444,7 +458,7 @@ def main() -> int:
     proxy_user = args.proxy_user.strip()
     if args.deploy and not pod_id:
         gpu_prefs = args.gpu_preferences
-        if not gpu_prefs and args.profile in ("v5e", "v5f", "v5g", "v5h", "v5m", "v5n", "v5n-dpo", "v5o-sft", "v5o-dpo", "v5p", "v5i", "v5j", "v5k-gate", "v5k-gate-fix", "v5k-gate-distill", "v5k-gate-dpo", "v5k-extract"):
+        if not gpu_prefs and args.profile in ("v5e", "v5f", "v5g", "v5h", "v5m", "v5n", "v5n-dpo", "v5q", "v5o-sft", "v5o-dpo", "v5p", "v5i", "v5j", "v5k-gate", "v5k-gate-fix", "v5k-gate-distill", "v5k-gate-dpo", "v5k-extract"):
             gpu_prefs = "NVIDIA L4,NVIDIA RTX A5000,NVIDIA GeForce RTX 3090"
         pod_id, proxy_user = _deploy(gpu_preferences=gpu_prefs)
     if not pod_id or not proxy_user:
@@ -519,6 +533,8 @@ def main() -> int:
                 "psm-model/prod-memory/prod_memory/hf_prompts.py",
                 "psm-model/prod-memory/prod_memory/curriculum_sources.py",
                 "psm-model/prod-memory/prod_memory/indexable_labels.py",
+                "psm-model/prod-memory/prod_memory/build_v5q_indexables_rows.py",
+                "psm-model/prod-memory/scripts/build_v5q_indexables_curriculum.py",
                 "psm-model/prod-memory/prod_memory/row_validation.py",
                 str(profile["curriculum"]),
                 str(Path(str(profile["curriculum"])).with_suffix(".manifest.json")),

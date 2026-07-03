@@ -1,0 +1,1719 @@
+{
+  "generated_at": "2026-07-03T16:20:12.391744+00:00",
+  "checkpoint": "hf-prod-v5n-dpo-qwen0.5b",
+  "holdout_convs": [
+    "conv-30",
+    "conv-41"
+  ],
+  "prod_fixtures": {
+    "status": "ok",
+    "path": "C:\\Users\\chkri\\source\\repos\\PSM\\psm-model\\prod-memory\\results\\hf-prod-v5n-dpo-qwen0.5b-prod-grounding.json",
+    "checkpoint": "hf-prod-v5n-dpo-qwen0.5b",
+    "timestamp": "2026-07-02T14:22:29.994557+00:00",
+    "max_new_tokens": 384,
+    "aggregate": {
+      "cases": 10,
+      "model_stored": 6,
+      "effective_stored": 5,
+      "content_grounding_rate": 1.0,
+      "curriculum_bleed_rate": 0.0,
+      "fail_safe_ignore_rate": 0.2,
+      "parse_valid_rate": 0.8,
+      "guard_reject_rate": 0.1,
+      "action_match_rate": 0.7
+    },
+    "case_table": [
+      {
+        "id": "plan-01-handoff",
+        "suite": "plan_chunks",
+        "expectAction": "store",
+        "action": "store_episodic",
+        "effective_stored": false,
+        "content_grounded": false,
+        "guard_rejected": true,
+        "guard_route": "grounding_reject_bleed",
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "parsed",
+        "memory_content": "## Phase 1 \u2014 Baseline eval\n\nGoal: measure HF checkpoints on p .\n\nMetrics: content_grounding_rate, curriculum_bleed_rate, fail_safe_ ignores. baseline-eval mentions baseline-eval ## Phase 1 \u2014 Baseline eval\n\nGoal: measure HF checkpoints on pr"
+      },
+      {
+        "id": "plan-02-chunking",
+        "suite": "plan_chunks",
+        "expectAction": "store",
+        "action": "promote_semantic",
+        "effective_stored": true,
+        "content_grounded": true,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "parsed",
+        "memory_content": "Target 600\u20131200 tok fits 2048 context; call remember() per chunk with shared source_id and :chunk- suffix to handle long assistant handoffs on mark g assistant handoffs on markdown headers and numbered steps. Target 600\u20131200 tok fits 2048 c"
+      },
+      {
+        "id": "cursor-01-summary",
+        "suite": "cursor_shaped",
+        "expectAction": "store",
+        "action": "store_episodic",
+        "effective_stored": true,
+        "content_grounded": true,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "parsed",
+        "memory_content": "Updated the remember path to reject ungrounded storage and block cur . Next step is the prod grounding harness with fixtures for plan chunks and revie ge and block curriculum bleed. remember updated_memory_path reject ungrounded storage and"
+      },
+      {
+        "id": "cursor-02-debug",
+        "suite": "cursor_shaped",
+        "expectAction": "store",
+        "action": "store_episodic",
+        "effective_stored": true,
+        "content_grounded": true,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "parsed",
+        "memory_content": "he model memorized gate curriculum templates instead of extracting facts from assi f extracting facts from assistant text. LoCoMo Hit@k was high while memory.conten s was n -shaped, so answer accuracy stayed at 0%. memory.conten s extracted"
+      },
+      {
+        "id": "workflow-review-pr",
+        "suite": "workflow",
+        "expectAction": "store",
+        "action": "promote_semantic",
+        "effective_stored": true,
+        "content_grounded": true,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "parsed",
+        "memory_content": "# Review a pull request\n\n1. Get PR info with `gh pr view`.\n2. C # Review a pull request\n\n1. Get PR info with `gh pr view`.\n2. Check the # Review a pull request\n\n1. Get PR info with `gh pr view intended base.\n3. List chan ed files with `gh p"
+      },
+      {
+        "id": "workflow-runpod",
+        "suite": "workflow",
+        "expectAction": "store",
+        "action": "ignore",
+        "effective_stored": false,
+        "content_grounded": false,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": true,
+        "curriculum_bleed": false,
+        "repair_status": "failed_safe",
+        "memory_content": null
+      },
+      {
+        "id": "technical-eslint",
+        "suite": "technical",
+        "expectAction": "store",
+        "action": "promote_semantic",
+        "effective_stored": true,
+        "content_grounded": true,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "parsed",
+        "memory_content": "Prefer explicit return types on exported functions in psm-core. Avoid default exports in eturn types on exported functions in psm-core. Avoid default exports in library m with .js extensions in TypeScript sources. explicit-return-types ment"
+      },
+      {
+        "id": "technical-api",
+        "suite": "technical",
+        "expectAction": "store",
+        "action": "ignore",
+        "effective_stored": false,
+        "content_grounded": false,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": true,
+        "curriculum_bleed": false,
+        "repair_status": "failed_safe",
+        "memory_content": null
+      },
+      {
+        "id": "noise-filler",
+        "suite": "noise",
+        "expectAction": "ignore",
+        "action": "ignore",
+        "effective_stored": false,
+        "content_grounded": false,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "repaired",
+        "memory_content": null
+      },
+      {
+        "id": "noise-meta",
+        "suite": "noise",
+        "expectAction": "ignore",
+        "action": "ignore",
+        "effective_stored": false,
+        "content_grounded": false,
+        "guard_rejected": false,
+        "guard_route": null,
+        "fail_safe": false,
+        "curriculum_bleed": false,
+        "repair_status": "repaired",
+        "memory_content": null
+      }
+    ]
+  },
+  "holdout_decision_audit": {
+    "db": "C:\\Users\\chkri\\source\\repos\\PSM\\benchmark\\locomo\\results\\holdout-gate-v5n-dpo-conv-30-conv-41.db",
+    "stored_decisions_total": 827,
+    "sample_n": 50,
+    "counts": {
+      "action:promote_semantic": 2,
+      "action:store_episodic": 48,
+      "stored_turns": 50,
+      "with_facts": 50
+    },
+    "rates": {
+      "with_facts_rate": 1.0,
+      "model_indexables_rate": 0.0,
+      "any_temporal_rate": 0.0,
+      "curriculum_bleed_hint_rate": 0.0
+    },
+    "samples": [
+      {
+        "id": "c991fd5a-8ba6-4faa-99d8-d73543109f4d",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina said 'Thanks, Jon! Appreciate the kind words. Sorry to hearing about the studio, but glad to see the positivity. Not easy facing setbacks but I believe in ",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "states"
+        ]
+      },
+      {
+        "id": "24bc6fec-75f3-447b-b792-e32e5a85e34a",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "The team members will continue to push each other and stay motivated as they work towards a common goal. The goals are great to be on this journey together.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "states",
+          "states"
+        ]
+      },
+      {
+        "id": "08585762-2b3c-4542-8244-fbbd4639e251",
+        "action": "promote_semantic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Goals help track progress and improve areas for improvement.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "helps",
+          "shows"
+        ]
+      },
+      {
+        "id": "e9e16a91-f1c9-4af7-9507-a22aa9ea37b9",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina said, \"Yeah Jon! Let's make a difference and show 'em what we got. We can do amazing things together!\".",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "states",
+          "mentions"
+        ]
+      },
+      {
+        "id": "5bf9bd35-7547-4c01-80ea-bf7159a0f774",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said \"Volunteering at the shelter made me feel great to help, even if just for a bit.\"",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said",
+          "made",
+          "helped"
+        ]
+      },
+      {
+        "id": "52912971-1e90-43e9-9349-66259c6e8e35",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina suggested an online platform for showcasing her studio and getting investors. She needs help with something.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "shows_off_studio",
+          "needs_help_with"
+        ]
+      },
+      {
+        "id": "4be12a9c-e98a-42b2-b133-a285ac335d55",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Jon started a dance studio 'cause he's passionate about dancing and wants to share his experience with others.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "started_dance_studio",
+          "has_interest_in_dancing"
+        ]
+      },
+      {
+        "id": "2ceeaaf3-5f76-43f0-a12d-5d8dfa4e43ae",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria sat with a little girl who was alone for a long time. The little girl was very sad, and Maria listened to her without judgment. They laughed and had a goo",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "saw_a_child_sitting_all_byitself",
+          "seemed_to_be_sad"
+        ]
+      },
+      {
+        "id": "e815fba5-d8bd-402b-abf1-092ba6ffa282",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Jon said 'Thanks Gina! It's been tough, but I'm gonna make it happen. It's been great! And hey, you're awesome with your store. How's it going?'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "status",
+          "actions"
+        ]
+      },
+      {
+        "id": "217b62a3-48d3-4bd4-8fd5-f806cecba32c",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'Yeah, that's important. A safe home is key'.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "mentions"
+        ]
+      },
+      {
+        "id": "d3689c32-ce9e-485a-bd72-1868af23feb1",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina suggested marketing strategies for her dance studio, including using Instagram and TikTok to target a younger audience, posting dance clips related to danc",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "mentioning"
+        ]
+      },
+      {
+        "id": "e9a79560-b751-4a7a-bc16-f5f3ca142bf4",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina said 'Sounds great! Marley's perfect; it's got the right amount of grip and movement. Can't wait to see your dance studio done!'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "has_right_amount_of_grip_and_movement",
+          "can_be_watched_by"
+        ]
+      },
+      {
+        "id": "ab7e999d-8f16-4c62-b0d3-284a828553c0",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'Yeah, it was like restarting my mind and spirit. It's amazing how peaceful and pretty it can be. It made me remember the little things in life and sa",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "states",
+          "makes_mind_savor"
+        ]
+      },
+      {
+        "id": "1d136f7a-ddaa-4875-92d3-51a2ddff0f37",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Jon said 'Nice, Gina! I'm happy that dance has such a special meaning to both of us.' It's a really cool way to express ourselves. I loved taking lessons with m",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "has_special_meaning_to_both_of_us",
+          "are_so_precious"
+        ]
+      },
+      {
+        "id": "b63c5c47-9cb7-4a5e-9efe-b24110400295",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina said \"Wow, Jon! Mentors can really help. I'm working on my online store, growing the customer base. It's tough but I'm determined. How about you? Any new t",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "has_status"
+        ]
+      },
+      {
+        "id": "842a3e23-67ee-4e5d-897e-a17c8a1b5af1",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John asked if joy was important for balance in his life. He found balance in his life by finding joy. The key words are 'balance' and 'joy'.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "important",
+          "finds"
+        ]
+      },
+      {
+        "id": "0a30141f-c4ad-4fc1-a017-5b8553fa8c2e",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'It enabled needed repairs and renovations, making the learning environment safer and more modern for students.'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "enabled_repair_updates",
+          "made_learning_environment_sicherer",
+          "makes_learning_environment_more"
+        ]
+      },
+      {
+        "id": "0974e2d4-1288-416b-8921-d64d91950e4c",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'Yeah, it was really nice to help bring people together and create a sense of comfort and community. It's something special to see people supporting ",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "mentions"
+        ]
+      },
+      {
+        "id": "1f28b9e3-7892-4049-b2a4-ca9a6c298c39",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'Yeah, it's tough. Appreciate what you've got. You got through it - stay strong. Are there any things you like to do to calm down during times like t",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "mentions"
+        ]
+      },
+      {
+        "id": "49af5fe5-6fcc-4181-9be1-756b859223e9",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria sent a message to John saying she was impressed by his positive attitude in tough times. She encouraged him to keep going and reminded him of her own expe",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "impressed_by",
+          "toughness"
+        ]
+      },
+      {
+        "id": "4e60c06a-8a17-4bf9-a66c-fadc75ded625",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John helped out helping others and felt that his career was aligned with helping people. He chose to work in the community service sector as a volunteer.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "helps_people",
+          "chooses_career"
+        ]
+      },
+      {
+        "id": "9ffba437-71ea-448c-81a0-dd4395087d05",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'Yeah, Maria, I agree. That can really make a difference. It's important to make people feel noticed and listened to.' Image caption: a photo of a gro",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said",
+          "agrees_with"
+        ]
+      },
+      {
+        "id": "bb0e48e3-8599-49e5-8dad-9e6490e50777",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria started volunteering to help make a difference. Maria's aunt believed in volunteering, and used to help her family out when they were struggling. Maria is",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "started_volunteering_to_help_make_a_difference",
+          "inspired_by"
+        ]
+      },
+      {
+        "id": "08e5473f-3d64-4ef7-856e-969005c42d3d",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria shared a photo of volunteers helping others in a homeless shelter. She mentioned that she was so awesome for helping them. The image is part of a photogra",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "reminds_of"
+        ]
+      },
+      {
+        "id": "af23c0af-64c0-4725-b799-906aae57b787",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Mary volunteered at a homeless shelter for a week, which was a rewarding experience. Maria said 'Wow, John! Way to go helping veterans!' She is also volunteerin",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "volunteered_at",
+          "volunteered_to"
+        ]
+      },
+      {
+        "id": "43fdcefa-0eb6-4bb5-9905-a1a170bc1f7c",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina said 'This design reminds me of the grit it takes to stand out and face challenges.'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions_design",
+          "mentions_design"
+        ]
+      },
+      {
+        "id": "e0011f4a-7b62-4052-96b8-b2a0ede17244",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'Yeah, we can really get amazing stuff done together. We can do this!'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said",
+          "can_do_this"
+        ]
+      },
+      {
+        "id": "cdcd6313-81fd-4630-8ff5-eb779ca36d5b",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'It's great knowing that our actions can brighten someone else's life. Keep it up!'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "states",
+          "says"
+        ]
+      },
+      {
+        "id": "da6c6f4a-2162-4f22-b086-354256003be9",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "A photo of a clipboard with a notepad attached to it shows a dancer in a whiteboard dance move.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "contains",
+          "contains"
+        ]
+      },
+      {
+        "id": "838bd1a9-bedf-42f7-846a-6978c63958fe",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Jon said 'Thanks, Gina! I love running my own studio. It's great having the freedom to create a space and help dancers of all ages and levels express themselves",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "has_achieved",
+          "is_fulfilled_by"
+        ]
+      },
+      {
+        "id": "4ab045b8-c0c2-41ab-998a-01658d2d07a3",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria shared a positive idea about volunteering at a local dog shelter. Maria started volunteering once a month for 6 months. The dog shelter provides loving ho",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "started_volunteering_at",
+          "gives_pup_loving_home"
+        ]
+      },
+      {
+        "id": "8d2027a6-432e-4fdc-af19-0dbb8dd94c2a",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'I feel great. It really helps me relax and feel more connected. It's been a great way to improve my mind and body.'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "improves",
+          "helps"
+        ]
+      },
+      {
+        "id": "b60160f3-1bc8-424e-a821-46544a92637e",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'John, you got this! It's great to have a support system while tackling tough stuff. I'm here to lend an ear or help out however I can. You're really",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "lends_ear_or_help_out",
+          "makes_a_difference"
+        ]
+      },
+      {
+        "id": "5cd14c82-f9d3-4986-aa20-398eaec6366d",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Yoga instructor John creates a relaxing environment for his students, encouraging them to listen to their bodies and being awesome at making sure they do the po",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "are_awesome",
+          "encourage"
+        ]
+      },
+      {
+        "id": "02a44b71-b98b-4e2f-856c-9fad74deb9e1",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'Glad I could help, Maria. Talk to you soon. Stay safe!'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said",
+          "told_to"
+        ]
+      },
+      {
+        "id": "eec05307-e8fa-4c67-ad38-956d44610cf2",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'It was an awesome day at the park with my family. The kids had a lot of fun on the playground, and we had some really nice family time.'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "had_a_lot_of_fun_on_playground",
+          "had_nice_family_time"
+        ]
+      },
+      {
+        "id": "ff648713-c75a-494b-8411-c70d0c4a726f",
+        "action": "promote_semantic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Self-doubt is a persistent issue for John; he faced numerous challenges, including tech issues and workplace obstacles. However, he persevered through these dif",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "has_moment_of_self_doubt",
+          "has_hurdles",
+          "is_worst"
+        ]
+      },
+      {
+        "id": "383901ef-f301-4f4b-8d24-1fbc15e31643",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John's statement about being part of a group of people motivated by their passion for technology for change made him think they could have a positive impact. Th",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "makes_difference"
+        ]
+      },
+      {
+        "id": "d966dafe-641a-4bc7-b465-6856c7ce9af7",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'Thanks, Maria. Appreciate your support. It's amazing what teamwork can accomplish!'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "states",
+          "mentions"
+        ]
+      },
+      {
+        "id": "6e480a6e-052d-4195-b097-92145d276099",
+        "action": "store_episodic",
+        "facts_n": 1,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Gina said \"Glad to cheer you on. Keep going and never give up!\"",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said"
+        ]
+      },
+      {
+        "id": "34bf582c-4ea7-4d8c-907d-2ac5e48512df",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Support means a lot for John. He feels like he's supporting someone who sees the value in him, which keeps him going.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "states",
+          "mentions"
+        ]
+      },
+      {
+        "id": "4881f960-0254-4faa-9099-68afe337e69f",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'Yeah, John, let's keep up the good work and make a difference'. Talk to you soon!",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "mentions"
+        ]
+      },
+      {
+        "id": "f007b481-e4a3-4269-b3b1-439183c15e30",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Jon said 'I won't give up, Gina! I'll keep pushing and working to make my dreams happen. Thanks for the support!'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said",
+          "says",
+          "will_keep_working_to_make_dreams_happen"
+        ]
+      },
+      {
+        "id": "6cd1159d-2b38-4a6d-a3a0-2213eb2e7904",
+        "action": "store_episodic",
+        "facts_n": 1,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said \"Cool, John! It's inspiring to be around people like that. Anything exciting on the horizon?\"",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said"
+        ]
+      },
+      {
+        "id": "1ed41b37-4633-4c1c-8939-39ed3d65cf06",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria mentioned roads that could be dangerous, asking if she could help improve it. Maria is apologizing for her lack of knowledge.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "says"
+        ]
+      },
+      {
+        "id": "7935c2b9-7577-4a46-8188-a2320e3e8ed8",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John said 'No problem, Maria! Working together with passionate people like you is awesome! Let's make a difference.'",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "states"
+        ]
+      },
+      {
+        "id": "20edf724-7e49-4725-9348-31670870715a",
+        "action": "store_episodic",
+        "facts_n": 3,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Joel said 'Hey Maria, that's awesome! I'm really inspired by your drive to make a difference. You mentioned your work at the homeless shelter last time and it m",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "inspired_by",
+          "joined_fire_fighting_brigade",
+          "feels_great_to_do"
+        ]
+      },
+      {
+        "id": "7362ec2d-9627-409c-a55d-777195f09148",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "John shared a memory about playing with his children, which brought him joy and happiness. He noted that moments like these can have a significant impact on peo",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "mentions",
+          "shows"
+        ]
+      },
+      {
+        "id": "70997efe-ab8b-4ca9-8baf-3f859e9379e7",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said \"Yeah, memories and motivators definitely help us stay on track and keep us going.\"",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "said",
+          "said"
+        ]
+      },
+      {
+        "id": "bcc071f4-787d-4c51-9843-1f2b4366c491",
+        "action": "store_episodic",
+        "facts_n": 2,
+        "indexables_n": 0,
+        "facts_temporal_n": 0,
+        "facts_resolved_n": 0,
+        "memory_temporal": false,
+        "memory_content_snip": "Maria said 'Sounds good, John. Let's get support and great ideas from local leaders and organizations. Keep me posted on how your campaign is going'.",
+        "curriculum_bleed_hint": false,
+        "fact_predicates": [
+          "says",
+          "keeps_posting"
+        ]
+      }
+    ]
+  },
+  "holdout_retrieval": {
+    "retrieval_path": "C:\\Users\\chkri\\source\\repos\\PSM\\benchmark\\locomo\\results\\holdout-gate-v5n-dpo-conv-30-conv-41-retrieval.json",
+    "summary": {
+      "metric": "LOCOMO evidence retrieval only",
+      "answer_correctness_evaluated": false,
+      "questions": 258,
+      "hit_at_1": 0.3953488372093023,
+      "hit_at_5": 0.5658914728682171
+    },
+    "questions": 258,
+    "misses": 156,
+    "bucket_counts": {
+      "hit": 102,
+      "evidence_missing_from_top_k": 112,
+      "evidence_in_top_k_not_rank1": 44
+    },
+    "miss_by_category": {
+      "4": 70,
+      "1": 30,
+      "2": 16,
+      "5": 32,
+      "3": 8
+    },
+    "miss_samples": [
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "How do Jon and Gina both like to destress?",
+        "gold_answer": "by dancing",
+        "evidence": [
+          "D1:7",
+          "D1:6"
+        ],
+        "selected_ids": [
+          "D2:11",
+          "D5:17",
+          "D5:21",
+          "D9:9",
+          "D5:2"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "What do Jon and Gina both have in common?",
+        "gold_answer": "They lost their jobs and decided to start their own businesses.",
+        "evidence": [
+          "D1:2",
+          "D1:3",
+          "D1:4",
+          "D2:1"
+        ],
+        "selected_ids": [
+          "D5:21",
+          "D9:9",
+          "D16:13",
+          "D8:22",
+          "D4:12"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "Why did Jon decide to start his dance studio?",
+        "gold_answer": "He lost his job and decided to start his own business to share his passion.",
+        "evidence": [
+          "D1:2",
+          "D1:4"
+        ],
+        "selected_ids": [
+          "D1:6",
+          "D11:3",
+          "D1:4",
+          "D13:3",
+          "D9:1"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When was Jon in Paris?",
+        "gold_answer": "28 January 2023",
+        "evidence": [
+          "D2:4"
+        ],
+        "selected_ids": [
+          "D2:5",
+          "D2:4",
+          "D13:11",
+          "D7:5",
+          "D16:13"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "Which city have both Jean and John visited?",
+        "gold_answer": "Rome",
+        "evidence": [
+          "D2:5",
+          "D15:1"
+        ],
+        "selected_ids": [
+          "D11:11",
+          "D8:8",
+          "D6:16",
+          "D1:9",
+          "D1:8"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When did Gina open her online clothing store?",
+        "gold_answer": "16 March, 2023",
+        "evidence": [
+          "D6:6"
+        ],
+        "selected_ids": [
+          "D5:5",
+          "D14:8",
+          "D6:6",
+          "D2:1",
+          "D3:2"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When did Jon host a dance competition?",
+        "gold_answer": "May, 2023",
+        "evidence": [
+          "D8:13"
+        ],
+        "selected_ids": [
+          "D9:10",
+          "D1:14",
+          "D8:13",
+          "D17:6",
+          "D13:9"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When did Jon go to a fair to get more exposure for his dance studio?",
+        "gold_answer": "24 April, 2023",
+        "evidence": [
+          "D10:1"
+        ],
+        "selected_ids": [
+          "D13:3",
+          "D10:1",
+          "D1:4",
+          "D1:6",
+          "D3:12"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "Why did Gina decide to start her own clothing store?",
+        "gold_answer": "She always loved fashion trends and finding unique pieces and she lost her job so decided it was time to start her own business.",
+        "evidence": [
+          "D6:8",
+          "D1:3"
+        ],
+        "selected_ids": [
+          "D14:8",
+          "D5:5",
+          "D2:1",
+          "D3:2",
+          "D8:4"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "Do Jon and Gina start businesses out of what they love?",
+        "gold_answer": "Yes",
+        "evidence": [
+          "D1:4",
+          "D6:8"
+        ],
+        "selected_ids": [
+          "D19:7",
+          "D5:11",
+          "D5:23",
+          "D2:11",
+          "D5:4"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When did Gina get accepted for the design internship?",
+        "gold_answer": "27 May, 2023",
+        "evidence": [
+          "D12:1"
+        ],
+        "selected_ids": [
+          "D11:14",
+          "D12:1",
+          "D8:10",
+          "D3:4",
+          "D16:5"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "What does Jon's dance studio offer?",
+        "gold_answer": "one-on-one metoring and training to dancers,  workshops and classes to local schools and centers",
+        "evidence": [
+          "D13:7",
+          "D8:13"
+        ],
+        "selected_ids": [
+          "D18:12",
+          "D1:4",
+          "D1:6",
+          "D9:2",
+          "D11:1"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When did Jon receive mentorship to promote his venture?",
+        "gold_answer": "15 June, 2023",
+        "evidence": [
+          "D14:1"
+        ],
+        "selected_ids": [
+          "D13:7",
+          "D4:3",
+          "D8:1",
+          "D1:4",
+          "D1:6"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "Which cities has Jon visited?",
+        "gold_answer": "Paris, Rome",
+        "evidence": [
+          "D2:4",
+          "D15:1"
+        ],
+        "selected_ids": [
+          "D11:11",
+          "D1:8",
+          "D3:9",
+          "D14:1",
+          "D2:6"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "2",
+        "question": "When Jon is planning to open his dance studio?",
+        "gold_answer": "20 June, 2023",
+        "evidence": [
+          "D15:5"
+        ],
+        "selected_ids": [
+          "D1:4",
+          "D1:6",
+          "D13:3",
+          "D9:1",
+          "D3:1"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "1",
+        "question": "How long did it take for Jon to open his studio?",
+        "gold_answer": "six months",
+        "evidence": [
+          "D1:2",
+          "D15:13"
+        ],
+        "selected_ids": [
+          "D1:4",
+          "D1:6",
+          "D9:2",
+          "D13:3",
+          "D18:10"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What is Gina's favorite style of dance?",
+        "gold_answer": "Contemporary",
+        "evidence": [
+          "D1:9"
+        ],
+        "selected_ids": [
+          "D1:7",
+          "D1:8",
+          "D1:17",
+          "D8:6",
+          "D1:9"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What is Jon's favorite style of dance?",
+        "gold_answer": "Contemporary",
+        "evidence": [
+          "D1:8"
+        ],
+        "selected_ids": [
+          "D1:7",
+          "D1:8",
+          "D17:6",
+          "D13:9",
+          "D1:4"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What was Gina's favorite dancing memory?",
+        "gold_answer": "Winning first place at a regionals dance competition",
+        "evidence": [
+          "D1:17"
+        ],
+        "selected_ids": [
+          "D1:7",
+          "D1:17",
+          "D8:6",
+          "D15:14",
+          "D14:16"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What do the dancers in the photo represent?",
+        "gold_answer": "They are performing at the festival",
+        "evidence": [
+          "D1:25"
+        ],
+        "selected_ids": [
+          "D13:9",
+          "D8:17",
+          "D13:8",
+          "D8:18",
+          "D8:14"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What does Gina say about the dancers in the photo?",
+        "gold_answer": "They look graceful",
+        "evidence": [
+          "D1:26"
+        ],
+        "selected_ids": [
+          "D13:8",
+          "D8:17",
+          "D8:18",
+          "D8:14",
+          "D13:18"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What did Gina find for her clothing store on 1 February, 2023?",
+        "gold_answer": "The perfect spot for her store",
+        "evidence": [
+          "D3:2"
+        ],
+        "selected_ids": [
+          "D5:5",
+          "D3:2",
+          "D3:4",
+          "D2:1",
+          "D14:8"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What did Gina design for her store?",
+        "gold_answer": "the space, furniture, and decor",
+        "evidence": [
+          "D3:4"
+        ],
+        "selected_ids": [
+          "D5:5",
+          "D3:4",
+          "D2:1",
+          "D8:10",
+          "D14:8"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What did Gina want her customers to feel in her store?",
+        "gold_answer": "cozy and comfortable",
+        "evidence": [
+          "D3:6",
+          "D3:8"
+        ],
+        "selected_ids": [
+          "D8:4",
+          "D8:12",
+          "D3:2",
+          "D2:1",
+          "D3:6"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What did Jon say about Gina's progress with her store?",
+        "gold_answer": "hard work's paying off",
+        "evidence": [
+          "D3:3"
+        ],
+        "selected_ids": [
+          "D5:2",
+          "D3:2",
+          "D7:6",
+          "D8:13",
+          "D14:2"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "How is Gina's store doing?",
+        "gold_answer": "The store is doing great.",
+        "evidence": [
+          "D4:2"
+        ],
+        "selected_ids": [
+          "D5:5",
+          "D2:1",
+          "D14:2",
+          "D6:6",
+          "D14:8"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What did Jon and Gina compare their entrepreneurial journeys to?",
+        "gold_answer": "dancing together and supporting each other",
+        "evidence": [
+          "D6:15",
+          "D6:16"
+        ],
+        "selected_ids": [
+          "D6:14",
+          "D5:9",
+          "D16:13",
+          "D8:22",
+          "D4:12"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What advice does Gina give to Jon about running a successful business?",
+        "gold_answer": "build relationships with customers, create a strong brand image, stay positive",
+        "evidence": [
+          "D7:5"
+        ],
+        "selected_ids": [
+          "D18:4",
+          "D7:6",
+          "D16:13",
+          "D5:20",
+          "D18:5"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "Why did Gina combine her clothing business with dance?",
+        "gold_answer": "she is passionate about dance and fashion",
+        "evidence": [
+          "D8:8"
+        ],
+        "selected_ids": [
+          "D7:6",
+          "D3:2",
+          "D5:19",
+          "D10:1",
+          "D5:11"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What does Jon's dance make him?",
+        "gold_answer": "happy",
+        "evidence": [
+          "D9:5"
+        ],
+        "selected_ids": [
+          "D11:5",
+          "D18:20",
+          "D3:1",
+          "D9:2",
+          "D18:1"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What is Jon offering to the dancers at his dance studio?",
+        "gold_answer": "One-on-one mentoring and training",
+        "evidence": [
+          "D13:7"
+        ],
+        "selected_ids": [
+          "D8:13",
+          "D11:3",
+          "D8:17",
+          "D5:4",
+          "D1:4"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "How does Jon use the clipboard with a notepad attached to it?",
+        "gold_answer": "To set goals, track achievements, and find areas for improvement",
+        "evidence": [
+          "D13:11"
+        ],
+        "selected_ids": [
+          "D13:9",
+          "D16:9",
+          "D13:13",
+          "D13:11",
+          "D7:5"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What does Jon tell Gina he won't do?",
+        "gold_answer": "quit",
+        "evidence": [
+          "D14:17"
+        ],
+        "selected_ids": [
+          "D4:19",
+          "D7:15",
+          "D19:11",
+          "D13:23",
+          "D17:14"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "How does Gina describe the studio that Jon has opened?",
+        "gold_answer": "amazing",
+        "evidence": [
+          "D15:6"
+        ],
+        "selected_ids": [
+          "D9:2",
+          "D5:4",
+          "D18:1",
+          "D3:12",
+          "D15:3"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "How does Gina describe the feeling that dance brings?",
+        "gold_answer": "magical",
+        "evidence": [
+          "D15:8"
+        ],
+        "selected_ids": [
+          "D9:10",
+          "D17:8",
+          "D5:2",
+          "D15:8",
+          "D8:13"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What does Jon plan to do at the grand opening of his dance studio?",
+        "gold_answer": "savor all the good vibes",
+        "evidence": [
+          "D15:9"
+        ],
+        "selected_ids": [
+          "D15:3",
+          "D18:10",
+          "D1:4",
+          "D1:6",
+          "D13:3"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What does Gina say to Jon about the grand opening?",
+        "gold_answer": "Let's live it up and make some great memories",
+        "evidence": [
+          "D15:12"
+        ],
+        "selected_ids": [
+          "D15:18",
+          "D15:3",
+          "D5:2",
+          "D9:3",
+          "D16:14"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What plans does Jon have after receiving advice at the networking event?",
+        "gold_answer": "Sprucing up his business plan, tweaking his pitch to investors, and working on an online platform.",
+        "evidence": [
+          "D18:10"
+        ],
+        "selected_ids": [
+          "D18:8",
+          "D16:6",
+          "D18:6",
+          "D18:12",
+          "D14:11"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "4",
+        "question": "What offer does Gina make to Jon regarding social media?",
+        "gold_answer": "Helping with making content and managing his social media accounts.",
+        "evidence": [
+          "D18:13"
+        ],
+        "selected_ids": [
+          "D14:5",
+          "D8:13",
+          "D18:15",
+          "D14:4",
+          "D18:14"
+        ],
+        "bucket": "evidence_missing_from_top_k",
+        "hit_at_k": false
+      },
+      {
+        "sample_id": "conv-30",
+        "category": "5",
+        "question": "What is Jon's favorite style of painting?",
+        "gold_answer": "",
+        "evidence": [
+          "D1:8"
+        ],
+        "selected_ids": [
+          "D1:7",
+          "D1:8",
+          "D13:11",
+          "D7:5",
+          "D16:13"
+        ],
+        "bucket": "evidence_in_top_k_not_rank1",
+        "hit_at_k": true
+      }
+    ],
+    "answer_wrong_n": 0,
+    "answer_wrong_samples": []
+  },
+  "failure_taxonomy": [
+    "prod_fixtures_below_deploy_bar: 5/10 effective_stored (need \u22657)",
+    "missed_store_or_guard: plan-01-handoff action=store_episodic",
+    "missed_store_or_guard: workflow-runpod action=ignore",
+    "missed_store_or_guard: technical-api action=ignore",
+    "holdout: model never emits indexables[] \u2014 all indexables auto-built downstream",
+    "holdout: low temporal fill in model decisions (<15% sampled stored turns)",
+    "retrieval: 112 questions with evidence absent from top-k",
+    "retrieval: 44 questions evidence in top-k but not rank-1 (ranking)"
+  ],
+  "phase2_hints": [
+    "SFT rows teaching indexables[] + temporal_expression on dated assistant turns",
+    "DPO pairs for plan-01-handoff / workflow-runpod guard+grounding failures",
+    "Retrieval ranking: episodic salience for multi-evidence category-1 questions"
+  ]
+}

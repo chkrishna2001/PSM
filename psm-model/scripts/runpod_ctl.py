@@ -1186,6 +1186,7 @@ def _ssh_run_script(
     ssh_ready_timeout_sec: int = 300,
     skip_ssh_wait: bool = False,
     capture_output: bool = False,
+    log_out: Path | None = None,
 ) -> int | tuple[int, str]:
     if not skip_ssh_wait and not _wait_ssh_shell(
         host_alias,
@@ -1241,28 +1242,38 @@ def _ssh_run_script(
 
     deadline = time.time() + timeout_sec
     captured: list[str] = []
-    while True:
-        if proc.poll() is not None:
-            remainder = proc.stdout.read()
-            if remainder:
-                if capture_output:
-                    captured.append(remainder)
-                _ssh_stream_print(remainder)
-            break
-        if time.time() > deadline:
-            proc.kill()
-            print(f"SSH eval timed out after {timeout_sec}s", file=sys.stderr)
-            rc = 124
-            return (rc, "".join(captured)) if capture_output else rc
-        line = proc.stdout.readline()
-        if line:
-            if capture_output:
-                captured.append(line)
-            _ssh_stream_print(line)
-        elif proc.poll() is not None:
-            break
-        else:
-            time.sleep(0.05)
+    log_fp = log_out.open("a", encoding="utf-8") if log_out else None
+
+    def _emit(line: str) -> None:
+        if capture_output:
+            captured.append(line)
+        _ssh_stream_print(line)
+        if log_fp:
+            log_fp.write(line)
+            log_fp.flush()
+
+    try:
+        while True:
+            if proc.poll() is not None:
+                remainder = proc.stdout.read()
+                if remainder:
+                    _emit(remainder)
+                break
+            if time.time() > deadline:
+                proc.kill()
+                print(f"SSH eval timed out after {timeout_sec}s", file=sys.stderr)
+                rc = 124
+                return (rc, "".join(captured)) if capture_output else rc
+            line = proc.stdout.readline()
+            if line:
+                _emit(line)
+            elif proc.poll() is not None:
+                break
+            else:
+                time.sleep(0.05)
+    finally:
+        if log_fp:
+            log_fp.close()
     rc = proc.returncode if proc.returncode is not None else 124
     return (rc, "".join(captured)) if capture_output else rc
 

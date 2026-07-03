@@ -33,6 +33,54 @@ declare -A ADAPTER=(
 exec > >(tee -a "$MATRIX_LOG") 2>&1
 echo "=== holdout matrix $(date -u +%Y-%m-%dT%H:%M:%SZ) profiles=$PROFILES_CSV samples=$SAMPLE_IDS ==="
 
+_progress_snapshot() {
+  python3 - <<PY
+import json, subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path("/workspace/PSM")
+tags = [f"{p.strip()}-{__import__('os').environ.get('HOLDOUT_SAMPLE_IDS','conv-30,conv-41').replace(',', '-')}"
+        for p in __import__('os').environ.get('GATE_PROFILES','').split(',') if p.strip()]
+row = {"ts": datetime.now(timezone.utc).isoformat(), "profiles": {}}
+try:
+    out = subprocess.check_output(
+        ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
+        text=True,
+    ).strip().split(",")
+    row["gpu_util_pct"] = out[0].strip()
+    row["gpu_mem_mib"] = out[1].strip()
+except Exception:
+    pass
+try:
+    row["procs"] = subprocess.check_output(
+        "pgrep -af 'holdout|ingest-psm|answer-evaluate|hf_single|evaluate.js' | head -6",
+        shell=True, text=True,
+    ).strip().splitlines()
+except Exception:
+    row["procs"] = []
+log = Path("/tmp/psm-holdout-gate-matrix.log")
+row["matrix_log_tail"] = log.read_text(encoding="utf-8", errors="replace").splitlines()[-8:] if log.is_file() else []
+for tag in tags:
+    prof = {}
+    summary = root / f"benchmark/locomo/results/holdout-gate-{tag}-ingest-summary.json"
+    if summary.is_file():
+        data = json.loads(summary.read_text(encoding="utf-8"))
+        prof["ingest"] = {k: data.get(k) for k in ("seen", "stored", "ignored", "failed")}
+    if (root / f"benchmark/locomo/results/holdout-gate-{tag}.json").is_file():
+        prof["gate_done"] = True
+    if prof:
+        row["profiles"][tag] = prof
+out = root / "benchmark/locomo/results/holdout-gate-progress.snapshot.json"
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+( while true; do sleep 60; _progress_snapshot; done ) &
+HB_PID=$!
+trap 'kill "$HB_PID" 2>/dev/null || true' EXIT
+
 export PYTHONPATH="${ROOT}/psm-model/src:${ROOT}/psm-model/prod-memory"
 export PSM_RUNPOD=1
 export DEBIAN_FRONTEND=noninteractive
@@ -92,10 +140,25 @@ _run_one() {
   GATE_ANSWER_LIMIT="$ANSWER_LIMIT" \
   GATE_SKIP_SETUP=1 \
   GATE_SKIP_BUILD=1 \
+  GATE_SKIP_INGEST="${GATE_SKIP_INGEST:-0}" \
   HF_TOKEN="$HF_TOKEN" \
   bash psm-model/scripts/runpod_holdout_gate.sh
 }
 
+if [[ "${GATE_SEQUENTIAL:-0}" == "1" ]]; then
+  echo "--- sequential holdout gate (one profile at a time) ---"
+  for p in "${PROFILES[@]}"; do
+    p="${p// /}"
+    tag="${p}-$(echo "$SAMPLE_IDS" | tr ',' '-')"
+    gate_out="benchmark/locomo/results/holdout-gate-${tag}.json"
+    if [[ -f "$gate_out" ]]; then
+      echo "skip $p (already have $gate_out)"
+      continue
+    fi
+    echo "--- sequential start $p ---"
+    _run_one "$p" || echo "sequential failed: $p"
+  done
+else
 _parallel_failed=0
 pids=()
 for p in "${PROFILES[@]}"; do
@@ -125,6 +188,7 @@ if [[ "$_parallel_failed" == "1" ]]; then
     echo "--- sequential retry $p ---"
     _run_one "$p" || echo "sequential failed: $p"
   done
+fi
 fi
 
 "$PYTHON" - <<'PY'

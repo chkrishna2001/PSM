@@ -286,7 +286,7 @@ def build_hf_curriculum(
     min_p50 = MIN_STORAGE_V5_CHARS if profile in {"hf-prod-v2", "hf-prod-v4"} else MIN_STORAGE_P50_CHARS
     if profile in {
         "hf-prod-v5b", "hf-prod-v5c", "hf-prod-v5d", "hf-prod-v5e", "hf-prod-v5f", "hf-prod-v5g",
-        "hf-prod-v5h", "hf-prod-v5m", "hf-prod-v5i", "hf-prod-v5j", "hf-prod-v5k-gate", "hf-prod-v5k-gate-fix", "hf-prod-v5k-gate-distill", "hf-prod-v5k-gate-dpo", "hf-prod-v5k-extract", "hf-prod-v5n", "hf-prod-v5o", "hf-prod-v5p",
+        "hf-prod-v5h", "hf-prod-v5m", "hf-prod-v5i", "hf-prod-v5j", "hf-prod-v5k-gate", "hf-prod-v5k-gate-fix", "hf-prod-v5k-gate-distill", "hf-prod-v5k-gate-dpo", "hf-prod-v5k-extract", "hf-prod-v5n", "hf-prod-v5o", "hf-prod-v5p", "hf-prod-v5q",
     }:
         min_p50 = MIN_STORAGE_V5_CHARS
     elif profile == "hf-prod-v5":
@@ -296,6 +296,7 @@ def build_hf_curriculum(
         "hf-prod-v5k-gate-fix",
         "hf-prod-v5k-gate-distill",
         "hf-prod-v5o",
+        "hf-prod-v5q",
     }:
         min_p50 = 0
     elif storage_p50 < min_p50:

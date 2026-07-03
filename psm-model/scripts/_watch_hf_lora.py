@@ -155,6 +155,13 @@ PROFILES: dict[str, dict[str, str]] = {
         "hf_eval": "eval/hf-prod-v5n-dpo-qwen0.5b-prod-grounding.json",
         "output_format": "json",
     },
+    "v5q": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5q-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5q-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5q-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5q-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
     "v5k-two-pass": {
         "binary_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-distill-qwen0.5b/adapter",
         "extract_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-extract-qwen0.5b/adapter",
