@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from psm_model.remember_cli import apply_product_boundary, to_model_input
+from psm_model.remember_cli import PROD_STORAGE_MAX_NEW_TOKENS, apply_product_boundary, to_model_input
 
 from prod_memory.grounding import (
     apply_storage_guards,
@@ -141,9 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--raw-input", action="store_true", help="Skip to_model_input rewrite (match training JSON input).")
     parser.add_argument("--fixture-ids", default="", help="Comma-separated case ids; default all")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--max-new-tokens", type=int, default=384)
+    parser.add_argument("--max-new-tokens", type=int, default=PROD_STORAGE_MAX_NEW_TOKENS)
     args = parser.parse_args(argv)
-    if args.output_format in {"minimal", "binary"} and args.max_new_tokens == 384:
+    if args.output_format in {"minimal", "binary"}:
         args.max_new_tokens = 128
 
     fixture = json.loads(args.fixtures.read_text(encoding="utf-8"))

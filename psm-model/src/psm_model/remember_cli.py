@@ -218,13 +218,16 @@ def remember_from_repair_payload(payload: dict[str, Any], *, output_format: str 
     }
 
 
+PROD_STORAGE_MAX_NEW_TOKENS = 768
+
+
 def remember_storage_decision(
     checkpoint: Path,
     payload: dict[str, Any],
     *,
     output_format: str = "tagged",
     device: str = "auto",
-    max_new_tokens: int = 384,
+    max_new_tokens: int = PROD_STORAGE_MAX_NEW_TOKENS,
 ) -> dict[str, Any]:
     if payload.get("operation") == "repair_remember_json":
         return remember_from_repair_payload(payload, output_format=output_format)
@@ -260,7 +263,7 @@ def main() -> int:
     parser.add_argument("--input", help="JSON model input object (default: read remember payload JSON from stdin)")
     parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "at_tag"])
     parser.add_argument("--device", default="auto", help="auto, cpu, or cuda.")
-    parser.add_argument("--max-new-tokens", type=int, default=384)
+    parser.add_argument("--max-new-tokens", type=int, default=PROD_STORAGE_MAX_NEW_TOKENS)
     args = parser.parse_args()
 
     if args.input:

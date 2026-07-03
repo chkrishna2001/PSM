@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import runpod_ctl as rc  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "psm-model" / "src"))
+from psm_model.remember_cli import PROD_STORAGE_MAX_NEW_TOKENS  # noqa: E402
 SCRIPTS = REPO / "psm-model" / "scripts"
 MODEL_REPO = "krishnach7262/psm-prod-memory-hf"
 GIT_URL = "https://github.com/chkrishna2001/PSM.git"
@@ -102,6 +104,46 @@ PROFILES: dict[str, dict[str, str]] = {
         "label": "hf-prod-v5h-qwen0.5b",
         "hf_adapter_prefix": "hf-prod-v5h-qwen0.5b",
         "hf_eval": "eval/hf-prod-v5h-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
+    "v5n": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5n-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5n-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5n-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5n-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5n-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
+    "v5o-sft": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5o-sft-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5o-sft-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5o-sft-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5o-sft-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5o-sft-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
+    "v5o-dpo": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5o-dpo-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5o-dpo-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5o-dpo-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5o-dpo-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5o-dpo-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
+    "v5p": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5p-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5p-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5p-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5p-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5p-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
+    "v5n-dpo": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5n-dpo-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5n-dpo-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5n-dpo-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5n-dpo-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5n-dpo-qwen0.5b-prod-grounding.json",
         "output_format": "json",
     },
     "v5i": {
@@ -244,6 +286,8 @@ def _deploy() -> tuple[str, str]:
             for target in payload.get("targets") or []:
                 if target.get("user"):
                     proxy_user = target["user"]
+    if proxy_user and "@" not in proxy_user:
+        proxy_user = f"{proxy_user}@ssh.runpod.io"
     return pod_id, proxy_user
 
 
@@ -298,6 +342,31 @@ def _push_eval_files(pod_id: str, proxy_user: str) -> None:
     )
 
 
+def cmd_pull_eval_from_pod(pod_id: str, proxy_user: str, profile: dict[str, str]) -> int:
+    eval_out = profile["eval_out"]
+    local = REPO / eval_out
+    local.parent.mkdir(parents=True, exist_ok=True)
+    alias, host, port, user = _ssh(pod_id, proxy_user)
+    proc = subprocess.run(
+        [
+            rc.SSH_BIN,
+            "-tt",
+            "-i",
+            rc.SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            *rc._ssh_endpoint(alias, host=host, port=port, user=user),
+            f"cat /workspace/PSM/{eval_out}",
+        ],
+        capture_output=True,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        return proc.returncode
+    local.write_bytes(proc.stdout)
+    return 0
+
+
 def cmd_pull_eval(profile: dict[str, str]) -> int:
     eval_out = profile["eval_out"]
     local = REPO / eval_out
@@ -321,6 +390,18 @@ def cmd_pull_eval(profile: dict[str, str]) -> int:
     print(f"pulled {local} ({local.stat().st_size} bytes) from HF", flush=True)
     print(json.dumps({"checkpoint": report.get("checkpoint"), "aggregate": report.get("aggregate", {})}, indent=2))
     return 0
+
+
+def _profile_for_tokens(profile: dict[str, str], max_new_tokens: int) -> dict[str, str]:
+    if max_new_tokens == PROD_STORAGE_MAX_NEW_TOKENS:
+        return profile
+    out = dict(profile)
+    base = out["eval_out"].removesuffix(".json")
+    hf_base = out["hf_eval"].removesuffix(".json")
+    suffix = f"-t{max_new_tokens}"
+    out["eval_out"] = f"{base}{suffix}.json"
+    out["hf_eval"] = f"{hf_base}{suffix}.json"
+    return out
 
 
 def cmd_upload_eval_hf(profile: dict[str, str]) -> int:
@@ -354,8 +435,10 @@ def main() -> int:
     parser.add_argument("--deploy", action="store_true", help="Deploy new eval pod")
     parser.add_argument("--pull-only", action="store_true")
     parser.add_argument("--upload-eval-hf", action="store_true")
+    parser.add_argument("--max-new-tokens", type=int, default=PROD_STORAGE_MAX_NEW_TOKENS)
+    parser.add_argument("--keep-pod", action="store_true", help="Do not stop pod after eval")
     args = parser.parse_args()
-    profile = PROFILES[args.profile]
+    profile = _profile_for_tokens(PROFILES[args.profile], args.max_new_tokens)
 
     if args.upload_eval_hf:
         return cmd_upload_eval_hf(profile)
@@ -391,6 +474,7 @@ def main() -> int:
         "HF_EVAL_OUT": profile["eval_out"],
         "HF_EVAL_REPO_PATH": profile["hf_eval"],
         "HF_CHECKPOINT_LABEL": profile["label"],
+        "HF_MAX_NEW_TOKENS": str(args.max_new_tokens),
     }
     if profile.get("two_pass"):
         extra["HF_BINARY_ADAPTER_DIR"] = profile["binary_adapter"]
@@ -437,11 +521,13 @@ def main() -> int:
         print(f"eval on pod failed exit={code}", file=sys.stderr)
         return code
     local_eval = REPO / profile["eval_out"]
+    if not local_eval.is_file():
+        if cmd_pull_eval_from_pod(pod_id, proxy_user, profile) != 0:
+            if cmd_pull_eval(profile) != 0:
+                return 1
     if local_eval.is_file():
         return cmd_upload_eval_hf(profile)
-    if cmd_pull_eval(profile) != 0:
-        return 1
-    return cmd_upload_eval_hf(profile)
+    return 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_key": "qwen0.5b",
+  "mode": "dpo",
+  "curriculum": "psm-model/prod-memory/data/hf-prod-v5k-gate-dpo.jsonl",
+  "output_dir": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-dpo-qwen0.5b",
+  "rows": 880,
+  "steps": 80,
+  "beta": 0.2,
+  "train_loss": 0.36657253205776213
+}

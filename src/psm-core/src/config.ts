@@ -33,6 +33,9 @@ export interface PsmModelConfig {
   python: string;
   device: string;
   outputFormat: "tagged" | "json" | "at_tag";
+  hfBinaryAdapter: string;
+  hfExtractAdapter: string;
+  hfModelKey: string;
 }
 
 export interface PsmConfig {
@@ -83,11 +86,14 @@ export function defaultPsmConfig(): PsmConfig {
       gpuLayers: "0"
     },
     psmModel: {
-      enabled: false,
-      checkpoint: "psm-model/checkpoints/real-v3-50m-full-v2-step-048000.pt",
+      enabled: true,
+      checkpoint: "hf-two-pass",
       python: process.platform === "win32" ? ".venv\\Scripts\\python.exe" : ".venv/bin/python",
       device: "auto",
-      outputFormat: "tagged"
+      outputFormat: "tagged",
+      hfBinaryAdapter: "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-distill-qwen0.5b/adapter",
+      hfExtractAdapter: "psm-model/prod-memory/checkpoints/hf-prod-v5k-extract-qwen0.5b/adapter",
+      hfModelKey: "qwen0.5b"
     },
     daemon: {
       enabled: false,
@@ -133,7 +139,10 @@ export function readPsmConfig(): PsmConfig {
         checkpoint: stringValue(psmModel.checkpoint, defaults.psmModel.checkpoint),
         python: stringValue(psmModel.python, defaults.psmModel.python),
         device: stringValue(psmModel.device, defaults.psmModel.device),
-        outputFormat: stringValue(psmModel.outputFormat, defaults.psmModel.outputFormat) as PsmModelConfig["outputFormat"]
+        outputFormat: stringValue(psmModel.outputFormat, defaults.psmModel.outputFormat) as PsmModelConfig["outputFormat"],
+        hfBinaryAdapter: stringValue(psmModel.hfBinaryAdapter, defaults.psmModel.hfBinaryAdapter),
+        hfExtractAdapter: stringValue(psmModel.hfExtractAdapter, defaults.psmModel.hfExtractAdapter),
+        hfModelKey: stringValue(psmModel.hfModelKey, defaults.psmModel.hfModelKey)
       },
       daemon: {
         enabled: booleanValue(daemon.enabled, defaults.daemon.enabled),

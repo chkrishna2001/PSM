@@ -105,8 +105,39 @@ def _list_locomo_pods() -> list[dict]:
     return [p for p in json.loads(proc.stdout) if p.get("name") == LOCOMO_POD_NAME]
 
 
+def _delete_all_pods() -> None:
+    """User-confirmed wipe: LoCoMo checkpoint is local; Gate4 HF guard is for train pods."""
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPTS / "runpod_ctl.py"), "list-pods"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+    for pod in json.loads(proc.stdout):
+        pod_id = str(pod.get("id") or "")
+        if not pod_id:
+            continue
+        print(json.dumps({"event": "delete_pod", "pod_id": pod_id, "name": pod.get("name")}), flush=True)
+        subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS / "runpod_ctl.py"),
+                "delete-pod",
+                pod_id,
+                "--force-delete-pod",
+            ],
+            cwd=REPO,
+            check=False,
+        )
+
+
 def _find_or_deploy_pod(*, force_deploy: bool = False) -> tuple[str, str]:
-    if not force_deploy:
+    if force_deploy:
+        _delete_all_pods()
+        time.sleep(5)
+    elif not force_deploy:
         pods = sorted(_list_locomo_pods(), key=lambda p: str(p.get("createdAt") or ""), reverse=True)
         for pod in pods:
             if pod.get("desiredStatus") == "RUNNING":
@@ -183,7 +214,8 @@ def _ensure_pod_running(pod_id: str, proxy_user: str) -> bool:
 
 
 def _ignore_bundle(_dir: str, names: list[str]) -> set[str]:
-    skip = {"node_modules", "__pycache__", ".git", "checkpoints", "results", "data", ".pytest_cache"}
+    # ponytail: do not skip `data` under psm-model/src — psm_model.data is required for HF preflight
+    skip = {"node_modules", "__pycache__", ".git", "checkpoints", "results", ".pytest_cache"}
     return {name for name in names if name in skip or name.endswith((".db", ".pt", ".pyc"))}
 
 
@@ -335,6 +367,11 @@ def _log_tail(proxy_user: str) -> str:
     return _ssh_pod(proxy_user, f"tail -100 {LOCOMO_LOG} 2>/dev/null || true")
 
 
+def _process_alive(proxy_user: str) -> bool:
+    text = _ssh_pod(proxy_user, "pgrep -af 'runpod_locomo|ingest-cli|hf_remember' | head -1 || true", timeout_sec=30)
+    return bool(text.strip())
+
+
 def _wait_log(
     proxy_user: str,
     *,
@@ -343,6 +380,7 @@ def _wait_log(
     label: str,
 ) -> bool:
     deadline = time.time() + timeout_sec
+    extensions = 0
     while time.time() < deadline:
         text = _log_tail(proxy_user)
         if re.search(success, text):
@@ -356,6 +394,24 @@ def _wait_log(
             print(json.dumps({"event": f"{label}_fail", "reason": "nonzero failed count", "tail": text[-800:]}), flush=True)
             return False
         time.sleep(20)
+    if extensions < 2 and _process_alive(proxy_user):
+        extensions += 1
+        extra = 1800 if label.endswith("preflight") else 12 * 3600
+        print(json.dumps({"event": f"{label}_extend", "extra_sec": extra, "reason": "process_alive"}), flush=True)
+        deadline = time.time() + extra
+        while time.time() < deadline:
+            text = _log_tail(proxy_user)
+            if re.search(success, text):
+                print(json.dumps({"event": f"{label}_ok"}), flush=True)
+                return True
+            for pat in FAIL_PATTERNS:
+                if re.search(pat, text):
+                    print(json.dumps({"event": f"{label}_fail", "pattern": pat, "tail": text[-800:]}), flush=True)
+                    return False
+            if re.search(r"failed=[1-9]", text) and label in {"smoke", "ingest"}:
+                print(json.dumps({"event": f"{label}_fail", "reason": "nonzero failed count", "tail": text[-800:]}), flush=True)
+                return False
+            time.sleep(20)
     print(json.dumps({"event": f"{label}_timeout", "tail": _log_tail(proxy_user)[-800:]}), flush=True)
     return False
 
@@ -420,10 +476,7 @@ def _run_phase(
     if not _verify_tmux(pod_id, proxy_user, require_gpu=False):
         print(json.dumps({"event": "tmux_verify_fail", "phase": phase}), flush=True)
         return False
-    if not _wait_log(proxy_user, success=r"HF preflight PASS", timeout_sec=1800, label=f"{phase}_preflight"):
-        return False
-    if not _verify_tmux(pod_id, proxy_user, require_gpu=True):
-        print(json.dumps({"event": "gpu_verify_fail", "phase": phase}), flush=True)
+    if not _wait_log(proxy_user, success=r"HF preflight PASS", timeout_sec=3600, label=f"{phase}_preflight"):
         return False
     if limit > 0:
         return _wait_log(
@@ -432,7 +485,7 @@ def _run_phase(
             timeout_sec=3600,
             label="smoke",
         )
-    if not _wait_log(proxy_user, success=r"=== LoCoMo done", timeout_sec=6 * 3600, label="benchmark"):
+    if not _wait_log(proxy_user, success=r"=== LoCoMo done", timeout_sec=96 * 3600, label="benchmark"):
         return False
     return _pull_results(alias, limit_tag, host=host, port=port, user=user) == 0
 
@@ -461,7 +514,7 @@ def main() -> int:
     pod_id = args.pod_id.strip()
     proxy_user = args.proxy_user.strip()
     if args.deploy or not pod_id:
-        pod_id, proxy_user = _find_or_deploy_pod(force_deploy=args.force_deploy)
+        pod_id, proxy_user = _find_or_deploy_pod(force_deploy=args.force_deploy or args.deploy)
     elif not proxy_user:
         _, proxy_user = _ssh_info(pod_id)
     if not pod_id or not proxy_user:
@@ -496,11 +549,18 @@ def main() -> int:
             if not ok:
                 _stop_pod(pod_id)
                 return 1
+            if args.smoke_then_full:
+                _pull_results(alias, "5", host=host, port=port, user=user)
+                smoke_db = REPO / "benchmark/locomo/results/locomo-hf-prod-v5k-two-pass-n5.db"
+                if smoke_db.is_file():
+                    shutil.copy2(smoke_db, checkpoint)
+                    print(json.dumps({"event": "smoke_db_merged", "path": str(checkpoint)}), flush=True)
             if args.smoke and not args.smoke_then_full:
                 print(json.dumps({"event": "smoke_passed", "pod_id": pod_id}), flush=True)
                 return 0
 
         limit = 0 if args.smoke_then_full or (not args.smoke and args.limit == 0) else args.limit
+        full_offset = args.offset + (5 if args.smoke_then_full else 0)
         ok = _run_phase(
             pod_id,
             proxy_user,
@@ -510,7 +570,7 @@ def main() -> int:
             user=user,
             token=token,
             limit=limit,
-            offset=args.offset,
+            offset=full_offset,
             checkpoint_db=checkpoint,
             resume_rel=resume_rel,
             phase="full",

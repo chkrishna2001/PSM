@@ -51,11 +51,14 @@ if [[ ! -f "$ADAPTER_DIR/adapter_model.safetensors" ]]; then
   shopt -u nullglob
 fi
 
+MAX_NEW_TOKENS="${HF_MAX_NEW_TOKENS:-768}"
+
 python -m prod_memory.eval_hf_grounding \
   --adapter-dir "$ADAPTER_DIR" \
   --model "$MODEL_KEY" \
   --device cuda \
   --output-format "${HF_OUTPUT_FORMAT:-tagged}" \
+  --max-new-tokens "$MAX_NEW_TOKENS" \
   --checkpoint-label "${HF_CHECKPOINT_LABEL:-hf-prod-v1-${MODEL_KEY}}" \
   --out "$EVAL_OUT"
 export HF_EVAL_OUT="$EVAL_OUT"

@@ -305,7 +305,9 @@ export class PsmService {
 
   private async contextCandidates(userId: string, query: string, preferredTables: MemoryRecord["table"][], limit: number): Promise<{ memories: MemoryRecord[]; facts: ScoredFact[]; vectorScores: Map<string, number> }> {
     const tables = allRecallTables();
-    const lexicalCandidates = this.store.selectMemories(userId, tables, limit);
+    // ponytail: without vectors, rank over full user memory — 200-row cap misses LoCoMo-scale evidence
+    const lexicalLimit = this.embeddings ? limit : Math.max(limit, 10_000);
+    const lexicalCandidates = this.store.selectMemories(userId, tables, lexicalLimit);
     const factCandidates = rankFacts(query, this.store.selectMemoryFacts(userId, limit), limit);
     if (!this.embeddings) {
       return { memories: lexicalCandidates, facts: factCandidates, vectorScores: new Map() };

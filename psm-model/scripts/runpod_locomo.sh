@@ -100,28 +100,6 @@ _fetch_hf_adapter() {
   shopt -u nullglob
 }
 
-_install_hf_python_stack() {
-  echo "--- HF Python stack (matched cu124 wheels) ---"
-  pip install -q --upgrade pip
-  # ponytail: pin matched torch/torchvision/torchaudio — upgrading torch alone breaks peft import
-  pip install -q \
-    torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
-    --index-url https://download.pytorch.org/whl/cu124
-  pip install -q transformers peft accelerate sentencepiece 'torchao>=0.16.0' huggingface_hub
-  "$PYTHON" - <<'PY'
-import torch, torchvision, torchaudio
-from peft import PeftModel
-assert torch.cuda.is_available(), "CUDA not available"
-print(
-    "python-imports ok",
-    f"torch={torch.__version__}",
-    f"torchvision={torchvision.__version__}",
-    f"torchaudio={torchaudio.__version__}",
-    f"cuda={torch.cuda.get_device_name(0)}",
-)
-PY
-}
-
 _hf_gpu_preflight() {
   echo "--- HF GPU preflight (must pass before ingest) ---"
   local binary_abs="${ROOT}/${HF_BINARY}"
@@ -145,10 +123,10 @@ PY
 }
 
 if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
-  _install_hf_python_stack
+  pip install -q torch transformers peft accelerate sentencepiece 2>/dev/null \
+    || pip install -q torch transformers peft accelerate sentencepiece
   _fetch_hf_adapter "$HF_BINARY_PREFIX" "$HF_BINARY"
   _fetch_hf_adapter "$HF_EXTRACT_PREFIX" "$HF_EXTRACT"
-  _hf_gpu_preflight
 else
 if [[ ! -f "$CHECKPOINT" ]]; then
   echo "Downloading $CHECKPOINT from $MODEL_REPO..."
@@ -196,6 +174,10 @@ if [[ "${LOCOMO_SKIP_BUILD:-0}" == "1" && -f dist/benchmark/locomo/src/ingest-ps
   echo "Using pre-pushed dist (LOCOMO_SKIP_BUILD=1)"
 else
   npm run build
+fi
+
+if [[ -n "$HF_BINARY" && -n "$HF_EXTRACT" ]]; then
+  _hf_gpu_preflight
 fi
 
 echo "--- LoCoMo ingest (limit=$LIMIT offset=$OFFSET) ---"

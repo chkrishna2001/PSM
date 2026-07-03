@@ -37,14 +37,17 @@ export class RememberServer {
     env: NodeJS.ProcessEnv;
     hfBinaryAdapter?: string;
     hfExtractAdapter?: string;
+    hfAdapter?: string;
     hfModelKey?: string;
   }): RememberServer {
-    const hfMode = Boolean(options.hfBinaryAdapter && options.hfExtractAdapter);
+    const hfTwoPassMode = Boolean(options.hfBinaryAdapter && options.hfExtractAdapter);
+    const hfSingleMode = Boolean(options.hfAdapter);
     const key = [
       options.python,
-      hfMode ? "hf-two-pass" : options.checkpoint,
+      hfTwoPassMode ? "hf-two-pass" : hfSingleMode ? "hf-single" : options.checkpoint,
       options.hfBinaryAdapter ?? "",
       options.hfExtractAdapter ?? "",
+      options.hfAdapter ?? "",
       options.outputFormat,
       options.device,
       options.maxNewTokens
@@ -57,7 +60,7 @@ export class RememberServer {
     const pythonPath = isAbsolute(options.python) || bareName
       ? options.python
       : resolve(options.repoRoot, options.python);
-    const spawnArgs = hfMode
+    const spawnArgs = hfTwoPassMode
       ? [
           "-m",
           "psm_model.hf_remember_server",
@@ -72,7 +75,22 @@ export class RememberServer {
           "--max-new-tokens",
           String(options.maxNewTokens)
         ]
-      : [
+      : hfSingleMode
+        ? [
+            "-m",
+            "psm_model.hf_single_remember_server",
+            "--adapter",
+            options.hfAdapter!,
+            "--output-format",
+            options.outputFormat,
+            "--model",
+            options.hfModelKey ?? "qwen0.5b",
+            "--device",
+            options.device,
+            "--max-new-tokens",
+            String(options.maxNewTokens)
+          ]
+        : [
           "-m",
           "psm_model.remember_server",
           options.checkpoint,

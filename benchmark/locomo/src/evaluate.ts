@@ -1,12 +1,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { MemoryStore, rankMemories, type MemoryRecord } from "@psm-memory/sdk";
-import { loadSamples, parseOptions, parseTags, tagValue } from "./common.js";
+import { loadSamples, parseOptions, parseSampleIds, filterSamples, parseTags, tagValue } from "./common.js";
 
 export function main(argv: string[]): number {
   const options = parseOptions(argv);
   const answerableOnly = hasFlag(argv, "answerable-only");
-  const samples = loadSamples(options.data);
+  const sampleIds = parseSampleIds(getOption(argv, "sample-ids", ""));
+  const samples = filterSamples(loadSamples(options.data), sampleIds);
   const store = new MemoryStore(options.db);
   const records: Array<Record<string, unknown>> = [];
 
@@ -48,6 +49,11 @@ export function main(argv: string[]): number {
 
 function hasFlag(argv: string[], key: string): boolean {
   return argv.includes(`--${key}`);
+}
+
+function getOption(argv: string[], key: string, fallback: string): string {
+  const index = argv.indexOf(`--${key}`);
+  return index >= 0 && argv[index + 1] && !argv[index + 1].startsWith("--") ? argv[index + 1] : fallback;
 }
 
 function hitAt(evidence: string[], selected: string[], k: number): boolean {

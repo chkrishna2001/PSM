@@ -1,0 +1,18 @@
+---
+description: 
+alwaysApply: true
+---
+
+# PSM fine-tuning workflow (LoCoMo + adapters)
+
+- We are working on **PSM** (Probabilistic/Pragmatic Storage Model): fine-tune a small Qwen (0.5B/0.6B) so it can reliably emit **StorageDecision**-style memory/facts for chat turns, and respect the project’s grounding rules.
+- The goal is to fine-tune Qwen **0.6B or 0.5B** so its LoRA adapter works end-to-end with **PSM CLI**: **the same JSON input shape and the same structured output format** every time.
+- When running LoCoMo questions, always feed them using the **PSM CLI JSON format** (not ad-hoc strings). Output must be in the same CLI-compatible shape the rest of the pipeline expects.
+- Any non-trivial work (curriculum building, probing/eval, training runs, artifact sync/validation) must be delegated to sub-agents. This thread should only orchestrate and decide.
+- Maintain a single source of truth “memory” file (see `docs/psm-model/PSM-MEMORY.md`) that always includes:
+  - our goal
+  - what we did (probes/train attempts)
+  - what we achieved so far
+  - the most recent good state / current best checkpoint status
+  - after every session end review this memory file and update it. no need to keep old data always fresh state, unless old data matters
+- RunPod pod lifecycle rule: **do not delete pods until** all required artifacts are uploaded to HF (and verified locally where possible). Stop/delete is allowed only after the checklist is complete; otherwise keep the pod.

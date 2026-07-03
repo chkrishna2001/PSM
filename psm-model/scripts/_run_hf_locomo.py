@@ -65,6 +65,14 @@ PROFILES: dict[str, dict[str, str]] = {
         "hf_locomo": "eval/hf-prod-v5h-qwen0.5b-locomo-n25.json",
         "output_format": "json",
     },
+    "v5n": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5n-qwen0.5b/adapter",
+        "locomo_out": "psm-model/prod-memory/results/hf-prod-v5n-qwen0.5b-locomo-n25.json",
+        "label": "hf-prod-v5n-qwen0.5b",
+        "hf_adapter_prefix": "hf-prod-v5n-qwen0.5b",
+        "hf_locomo": "eval/hf-prod-v5n-qwen0.5b-locomo-n25.json",
+        "output_format": "json",
+    },
     "v5i": {
         "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5i-qwen0.5b/adapter",
         "locomo_out": "psm-model/prod-memory/results/hf-prod-v5i-qwen0.5b-locomo-n25.json",
@@ -133,18 +141,34 @@ def _upload_locomo_hf(profile: dict[str, str], token: str) -> int:
     return proc.returncode
 
 
-def _pull_locomo(pod_id: str, proxy_user: str, profile: dict[str, str]) -> int:
+def _ssh_cat_file(pod_id: str, proxy_user: str, remote_path: str, local: Path, *, timeout_sec: int = 300) -> int:
     alias, host, port, user = _resolve(pod_id, proxy_user)
-    local = REPO / profile["locomo_out"]
     local.parent.mkdir(parents=True, exist_ok=True)
-    return rc._scp_from_pod(
-        alias,
-        f"/workspace/PSM/{profile['locomo_out']}",
-        local,
-        host=host,
-        port=port,
-        user=user,
+    proc = subprocess.run(
+        [
+            rc.SSH_BIN,
+            "-tt",
+            "-i",
+            rc.SSH_KEY_PATH,
+            "-o",
+            "ConnectTimeout=20",
+            *rc._ssh_endpoint(alias, host=host, port=port, user=user),
+            "bash",
+            "-s",
+        ],
+        input=f"cat {remote_path}\nexit\n",
+        capture_output=True,
+        timeout=timeout_sec,
     )
+    if proc.returncode != 0:
+        return proc.returncode
+    local.write_bytes(proc.stdout)
+    return 0
+
+
+def _pull_locomo(pod_id: str, proxy_user: str, profile: dict[str, str]) -> int:
+    local = REPO / profile["locomo_out"]
+    return _ssh_cat_file(pod_id, proxy_user, f"/workspace/PSM/{profile['locomo_out']}", local)
 
 
 def main() -> int:
@@ -162,7 +186,11 @@ def main() -> int:
         return 1
 
     if args.pull_only:
-        return _pull_locomo(args.pod_id, args.proxy_user, profile)
+        if _pull_locomo(args.pod_id, args.proxy_user, profile) != 0:
+            return 1
+        summary = json.loads((REPO / profile["locomo_out"]).read_text(encoding="utf-8"))["summary"]
+        print(json.dumps(summary, indent=2))
+        return 0
 
     alias, host, port, user = _resolve(args.pod_id, args.proxy_user)
     extra = {

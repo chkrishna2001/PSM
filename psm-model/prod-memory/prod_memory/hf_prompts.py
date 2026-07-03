@@ -80,6 +80,23 @@ def storage_inference_messages(llm_response: str, *, output_format: str = "tagge
     ]
 
 
+def storage_llm_response_from_input(input_payload: dict[str, Any]) -> str:
+    from prod_memory.row_validation import remember_target_from_input
+
+    return remember_target_from_input(input_payload)
+
+
+def storage_inference_messages_from_input(
+    input_payload: dict[str, Any],
+    *,
+    output_format: str = "tagged",
+) -> list[dict[str, str]]:
+    return storage_inference_messages(
+        storage_llm_response_from_input(input_payload),
+        output_format=output_format,
+    )
+
+
 def apply_chat_text(messages: list[dict[str, str]], tokenizer: Any) -> str:
     return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
 

@@ -21,6 +21,7 @@ from prod_memory.label_from_assistant import (
 )
 
 DEFAULT_MODEL = "google/gemma-4-31b-it"
+DEFAULT_CF_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 FALLBACK_MODEL = "z-ai/glm-5.2"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 ALLOWED_ACTIONS = {"ignore", "store_episodic", "promote_semantic"}
@@ -28,7 +29,7 @@ ALLOWED_ACTIONS = {"ignore", "store_episodic", "promote_semantic"}
 SYSTEM_PROMPT = """You are a strict PSM production-memory training labeler.
 Return one complete JSON object only. No markdown fences. No commentary. Start with { and end with }.
 
-Task: label remember({ llmResponse }) — extract durable memory from assistant text only.
+Task: label remember_llm_response CLI payloads — extract durable memory from assistant text only.
 The model must learn grounded extraction, not template memorization.
 
 Allowed actions: ignore, store_episodic, promote_semantic.
@@ -37,8 +38,8 @@ Use promote_semantic for reusable rules, preferences, architecture decisions, or
 Use store_episodic for concrete milestones, completed outcomes, handoffs, or session-specific durable facts.
 
 Rules:
-- Do not invent facts. memory.content and every fact must be grounded in verbatim spans from llm_response.
-- evidence_text must be an exact substring (or whitespace-normalized match) from llm_response.
+- Do not invent facts. memory.content and every fact must be grounded in verbatim spans from the assistant conversation text.
+- evidence_text must be an exact substring (or whitespace-normalized match) from the assistant conversation text.
 - memory.content must be concise (under 480 chars), not a raw transcript.
 - Return at most 4 facts. Each fact needs subject, predicate (snake_case), value, evidence_text.
 - Return indexables: [] — indexables are built locally.
@@ -51,23 +52,64 @@ Return exactly:
 
 @dataclass(frozen=True)
 class TeacherConfig:
+    provider: str = "openrouter"
     model: str = DEFAULT_MODEL
     fallback_model: str = FALLBACK_MODEL
     base_url: str = DEFAULT_BASE_URL
     api_key: str = ""
+    account_id: str = ""
     request_delay_ms: int = 300
     request_max_retries: int = 6
     request_timeout_s: int = 90
     max_tokens: int = 900
 
     @classmethod
-    def from_env(cls, *, model: str | None = None) -> TeacherConfig:
+    def from_env(cls, *, model: str | None = None, provider: str | None = None) -> TeacherConfig:
+        prov = (provider or os.environ.get("PROD_TEACHER_PROVIDER", "")).strip().lower()
+        cf_token = (
+            os.environ.get("CLOUDFLARE_API_TOKEN", "")
+            or os.environ.get("CF_API_TOKEN", "")
+        ).strip()
+        cf_account = (
+            os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+            or os.environ.get("CF_ACCOUNT_ID", "")
+        ).strip()
+        or_key = (
+            os.environ.get("OPENROUTER_API_KEY", "")
+            or os.environ.get("OPENAI_API_KEY", "")
+        ).strip()
+        if not prov:
+            prov = "cloudflare" if cf_token and cf_account else "openrouter"
+
+        delay_ms = int(os.environ.get("PROD_TEACHER_DELAY_MS", "1800" if prov == "openrouter" else "400"))
+        retries = int(os.environ.get("PROD_TEACHER_MAX_RETRIES", "6"))
+
+        if prov == "cloudflare":
+            if not cf_token or not cf_account:
+                raise ValueError("CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID required")
+            base_url = os.environ.get(
+                "PROD_TEACHER_BASE_URL",
+                f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1",
+            )
+            return cls(
+                provider="cloudflare",
+                model=model or os.environ.get("PROD_TEACHER_MODEL", DEFAULT_CF_MODEL),
+                fallback_model=os.environ.get("PROD_TEACHER_FALLBACK_MODEL", ""),
+                api_key=cf_token,
+                account_id=cf_account,
+                base_url=base_url,
+                request_delay_ms=delay_ms,
+                request_max_retries=retries,
+            )
+
         return cls(
+            provider="openrouter",
             model=model or os.environ.get("PROD_TEACHER_MODEL", DEFAULT_MODEL),
-            api_key=os.environ.get("OPENROUTER_API_KEY", os.environ.get("OPENAI_API_KEY", "")),
+            fallback_model=os.environ.get("PROD_TEACHER_FALLBACK_MODEL", FALLBACK_MODEL),
+            api_key=or_key,
             base_url=os.environ.get("OPENROUTER_BASE_URL", os.environ.get("OPENAI_BASE_URL", DEFAULT_BASE_URL)),
-            request_delay_ms=int(os.environ.get("PROD_TEACHER_DELAY_MS", "1800")),
-            request_max_retries=int(os.environ.get("PROD_TEACHER_MAX_RETRIES", "6")),
+            request_delay_ms=delay_ms,
+            request_max_retries=retries,
         )
 
 
@@ -144,7 +186,12 @@ def label_assistant_with_teacher(
                         "content": json.dumps(
                             {
                                 "operation": "remember_llm_response",
-                                "llm_response": _compact_for_teacher(text),
+                                "conversation": [
+                                    {
+                                        "role": "assistant",
+                                        "content": _compact_for_teacher(text),
+                                    }
+                                ],
                             },
                             ensure_ascii=False,
                         ),
@@ -202,18 +249,18 @@ def build_row_from_teacher(
 
 def _chat_completion(config: TeacherConfig, *, model: str, messages: list[dict[str, str]]) -> str:
     if not config.api_key:
-        raise ValueError("OPENROUTER_API_KEY is required for teacher labeling.")
+        raise ValueError(f"{config.provider} API key required for teacher labeling.")
 
     url = f"{config.base_url.rstrip('/')}/chat/completions"
-    body = json.dumps(
-        {
-            "model": model,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": config.max_tokens,
-            "response_format": {"type": "json_object"},
-        }
-    ).encode("utf-8")
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0,
+        "max_tokens": config.max_tokens,
+    }
+    if config.provider == "openrouter":
+        payload["response_format"] = {"type": "json_object"}
+    body = json.dumps(payload).encode("utf-8")
 
     last_error = ""
     for attempt in range(config.request_max_retries + 1):
@@ -244,7 +291,7 @@ def _chat_completion(config: TeacherConfig, *, model: str, messages: list[dict[s
                 break
             time.sleep(min(60, 2 * (2**attempt)))
 
-    raise RuntimeError(last_error or "OpenRouter chat completion failed")
+    raise RuntimeError(last_error or f"{config.provider} chat completion failed")
 
 
 def _parse_teacher_json(raw: str) -> tuple[dict[str, Any] | None, str | None]:

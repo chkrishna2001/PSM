@@ -4,10 +4,10 @@ import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, HybridPsmRuntime, MemoryStore, NodeLlamaRuntime, PsmModelRuntime, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TraceModelRuntime, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { buildHfPsmRuntime, defaultEmbeddingModel, defaultPsmConfig, defaultPsmConfigPath, MemoryStore, PsmService, readPsmConfig, renderAgentMemoryContext, resolvePsmDbPath, resolvePsmMemoryDir, TraceModelRuntime, TransformersEmbeddingRuntime, writePsmConfig, memoryTables, type ContextItem, type EmbeddingRuntime, type MemoryTable, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
 import { boolOption, intOption, parseArgs, stringOption } from "./args.js";
 import { callDaemon, dispatchDaemonRemember, startDaemon } from "./daemon.js";
-import { defaultModelPath, hasDefaultModel, resolveModelPath, setupModel } from "./model.js";
+import { defaultModelPath, hasDefaultModel, resolveRepoRoot, setupModel } from "./model.js";
 
 export async function run(argv: string[]): Promise<number> {
   const { command, options, positionals } = parseArgs(argv);
@@ -75,14 +75,16 @@ export async function run(argv: string[]): Promise<number> {
       }
       if (modelPath) {
         await installStep("runtime_verify", async () => {
-          const runtime = new NodeLlamaRuntime({
-            modelPath,
-            contextSize: config.runtime.contextSize,
-            gpu: config.runtime.gpu as "auto",
-            gpuLayers: config.runtime.gpuLayers as "auto",
-            log: (message) => installLog("runtime_log", { message })
+          const runtime = buildHfPsmRuntime({
+            repoRoot: resolveRepoRoot(),
+            python: config.psmModel.python,
+            device: config.psmModel.device,
+            outputFormat: config.psmModel.outputFormat,
+            hfBinaryAdapter: config.psmModel.hfBinaryAdapter,
+            hfExtractAdapter: config.psmModel.hfExtractAdapter,
+            hfModelKey: config.psmModel.hfModelKey
           });
-          await runtime.generateJson("Return only valid JSON: {\"ok\":true}", { maxTokens: 8, temperature: 0 });
+          await (runtime as { warmup?: () => Promise<void> }).warmup?.();
         }, { model: modelPath });
       }
       installLog("setup_ok", { model: modelPath, db: dbPath, embedding_model: config.embeddings.enabled && !boolOption(options, "skip-embeddings") ? embeddingModel : undefined });
@@ -230,7 +232,7 @@ export async function run(argv: string[]): Promise<number> {
           db: dbPath,
           initialized: true,
           model_installed: hasDefaultModel(),
-          next_step: hasDefaultModel() ? undefined : "Run `psm-memory setup` to download the PSM Memory model before using remember or recall."
+          next_step: hasDefaultModel() ? undefined : "Run `psm-memory setup` from the PSM repo root to verify HF adapters."
         }, pretty);
         return 0;
       }
@@ -295,28 +297,16 @@ export async function run(argv: string[]): Promise<number> {
 }
 
 function createRuntime(options: Record<string, string | boolean>): ModelRuntime {
-  const modelPath = resolveModelPath();
   const config = readPsmConfig();
-  const primary = new NodeLlamaRuntime({
-    modelPath,
-    contextSize: intOption(options, "context-size", config.runtime.contextSize),
-    gpu: stringOption(options, "gpu", config.runtime.gpu) as "auto",
-    gpuLayers: stringOption(options, "gpu-layers", config.runtime.gpuLayers) as "auto"
+  const runtime = buildHfPsmRuntime({
+    repoRoot: resolveRepoRoot(),
+    python: stringOption(options, "psm-python", config.psmModel.python),
+    device: stringOption(options, "psm-device", config.psmModel.device),
+    outputFormat: stringOption(options, "psm-output-format", config.psmModel.outputFormat) as "tagged",
+    hfBinaryAdapter: stringOption(options, "hf-binary-adapter", config.psmModel.hfBinaryAdapter),
+    hfExtractAdapter: stringOption(options, "hf-extract-adapter", config.psmModel.hfExtractAdapter),
+    hfModelKey: stringOption(options, "hf-model", config.psmModel.hfModelKey)
   });
-  const usePsmModel = boolOption(options, "psm-model") || config.psmModel.enabled
-    || process.env.PSM_MODEL === "1" || process.env.PSM_MODEL === "true";
-  const runtime: ModelRuntime = usePsmModel
-    ? new HybridPsmRuntime(
-        primary,
-        new PsmModelRuntime({
-          checkpoint: stringOption(options, "psm-checkpoint", config.psmModel.checkpoint),
-          python: stringOption(options, "psm-python", config.psmModel.python),
-          device: stringOption(options, "psm-device", config.psmModel.device),
-          outputFormat: stringOption(options, "psm-output-format", config.psmModel.outputFormat) as "tagged",
-          repoRoot: process.cwd()
-        })
-      )
-    : primary;
   return traceEnabled(options, config) ? new TraceModelRuntime({
     runtime,
     path: tracePath(options, config),
@@ -340,7 +330,7 @@ function createEmbeddingRuntime(options: Record<string, string | boolean>): { mo
 }
 
 function modelCacheBaseDir(): string {
-  return process.env.PSM_MEMORY_HOME ?? join(dirname(defaultModelPath()));
+  return process.env.PSM_MEMORY_HOME ?? resolveRepoRoot();
 }
 
 function traceEnabled(options: Record<string, string | boolean>, config = readPsmConfig()): boolean {
@@ -1451,9 +1441,9 @@ function advancedHelpText(): string {
   --gpu <mode>            Override node-llama-cpp backend selection.
   --gpu-layers <mode>     Override GPU layer offload.
 
-Default model path:
+Default HF model:
   ${defaultModelPath()}
 
-The npm package downloads the default Q4_K_M GGUF model during install. If installation fails, inspect the install log path printed by npm.
+PSM uses the Qwen 0.6B HF two-pass adapters from the repo. Run setup from the repo root to verify adapters and warm the remember server.
 `;
 }

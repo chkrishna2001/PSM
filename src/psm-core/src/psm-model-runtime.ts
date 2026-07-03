@@ -2,7 +2,50 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RememberServer } from "./remember-server.js";
+import { DeterministicPlanRuntime } from "./deterministic-plan-runtime.js";
 import type { GenerateOptions, ModelRuntime } from "./types.js";
+
+export const defaultHfBinaryAdapter = "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-distill-qwen0.5b/adapter";
+export const defaultHfExtractAdapter = "psm-model/prod-memory/checkpoints/hf-prod-v5k-extract-qwen0.5b/adapter";
+
+export interface HfPsmRuntimeOptions {
+  repoRoot?: string;
+  python?: string;
+  device?: string;
+  outputFormat?: "tagged" | "json" | "at_tag";
+  hfBinaryAdapter?: string;
+  hfExtractAdapter?: string;
+  hfAdapter?: string;
+  hfModelKey?: string;
+  maxNewTokens?: number;
+}
+
+export function buildHfPsmRuntime(options: HfPsmRuntimeOptions = {}): ModelRuntime {
+  const repoRoot = resolveRepoRoot(options.repoRoot);
+  const shared = {
+    python: options.python,
+    repoRoot,
+    outputFormat: options.outputFormat ?? "tagged",
+    device: options.device ?? "auto",
+    hfModelKey: options.hfModelKey ?? "qwen0.5b",
+    maxNewTokens: options.maxNewTokens
+  };
+  if (options.hfAdapter) {
+    const storage = new PsmModelRuntime({
+      checkpoint: "hf-single",
+      ...shared,
+      hfAdapter: resolve(repoRoot, options.hfAdapter)
+    });
+    return new DeterministicPlanRuntime(storage);
+  }
+  const storage = new PsmModelRuntime({
+    checkpoint: "hf-two-pass",
+    ...shared,
+    hfBinaryAdapter: resolve(repoRoot, options.hfBinaryAdapter ?? defaultHfBinaryAdapter),
+    hfExtractAdapter: resolve(repoRoot, options.hfExtractAdapter ?? defaultHfExtractAdapter)
+  });
+  return new DeterministicPlanRuntime(storage);
+}
 
 export interface PsmModelRuntimeOptions {
   checkpoint: string;
@@ -14,6 +57,8 @@ export interface PsmModelRuntimeOptions {
   /** ponytail: temporary HF two-pass LoRA (gate + extract adapters) */
   hfBinaryAdapter?: string;
   hfExtractAdapter?: string;
+  /** Single HF LoRA adapter (full StorageDecision JSON path) */
+  hfAdapter?: string;
   hfModelKey?: string;
 }
 
@@ -83,6 +128,7 @@ export class PsmModelRuntime implements ModelRuntime {
   private readonly maxNewTokens: number;
   private readonly hfBinaryAdapter?: string;
   private readonly hfExtractAdapter?: string;
+  private readonly hfAdapter?: string;
   private readonly hfModelKey: string;
 
   constructor(options: PsmModelRuntimeOptions) {
@@ -94,6 +140,7 @@ export class PsmModelRuntime implements ModelRuntime {
     this.maxNewTokens = options.maxNewTokens ?? Number(process.env.PSM_MAX_NEW_TOKENS ?? 384);
     this.hfBinaryAdapter = options.hfBinaryAdapter ? resolve(options.hfBinaryAdapter) : undefined;
     this.hfExtractAdapter = options.hfExtractAdapter ? resolve(options.hfExtractAdapter) : undefined;
+    this.hfAdapter = options.hfAdapter ? resolve(options.hfAdapter) : undefined;
     this.hfModelKey = options.hfModelKey ?? "qwen0.5b";
   }
 
@@ -120,6 +167,7 @@ export class PsmModelRuntime implements ModelRuntime {
       env: this.runtimeEnv(),
       hfBinaryAdapter: this.hfBinaryAdapter,
       hfExtractAdapter: this.hfExtractAdapter,
+      hfAdapter: this.hfAdapter,
       hfModelKey: this.hfModelKey
     });
   }

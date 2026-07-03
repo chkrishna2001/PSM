@@ -11,7 +11,7 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from psm_model.hf_lora_train import DEFAULT_MODELS
-from psm_model.remember_cli import apply_product_boundary
+from psm_model.remember_cli import PROD_STORAGE_MAX_NEW_TOKENS, apply_product_boundary
 
 from prod_memory.eval_grounding import (
     DEFAULT_FIXTURES,
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "minimal", "binary", "minimal_extract"])
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--max-new-tokens", type=int, default=384)
+    parser.add_argument("--max-new-tokens", type=int, default=PROD_STORAGE_MAX_NEW_TOKENS)
     args = parser.parse_args(argv)
 
     fixture = json.loads(args.fixtures.read_text(encoding="utf-8"))

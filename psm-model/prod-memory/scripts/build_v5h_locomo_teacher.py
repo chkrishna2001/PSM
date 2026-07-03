@@ -22,7 +22,7 @@ from prod_memory.openrouter_teacher import TeacherConfig, build_row_from_teacher
 DEFAULT_DATA = ROOT.parent.parent / "benchmark" / "locomo" / "data" / "locomo10.json"
 LOCOMO_URL = "https://raw.githubusercontent.com/snap-research/locomo/main/data/locomo10.json"
 DEFAULT_OUT = ROOT / "data" / "hf-prod-v5h-locomo.jsonl"
-DEFAULT_MODEL = "openai/gpt-4o"
+DEFAULT_MODEL = "google/gemma-4-31b-it"
 
 
 def _ensure_data(path: Path) -> None:

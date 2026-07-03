@@ -144,7 +144,7 @@ def sync_once(pod_id: str, proxy_user: str) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pod-id", default="cyveakf0qhvqih")
+    parser.add_argument("--pod-id", default="")
     parser.add_argument("--proxy-user", default="")
     parser.add_argument("--interval-sec", type=int, default=300)
     parser.add_argument("--once", action="store_true")

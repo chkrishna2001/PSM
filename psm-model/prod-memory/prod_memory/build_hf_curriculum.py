@@ -44,6 +44,7 @@ DEFAULT_OUTPUT_V5E = PACKAGE_ROOT / "data" / "hf-prod-v5e.jsonl"
 DEFAULT_OUTPUT_V5F = PACKAGE_ROOT / "data" / "hf-prod-v5f.jsonl"
 DEFAULT_OUTPUT_V5G = PACKAGE_ROOT / "data" / "hf-prod-v5g.jsonl"
 DEFAULT_OUTPUT_V5H = PACKAGE_ROOT / "data" / "hf-prod-v5h.jsonl"
+DEFAULT_OUTPUT_V5M = PACKAGE_ROOT / "data" / "hf-prod-v5m.jsonl"
 DEFAULT_OUTPUT_V5I = PACKAGE_ROOT / "data" / "hf-prod-v5i.jsonl"
 DEFAULT_OUTPUT_V5J = PACKAGE_ROOT / "data" / "hf-prod-v5j.jsonl"
 DEFAULT_OUTPUT_V5K_GATE = PACKAGE_ROOT / "data" / "hf-prod-v5k-gate.jsonl"
@@ -57,6 +58,7 @@ DEFAULT_GEMMA_FIXTURES = PACKAGE_ROOT / "data" / "prod-extraction-fixtures-gemma
 DEFAULT_SOURCE_V4 = PACKAGE_ROOT / "data" / "prod-extraction-v4.jsonl"
 DEFAULT_SOURCE_V6 = PACKAGE_ROOT / "data" / "prod-extraction-v6-v4.jsonl"
 DEFAULT_IGNORE_FRACTION_V5 = 0.17
+DEFAULT_IGNORE_FRACTION_V5M = 0.25
 DEFAULT_DATASET_REPO = "krishnach7262/psm-prod-memory-data"
 DEFAULT_MODEL_REPO = "krishnach7262/psm-prod-memory-hf"
 MIN_STORAGE_P50_CHARS = 500
@@ -284,7 +286,7 @@ def build_hf_curriculum(
     min_p50 = MIN_STORAGE_V5_CHARS if profile in {"hf-prod-v2", "hf-prod-v4"} else MIN_STORAGE_P50_CHARS
     if profile in {
         "hf-prod-v5b", "hf-prod-v5c", "hf-prod-v5d", "hf-prod-v5e", "hf-prod-v5f", "hf-prod-v5g",
-        "hf-prod-v5h", "hf-prod-v5i", "hf-prod-v5j", "hf-prod-v5k-gate", "hf-prod-v5k-gate-fix", "hf-prod-v5k-gate-distill", "hf-prod-v5k-gate-dpo", "hf-prod-v5k-extract",
+        "hf-prod-v5h", "hf-prod-v5m", "hf-prod-v5i", "hf-prod-v5j", "hf-prod-v5k-gate", "hf-prod-v5k-gate-fix", "hf-prod-v5k-gate-distill", "hf-prod-v5k-gate-dpo", "hf-prod-v5k-extract", "hf-prod-v5n", "hf-prod-v5o", "hf-prod-v5p",
     }:
         min_p50 = MIN_STORAGE_V5_CHARS
     elif profile == "hf-prod-v5":
@@ -293,6 +295,7 @@ def build_hf_curriculum(
         "hf-prod-v5k-gate",
         "hf-prod-v5k-gate-fix",
         "hf-prod-v5k-gate-distill",
+        "hf-prod-v5o",
     }:
         min_p50 = 0
     elif storage_p50 < min_p50:
@@ -375,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         "--profile",
         choices=[
             "hf-prod-v1", "hf-prod-v2", "hf-prod-v4", "hf-prod-v5", "hf-prod-v5b", "hf-prod-v5c",
-            "hf-prod-v5d", "hf-prod-v5e", "hf-prod-v5f", "hf-prod-v5g", "hf-prod-v5h", "hf-prod-v5i",
+            "hf-prod-v5d", "hf-prod-v5e", "hf-prod-v5f", "hf-prod-v5g", "hf-prod-v5h", "hf-prod-v5m", "hf-prod-v5i",
             "hf-prod-v5j", "hf-prod-v5k-gate", "hf-prod-v5k-gate-fix", "hf-prod-v5k-gate-distill", "hf-prod-v5k-gate-dpo", "hf-prod-v5k-extract",
         ],
         default="hf-prod-v1",
@@ -556,6 +559,47 @@ def main(argv: list[str] | None = None) -> int:
             profile="hf-prod-v5h",
             anchor_rows=anchors,
             ignore_fraction=DEFAULT_IGNORE_FRACTION_V5,
+            simplify_labels=True,
+            include_source_storage=True,
+        )
+    elif args.profile == "hf-prod-v5m":
+        from prod_memory.build_locomo_gate_rows import build_locomo_v5m_store_rows
+
+        args.output = args.output if args.output != DEFAULT_OUTPUT else DEFAULT_OUTPUT_V5M
+        if not args.no_download:
+            _download_v3(args.source, dataset_repo=args.dataset_repo)
+        seed = build_json_fixture_rows()
+        copies = args.fixture_copies or 8
+        anchors = list(seed)
+        if copies > 1:
+            anchors.extend(_copy_rows(seed, prefix="fxm", copies=copies - 1))
+        boost_seed = [row for row in seed if any(fid in row["id"] for fid in V5E_BOOST_FIXTURE_IDS)]
+        if boost_seed:
+            anchors.extend(_copy_rows(boost_seed, prefix="fxmb", copies=30))
+        noise_boost = [row for row in seed if any(fid in row["id"] for fid in ("noise-filler", "noise-meta"))]
+        if noise_boost:
+            anchors.extend(_copy_rows(noise_boost, prefix="fxmn", copies=30))
+        if DEFAULT_LOCOMO_V5H.is_file():
+            locomo = _grounded_storage_rows(_load_rows(DEFAULT_LOCOMO_V5H))
+            anchors.extend(locomo)
+            anchors.extend(_copy_rows(locomo, prefix="fxml", copies=2))
+        else:
+            locomo = build_locomo_v5m_store_rows()
+            if locomo:
+                anchors.extend(locomo)
+                anchors.extend(_copy_rows(locomo, prefix="fxml", copies=1))
+        manifest = build_hf_curriculum(
+            args.output,
+            source=args.source,
+            output_format="json",
+            recall_fraction=0.0,
+            min_input_chars=MIN_STORAGE_P50_CHARS,
+            dataset_repo=args.dataset_repo,
+            download=False,
+            fixture_copies=0,
+            profile="hf-prod-v5m",
+            anchor_rows=anchors,
+            ignore_fraction=DEFAULT_IGNORE_FRACTION_V5M,
             simplify_labels=True,
             include_source_storage=True,
         )

@@ -18,7 +18,7 @@
     {
       "id": "cursor-01-summary",
       "suite": "cursor_shaped",
-      "llmResponse": "I updated the remember path to reject ungrounded storage and block curriculum bleed. Prod max_new_tokens is now 384 to match eval. Next step is the prod grounding harness with fixtures for plan chunks and review-pr workflow.",
+      "llmResponse": "I updated the remember path to reject ungrounded storage and block curriculum bleed. Prod max_new_tokens is now 768 to match eval. Next step is the prod grounding harness with fixtures for plan chunks and review-pr workflow.",
       "keyTokens": ["remember", "grounding", "bleed", "fixtures"],
       "expectAction": "store"
     },

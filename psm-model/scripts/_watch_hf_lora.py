@@ -92,6 +92,13 @@ PROFILES: dict[str, dict[str, str]] = {
         "hf_eval": "eval/hf-prod-v5h-qwen0.5b-prod-grounding.json",
         "output_format": "json",
     },
+    "v5m": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5m-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5m-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5m-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5m-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
+    },
     "v5i": {
         "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5i-qwen0.5b/adapter",
         "eval_out": "psm-model/prod-memory/results/hf-prod-v5i-qwen0.5b-prod-grounding.json",
@@ -140,6 +147,13 @@ PROFILES: dict[str, dict[str, str]] = {
         "label": "hf-prod-v5k-extract-qwen0.5b",
         "hf_eval": "eval/hf-prod-v5k-extract-qwen0.5b-prod-grounding.json",
         "output_format": "minimal_extract",
+    },
+    "v5n-dpo": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5n-dpo-qwen0.5b/adapter",
+        "eval_out": "psm-model/prod-memory/results/hf-prod-v5n-dpo-qwen0.5b-prod-grounding.json",
+        "label": "hf-prod-v5n-dpo-qwen0.5b",
+        "hf_eval": "eval/hf-prod-v5n-dpo-qwen0.5b-prod-grounding.json",
+        "output_format": "json",
     },
     "v5k-two-pass": {
         "binary_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5k-gate-distill-qwen0.5b/adapter",

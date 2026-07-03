@@ -7,10 +7,12 @@ import {
   buildLocomoPsmText,
   buildLocomoRememberText,
   createLocomoIngestRuntime,
+  filterSamples,
   flattenTurns,
   loadSamples,
   locomoSourceTimestamp,
-  parseOptions
+  parseOptions,
+  parseSampleIds
 } from "./common.js";
 
 interface IngestStats {
@@ -52,23 +54,33 @@ export async function main(argv: string[]): Promise<number> {
 
   const hfBinary = getOption(argv, "hf-binary-adapter", "");
   const hfExtract = getOption(argv, "hf-extract-adapter", "");
+  const hfAdapter = getOption(argv, "hf-adapter", "");
   const hfModelKey = getOption(argv, "hf-model", "qwen0.5b");
   const useHfTwoPass = Boolean(hfBinary && hfExtract);
+  const useHfSingle = Boolean(hfAdapter);
   const offset = Math.max(0, Number(getOption(argv, "offset", "0")) || 0);
+  const sampleIds = parseSampleIds(getOption(argv, "sample-ids", ""));
 
-  const samples = loadSamples(options.data);
+  const samples = filterSamples(loadSamples(options.data), sampleIds);
   const store = new MemoryStore(options.db);
   store.initializeSchema();
   const modelRuntime = new PsmModelRuntime({
-    checkpoint: useHfTwoPass ? "hf-two-pass" : path.resolve(repoRoot, checkpoint),
+    checkpoint: useHfTwoPass ? "hf-two-pass" : useHfSingle ? "hf-single" : path.resolve(repoRoot, checkpoint),
     python: resolvePythonExecutable(repoRoot, python),
     repoRoot,
     outputFormat,
     device,
+    maxNewTokens: Number(getOption(argv, "max-new-tokens", process.env.PSM_MAX_NEW_TOKENS || "768")),
     ...(useHfTwoPass
       ? {
           hfBinaryAdapter: path.resolve(repoRoot, hfBinary),
           hfExtractAdapter: path.resolve(repoRoot, hfExtract),
+          hfModelKey
+        }
+      : {}),
+    ...(useHfSingle
+      ? {
+          hfAdapter: path.resolve(repoRoot, hfAdapter),
           hfModelKey
         }
       : {})
@@ -79,7 +91,11 @@ export async function main(argv: string[]): Promise<number> {
   const stats: IngestStats = {
     db: options.db,
     data: options.data,
-    checkpoint: useHfTwoPass ? `hf-two-pass:${hfBinary}+${hfExtract}` : checkpoint,
+    checkpoint: useHfTwoPass
+      ? `hf-two-pass:${hfBinary}+${hfExtract}`
+      : useHfSingle
+        ? `hf-single:${hfAdapter}`
+        : checkpoint,
     device,
     seen: 0,
     stored: 0,
@@ -183,7 +199,7 @@ function recordRememberResult(stats: IngestStats, source: string, result: Record
 }
 
 function finish(store: MemoryStore, stats: IngestStats, debugOut?: string, debugRecords: DebugRecord[] = []): number {
-  const out = "benchmark/locomo/results/ingest-psm-model-summary.json";
+  const out = process.env.INGEST_SUMMARY_OUT || "benchmark/locomo/results/ingest-psm-model-summary.json";
   mkdirSync(path.dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(stats, null, 2), "utf8");
   if (debugOut) {

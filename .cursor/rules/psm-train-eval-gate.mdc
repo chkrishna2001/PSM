@@ -1,0 +1,67 @@
+---
+description: PSM post-train evaluation + checkpoint promotion gate. Read before/after any train run.
+alwaysApply: true
+---
+
+# PSM train → eval → promote gate
+
+Do **not** judge a checkpoint by `effective_stored` alone. That is a storage-decision
+number on 10 hand-written fixtures — it does **not** prove memories are extractable,
+retrievable, or useful. Every train run must produce a full case report **and** a real
+ingestion + retrieval smoke on non-training data before the checkpoint is promoted.
+
+## Hard rules
+
+1. **Never gate on a single aggregate.** Report all layers, every run: storage decision,
+   facts, memory content, temporal/indexables, retrieval.
+2. **Never eval on training data.** Ingestion + retrieval smoke must run on a frozen
+   holdout that is provably absent from every curriculum/DPO JSONL for that adapter line.
+3. **Different questions than ingest.** Retrieval questions must not be the same rows used
+   for labeling/DPO/curriculum.
+4. **No blind training.** Do not launch another SFT/DPO sweep until the smoke gate below
+   can run and produce numbers for the checkpoint under test.
+
+## Post-train checklist (run every time, in order)
+
+### A. Storage report — full case table (not just aggregate)
+Per prod fixture case, record and actually review:
+- `action` vs `expectAction`
+- `parse_valid` / `fail_safe` / `repair_status`
+- `memory.content` snippet
+- `facts[]` count + grounded vs `keyTokens`
+- `indexables[]` + temporal fields (flag when empty/missing — do not silently pass)
+- guard route if rejected
+Publish the case table; do not summarize to one number.
+
+### B. Holdout ingestion smoke (non-training data)
+- Frozen holdout: LoCoMo conversations held out by conv id (never in any curriculum for
+  v5n+), or a synthetic pack of unseen assistant turns.
+- Ingest through the **PSM CLI path** (`operation=remember_llm_response`,
+  `conversation=[assistant]`) — same shape as prod.
+- Assert: sane store rate, no JSON/curriculum bleed, stored text contains expected entities.
+
+### C. Holdout retrieval smoke (different questions than ingest)
+- Same holdout convs, a **different** QA subset than anything used to label/train.
+- Small N (e.g. 2 convs, ~10 questions) so it runs fast every time.
+- Metrics: `hit_at_1`, `answer_accuracy` (min bar: retrieved memory contains the evidence span).
+
+### D. Artifacts + promote
+- Upload adapter + metrics + all eval reports to HF; verify locally.
+- **Promote only if:** storage case table is healthy **and** holdout retrieval does not
+  regress vs the current best baseline (today: `hf-prod-v5n-dpo-qwen0.5b`).
+- Only after upload+verify: stop the pod. Never delete before the checklist is complete.
+
+## Known infra gaps (fix before trusting retrieval numbers)
+- `answer-evaluate.ts` / `buildHfPsmRuntime` default to the **v5k two-pass** adapters
+  (`hf-prod-v5k-gate-distill` + `hf-prod-v5k-extract`), not the current single-adapter
+  JSON best (`v5n-dpo`). Point end-to-end eval at the checkpoint under test.
+- `filter_locomo_holdout.py` exists but is **not** wired into the train pipeline — run it
+  (or hold out whole convs) before building any LoCoMo-touching curriculum.
+- No temporal/indexable metric exists yet — add expected-indexable holdout cases before
+  claiming temporal quality.
+- `v5h / v5k / v5l / v5m` trained on LoCoMo evidence turns → LoCoMo is **not** a clean
+  holdout for those lines. `v5n / v5n-dpo` are conversation-only → LoCoMo is fair there.
+
+## Deploy bar (real, not proxy)
+Fixtures **≥7/10** effective_stored with a healthy case table **and** holdout retrieval
+**≥ baseline**. `effective_stored` alone is never sufficient to ship.

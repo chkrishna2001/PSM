@@ -6,8 +6,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from psm_model.generate import generate_storage_json, open_generation_session
-
 from prod_memory.grounding import would_model_store
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +59,7 @@ def run_case(
     max_new_tokens: int,
     raw_input: bool,
 ) -> dict[str, Any]:
+    from psm_model.generate import generate_storage_json
     from psm_model.remember_cli import to_model_input
 
     payload = {
@@ -98,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--fixture-ids", default="", help="Comma-separated subset; default all fixtures")
     args = parser.parse_args(argv)
+
+    from psm_model.generate import open_generation_session
 
     fixture = json.loads(args.fixtures.read_text(encoding="utf-8"))
     cases = [c for c in fixture.get("cases", []) if isinstance(c, dict)]

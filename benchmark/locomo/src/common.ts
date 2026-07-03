@@ -32,6 +32,19 @@ export function loadSamples(path: string): LocomoSample[] {
   return JSON.parse(readFileSync(path, "utf8")) as LocomoSample[];
 }
 
+export function parseSampleIds(value: string | undefined): Set<string> | null {
+  const ids = (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return ids.length > 0 ? new Set(ids) : null;
+}
+
+export function filterSamples(samples: LocomoSample[], sampleIds: Set<string> | null): LocomoSample[] {
+  if (!sampleIds) return samples;
+  return samples.filter((sample) => sampleIds.has(String(sample.sample_id ?? "")));
+}
+
 export function flattenTurns(sample: LocomoSample): LocomoTurn[] {
   const conversation = sample.conversation ?? {};
   return Object.keys(conversation)

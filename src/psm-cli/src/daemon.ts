@@ -2,8 +2,8 @@ import { createServer, request as httpRequest } from "node:http";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { defaultEmbeddingModel, HybridPsmRuntime, MemoryStore, NodeLlamaRuntime, PsmModelRuntime, PsmService, readPsmConfig, resolvePsmDbPath, TraceModelRuntime, TransformersEmbeddingRuntime, type EmbeddingRuntime, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
-import { defaultModelPath, resolveModelPath } from "./model.js";
+import { buildHfPsmRuntime, defaultEmbeddingModel, MemoryStore, PsmService, readPsmConfig, resolvePsmDbPath, TraceModelRuntime, TransformersEmbeddingRuntime, type EmbeddingRuntime, type ModelRuntime, type PsmConfig } from "@psm-memory/sdk";
+import { defaultModelPath, resolveRepoRoot } from "./model.js";
 
 export interface DaemonRequest {
   operation: "recall" | "remember" | "context";
@@ -40,7 +40,7 @@ export async function startDaemon(): Promise<void> {
           ok: true,
           db: dbPath,
           model: defaultModelPath(),
-          psm_model: psmModelEnabled(config) ? resolve(config.psmModel.checkpoint) : undefined,
+          psm_model: defaultModelPath(),
           pid: process.pid
         });
         return;
@@ -190,42 +190,22 @@ function createEmbeddingRuntime(): { model: string; runtime: EmbeddingRuntime } 
     model,
     runtime: new TransformersEmbeddingRuntime({
       model,
-      cacheDir: join(dirname(defaultModelPath()), "hf")
+      cacheDir: join(resolveRepoRoot(), "hf-embeddings")
     })
   };
 }
 
-function resolveRepoRoot(): string {
-  const cwd = process.cwd();
-  if (existsSync(resolve(cwd, "psm-model", "src", "psm_model"))) return cwd;
-  return cwd;
-}
-
-function psmModelEnabled(config: PsmConfig): boolean {
-  if (process.env.PSM_MODEL === "1" || process.env.PSM_MODEL === "true") return true;
-  return config.psmModel.enabled;
-}
-
 function createRuntime(config: PsmConfig): ModelRuntime {
-  const primary = new NodeLlamaRuntime({
-    modelPath: resolveModelPath(),
-    contextSize: config.runtime.contextSize,
-    gpu: config.runtime.gpu as "auto",
-    gpuLayers: config.runtime.gpuLayers as "auto"
-  });
   const repoRoot = resolveRepoRoot();
-  const runtime: ModelRuntime = psmModelEnabled(config)
-    ? new HybridPsmRuntime(
-        primary,
-        new PsmModelRuntime({
-          checkpoint: resolve(repoRoot, config.psmModel.checkpoint),
-          python: config.psmModel.python,
-          device: config.psmModel.device,
-          outputFormat: config.psmModel.outputFormat,
-          repoRoot
-        })
-      )
-    : primary;
+  const runtime: ModelRuntime = buildHfPsmRuntime({
+    repoRoot,
+    python: config.psmModel.python,
+    device: config.psmModel.device,
+    outputFormat: config.psmModel.outputFormat,
+    hfBinaryAdapter: resolve(repoRoot, config.psmModel.hfBinaryAdapter),
+    hfExtractAdapter: resolve(repoRoot, config.psmModel.hfExtractAdapter),
+    hfModelKey: config.psmModel.hfModelKey
+  });
   return traceEnabled(config) ? new TraceModelRuntime({
     runtime,
     path: tracePath(config),

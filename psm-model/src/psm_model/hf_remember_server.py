@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from psm_model.remember_cli import apply_product_boundary, to_model_input
+from psm_model.remember_cli import PROD_STORAGE_MAX_NEW_TOKENS, apply_product_boundary, to_model_input
 
 
 def _llm_response_from_payload(payload: dict[str, Any]) -> str:
@@ -70,7 +70,7 @@ def main() -> int:
     parser.add_argument("--extract-adapter", type=Path, required=True)
     parser.add_argument("--model", default="qwen0.5b")
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--max-new-tokens", type=int, default=384)
+    parser.add_argument("--max-new-tokens", type=int, default=PROD_STORAGE_MAX_NEW_TOKENS)
     args = parser.parse_args()
 
     from prod_memory.eval_hf_grounding import open_hf_two_pass_sessions

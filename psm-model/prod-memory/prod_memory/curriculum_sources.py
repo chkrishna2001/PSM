@@ -17,7 +17,7 @@ MEMORY_SUMMARIES: dict[str, str] = {
         "Chunk long assistant handoffs on markdown headers and numbered steps near 600-1200 tokens per chunk."
     ),
     "cursor-01-summary": (
-        "Prod remember path rejects ungrounded storage, blocks curriculum bleed, and uses 384 max_new_tokens."
+        "Prod remember path rejects ungrounded storage, blocks curriculum bleed, and uses 768 max_new_tokens."
     ),
     "cursor-02-debug": (
         "Training templates hurt assistant-text extraction; high Hit@k can hide missing grounded facts."

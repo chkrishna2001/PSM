@@ -229,12 +229,13 @@ def train_hf_lora_dpo(
     save_steps: int = 40,
     logging_steps: int = 10,
     beta: float = 0.2,
+    resume_adapter: str | None = None,
 ) -> dict[str, Any]:
     try:
         import torch
         import torch.nn.functional as F
         from datasets import Dataset
-        from peft import LoraConfig, get_peft_model
+        from peft import LoraConfig, PeftModel, get_peft_model
         from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
     except ImportError as exc:
         raise ImportError("hf dpo extras required: pip install torch transformers peft datasets accelerate") from exc
@@ -275,7 +276,15 @@ def train_hf_lora_dpo(
         task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
-    model = get_peft_model(model, lora_config)
+    resolved_resume = (resume_adapter or os.environ.get("HF_RESUME_ADAPTER") or "").strip()
+    if resolved_resume:
+        adapter_path = Path(resolved_resume)
+        if not adapter_path.is_dir():
+            raise FileNotFoundError(f"resume adapter missing: {resolved_resume}")
+        print(f"resuming LoRA for dpo from {adapter_path}", flush=True)
+        model = PeftModel.from_pretrained(model, str(adapter_path), is_trainable=True)
+    else:
+        model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
     class _DpoCollator:
@@ -353,6 +362,7 @@ def train_hf_lora_dpo(
         "steps": steps,
         "beta": beta,
         "train_loss": train_result.training_loss,
+        "resume_adapter": resolved_resume or None,
     }
     (output_dir / "train.metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     return metrics
@@ -387,6 +397,7 @@ def main(argv: list[str] | None = None) -> int:
             learning_rate=args.learning_rate,
             save_steps=args.save_steps,
             beta=args.beta,
+            resume_adapter=args.resume_adapter,
         )
     else:
         metrics = train_hf_lora(

@@ -5,6 +5,7 @@ export * from "./embeddings.js";
 export * from "./grounding-guards.js";
 export * from "./indexables.js";
 export * from "./json.js";
+export * from "./deterministic-plan-runtime.js";
 export * from "./llama-runtime.js";
 export * from "./psm-model-runtime.js";
 export * from "./prompts.js";
