@@ -1,0 +1,12 @@
+{
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_key": "qwen0.5b",
+  "mode": "dpo",
+  "curriculum": "psm-model/prod-memory/data/hf-prod-v5n-dpo3-calibration.jsonl",
+  "output_dir": "psm-model/prod-memory/checkpoints/hf-prod-v5n-dpo3-qwen0.5b",
+  "rows": 136,
+  "steps": 40,
+  "beta": 0.08,
+  "train_loss": 1.2467296838760376,
+  "resume_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5n-dpo-qwen0.5b/adapter"
+}

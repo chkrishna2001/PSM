@@ -8,7 +8,7 @@ from typing import Any
 
 import torch
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteria, StoppingCriteriaList
 
 from psm_model.hf_lora_train import DEFAULT_MODELS
 from psm_model.remember_cli import PROD_STORAGE_MAX_NEW_TOKENS, apply_product_boundary
@@ -29,6 +29,7 @@ from prod_memory.grounding import (
     would_model_store,
 )
 from prod_memory.hf_prompts import apply_chat_prompt, storage_inference_messages
+from prod_memory.storage_rewards import is_json_complete
 
 
 from prod_memory.eval_classify import binary_predicts_store
@@ -39,6 +40,53 @@ def _binary_classify_match(expect_action: str, raw: str) -> bool:
     if expect_action == "ignore":
         return not predicts_store
     return predicts_store
+
+
+# compact_storage_json() sort_keys=True + no separator spaces makes "action" the
+# alphabetically-first (and therefore first-emitted) key in every StorageDecision.
+# When the model commits to ignore, this literal prefix appears reliably within the
+# first ~10-15 generated tokens, well before facts/indexables/memory/reasoning scaffold.
+_IGNORE_JSON_PREFIX = '{"action":"ignore'
+
+# Minimal valid closing shape once we've detected an ignore decision. schema.py's
+# parse_and_validate_storage_decision() requires memory=null for action=ignore, and a
+# non-empty reasoning string on every decision, so we can't just truncate mid-object.
+_IGNORE_JSON_SUFFIX = '","memory":null,"facts":[],"indexables":[],"reasoning":"Nothing durable to store."}'
+
+
+class _IgnorePrefixStoppingCriteria(StoppingCriteria):
+    """Halts generation as soon as the decoded output unambiguously commits to action=ignore.
+
+    Only meaningful for output_format="json" (the compact StorageDecision scaffold). Batch
+    size is always 1 for this session, so decoding the whole new-token span each step is cheap
+    relative to the tokens it saves (an ignore decision otherwise pays for the full
+    facts/indexables/memory/reasoning scaffold even though none of that content is used).
+    """
+
+    def __init__(self, tokenizer: Any, prompt_len: int) -> None:
+        self.tokenizer = tokenizer
+        self.prompt_len = prompt_len
+        self.triggered = False
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs: Any) -> bool:
+        new_tokens = input_ids[0, self.prompt_len :]
+        # ponytail: cheap length guard avoids decoding on every single step before we're close.
+        if new_tokens.shape[0] < 6:
+            return False
+        text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+        if _IGNORE_JSON_PREFIX in text:
+            self.triggered = True
+            return True
+        return False
+
+
+def _force_close_ignore_json(text: str) -> str:
+    """Truncate at the unambiguous ignore prefix and append a minimal valid closing shape."""
+    idx = text.find(_IGNORE_JSON_PREFIX)
+    if idx == -1:
+        return text
+    prefix_end = idx + len(_IGNORE_JSON_PREFIX)
+    return text[:prefix_end] + _IGNORE_JSON_SUFFIX
 
 
 class HfGenerationSession:
@@ -52,6 +100,14 @@ class HfGenerationSession:
         return next(self.model.parameters()).device
 
     def generate(self, llm_response: str, *, output_format: str, max_new_tokens: int) -> str:
+        text, _ = self.generate_with_token_count(
+            llm_response, output_format=output_format, max_new_tokens=max_new_tokens
+        )
+        return text
+
+    def generate_with_token_count(
+        self, llm_response: str, *, output_format: str, max_new_tokens: int
+    ) -> tuple[str, int]:
         if self.adapter_name:
             self.model.set_adapter(self.adapter_name)
         messages = storage_inference_messages(llm_response, output_format=output_format)
@@ -59,15 +115,35 @@ class HfGenerationSession:
         inputs = self.tokenizer(prompt, return_tensors="pt")
         device = self._input_device()
         inputs = {key: value.to(device) for key, value in inputs.items()}
+        prompt_len = inputs["input_ids"].shape[1]
+
+        stopping_criteria = None
+        ignore_stop: _IgnorePrefixStoppingCriteria | None = None
+        if output_format == "json":
+            # ponytail: only the compact JSON scaffold has a deterministic
+            # {"action":"ignore" prefix worth short-circuiting on; other output
+            # formats render ignore as a bare word/tag that's already short.
+            ignore_stop = _IgnorePrefixStoppingCriteria(self.tokenizer, prompt_len)
+            stopping_criteria = StoppingCriteriaList([ignore_stop])
+
         with torch.inference_mode():
             output_ids = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
                 pad_token_id=self.tokenizer.pad_token_id,
+                stopping_criteria=stopping_criteria,
             )
-        new_tokens = output_ids[0, inputs["input_ids"].shape[1] :]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        new_tokens = output_ids[0, prompt_len:]
+        text = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        token_count = int(new_tokens.shape[0])
+
+        if ignore_stop is not None and ignore_stop.triggered and _IGNORE_JSON_PREFIX in text:
+            text = _force_close_ignore_json(text)
+            # ponytail: report the token count we actually consumed generating, not the
+            # length of the force-closed text (which includes synthesized suffix chars).
+            token_count = int(new_tokens.shape[0])
+        return text, token_count
 
 
 def open_hf_base_session(
@@ -152,9 +228,12 @@ def run_hf_case(
     *,
     output_format: str,
     max_new_tokens: int,
+    debug_raw: bool = False,
 ) -> dict[str, Any]:
     llm_response = str(case["llmResponse"])
-    raw = session.generate(llm_response, output_format=output_format, max_new_tokens=max_new_tokens)
+    raw, generated_token_count = session.generate_with_token_count(
+        llm_response, output_format=output_format, max_new_tokens=max_new_tokens
+    )
     report = apply_product_boundary(raw, output_format=output_format)
     decision = report.get("parsed")
     if not isinstance(decision, dict):
@@ -168,6 +247,8 @@ def run_hf_case(
     content_grounded = effective_stored and (
         key_tokens_grounded([str(token) for token in key_tokens], stored_text) or bool(overlap["grounded"])
     )
+    parse_valid = bool(decision) and report.get("repair_status") != "unrecoverable"
+    facts = decision.get("facts") if isinstance(decision.get("facts"), list) else []
     row: dict[str, Any] = {
         "id": case["id"],
         "suite": case["suite"],
@@ -185,7 +266,12 @@ def run_hf_case(
         "grounding_required": overlap["required"],
         "memory_content": stored_text[:240] if stored_text else None,
         "issues": report.get("issues"),
-        "raw_output": raw[:500] if raw else None,
+        "raw_output": raw if debug_raw else (raw[:500] if raw else None),
+        "raw_output_len": len(raw) if raw else 0,
+        "generated_token_count": generated_token_count,
+        "hit_token_ceiling": generated_token_count >= max_new_tokens,
+        "json_closes_cleanly": is_json_complete(raw, parse_valid=parse_valid),
+        "facts_count_anomalous": len(facts) >= 3 and len(llm_response.split()) < 50,
     }
     if output_format == "binary" and case.get("expectAction"):
         row["classify_match"] = _binary_classify_match(str(case["expectAction"]), raw)
@@ -203,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-format", default="tagged", choices=["json", "tagged", "minimal", "binary", "minimal_extract"])
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-new-tokens", type=int, default=PROD_STORAGE_MAX_NEW_TOKENS)
+    parser.add_argument("--debug-raw", action="store_true", help="Store untruncated raw_output in the report (default: 500-char slice).")
     args = parser.parse_args(argv)
 
     fixture = json.loads(args.fixtures.read_text(encoding="utf-8"))
@@ -220,7 +307,13 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
     )
     results = [
-        run_hf_case(session, case, output_format=args.output_format, max_new_tokens=args.max_new_tokens)
+        run_hf_case(
+            session,
+            case,
+            output_format=args.output_format,
+            max_new_tokens=args.max_new_tokens,
+            debug_raw=args.debug_raw,
+        )
         for case in cases
         if isinstance(case, dict)
     ]

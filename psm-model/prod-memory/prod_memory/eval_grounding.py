@@ -90,7 +90,7 @@ def aggregate_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     cases = len(rows)
     model_stored = [row for row in rows if row.get("model_would_store")]
     effective = [row for row in rows if row.get("effective_stored")]
-    return {
+    metrics = {
         "cases": cases,
         "model_stored": len(model_stored),
         "effective_stored": len(effective),
@@ -101,6 +101,13 @@ def aggregate_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "guard_reject_rate": round(sum(1 for row in rows if row.get("guard_rejected")) / max(1, cases), 4),
         "action_match_rate": _action_match_rate(rows),
     }
+    # Completeness fields are only present on HF LoRA eval rows (eval_hf_grounding.py); guard so
+    # non-HF checkpoint eval reports don't get misleading all-zero rates for fields they never set.
+    if any("hit_token_ceiling" in row for row in rows):
+        metrics["hit_token_ceiling_rate"] = round(sum(1 for row in rows if row.get("hit_token_ceiling")) / max(1, cases), 4)
+        metrics["json_closes_cleanly_rate"] = round(sum(1 for row in rows if row.get("json_closes_cleanly")) / max(1, cases), 4)
+        metrics["facts_count_anomalous_rate"] = round(sum(1 for row in rows if row.get("facts_count_anomalous")) / max(1, cases), 4)
+    return metrics
 
 
 def aggregate_by_suite(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

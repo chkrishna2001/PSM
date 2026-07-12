@@ -49,6 +49,21 @@ def _truncated_rejected(chosen: str) -> str:
     return chosen[:cut]
 
 
+def _hallucinated_tags_fields_rejected(chosen: str) -> str:
+    """Mirrors the real v5q-dpo technical-eslint bug: the model hallucinates non-schema
+    fields (e.g. product/range) and inserts them inside memory.tags as if it were an
+    object, breaking JSON (tags must be a flat list of strings per schema.py)."""
+    marker = '"tags":['
+    start = chosen.find(marker)
+    if start == -1:
+        return chosen
+    close = chosen.find("]", start)
+    if close == -1:
+        return chosen
+    injected = ',"product":"typescript","range":["a","b"]'
+    return chosen[:close] + injected + chosen[close:]
+
+
 def _malformed_rejected(chosen: str) -> str:
     return chosen.replace("}", "", 1)
 

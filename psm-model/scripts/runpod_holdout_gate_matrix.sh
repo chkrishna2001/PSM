@@ -23,11 +23,13 @@ declare -A PREFIX=(
   [v5n-dpo]=hf-prod-v5n-dpo-qwen0.5b
   [v5n]=hf-prod-v5n-qwen0.5b
   [v5h]=hf-prod-v5h-qwen0.5b
+  [v5q-dpo]=hf-prod-v5q-dpo-qwen0.5b
 )
 declare -A ADAPTER=(
   [v5n-dpo]=psm-model/prod-memory/checkpoints/hf-prod-v5n-dpo-qwen0.5b/adapter
   [v5n]=psm-model/prod-memory/checkpoints/hf-prod-v5n-qwen0.5b/adapter
   [v5h]=psm-model/prod-memory/checkpoints/hf-prod-v5h-qwen0.5b/adapter
+  [v5q-dpo]=psm-model/prod-memory/checkpoints/hf-prod-v5q-dpo-qwen0.5b/adapter
 )
 
 exec > >(tee -a "$MATRIX_LOG") 2>&1

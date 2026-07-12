@@ -36,6 +36,11 @@ PROFILES: dict[str, dict[str, str]] = {
         "prefix": "hf-prod-v5h-qwen0.5b",
         "gate_out": "benchmark/locomo/results/holdout-gate-v5h-conv-30-conv-41.json",
     },
+    "v5q-dpo": {
+        "adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5q-dpo-qwen0.5b/adapter",
+        "prefix": "hf-prod-v5q-dpo-qwen0.5b",
+        "gate_out": "benchmark/locomo/results/holdout-gate-v5q-dpo-conv-30-conv-41.json",
+    },
 }
 
 PUSH_FILES = [

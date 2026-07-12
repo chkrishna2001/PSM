@@ -1,0 +1,441 @@
+{
+  "cases": [
+    {
+      "id": "consolidation-melanie-kids-park",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie took her kids to a park and enjoyed seeing them have fun exploring and playing.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-kids-park-existing",
+        "content": "Melanie loves spending time with her kids and seeing the joy in their eyes when exploring new things.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-melanie-kids-park-existing",
+        "merged_content": "Melanie loves spending time with her kids and seeing the joy in their eyes when exploring new things. Melanie took her kids to a park and enjoyed seeing them have fun exploring and playing.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-adoption-dream",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline sees adoption as a way to share her love and provide a safe, loving home for kids in need.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-adoption-dream-existing",
+        "content": "Caroline is researching adoption agencies with the dream of having a family and providing a loving home to kids in need.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-caroline-adoption-dream-existing",
+        "merged_content": "Caroline is researching adoption agencies with the dream of having a family and providing a loving home to kids in need. Caroline sees adoption as a way to share her love and provide a safe, loving home for kids in need.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-career-counseling",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline is considering a career in counseling and mental health to help others.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-career-counseling-existing",
+        "content": "Caroline is planning to continue her education and explore career options in counseling or mental health to support those with similar issues.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-caroline-career-counseling-existing",
+        "merged_content": "Caroline is planning to continue her education and explore career options in counseling or mental health to support those with similar issues. Caroline is considering a career in counseling and mental health to help others.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-adoption-progress",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline passed the adoption agency interviews last Friday and is excited about building her own family through adoption.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-adoption-progress-existing",
+        "content": "Caroline attended a council meeting for adoption last Friday and found it inspiring and emotional.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-caroline-adoption-progress-existing",
+        "merged_content": "Caroline attended a council meeting for adoption last Friday and found it inspiring and emotional. Caroline passed the adoption agency interviews last Friday and is excited about building her own family through adoption.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-melanie-pottery-plate",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie made a plate in pottery class and finds pottery relaxing and creative.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-pottery-plate-existing",
+        "content": "Melanie made a black and white bowl in her pottery class which she is proud of.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-melanie-pottery-plate-existing",
+        "merged_content": "Melanie made a black and white bowl in her pottery class which she is proud of. Melanie made a plate in pottery class and finds pottery relaxing and creative.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-counseling-passionate",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline has been looking into counseling or mental health work and is passionate about helping people and making a positive impact.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-counseling-passionate-existing",
+        "content": "Caroline is considering a career in counseling and mental health to help others.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-caroline-counseling-passionate-existing",
+        "merged_content": "Caroline is considering a career in counseling and mental health to help others. Caroline has been looking into counseling or mental health work and is passionate about helping people and making a positive impact.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-melanie-pottery-calming",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie uses painting and pottery as a calming and satisfying creative outlet.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-pottery-calming-existing",
+        "content": "Melanie is a big fan of pottery and finds it calming and creative.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-melanie-pottery-calming-existing",
+        "merged_content": "Melanie is a big fan of pottery and finds it calming and creative. Melanie uses painting and pottery as a calming and satisfying creative outlet.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-safe-home-vision",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline's vision for the future includes creating a safe and loving home for needy kids to experience love and acceptance.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-safe-home-vision-existing",
+        "content": "Caroline sees adoption as a way to share her love and provide a safe, loving home for kids in need.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-caroline-safe-home-vision-existing",
+        "merged_content": "Caroline sees adoption as a way to share her love and provide a safe, loving home for kids in need. Caroline's vision for the future includes creating a safe and loving home for needy kids to experience love and acceptance.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-melanie-pottery-elaboration",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie signed up for a pottery class and finds it therapeutic for self-expression and creativity.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-pottery-elaboration-existing",
+        "content": "Melanie is a big fan of pottery and finds it calming and creative.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-melanie-pottery-elaboration-existing",
+        "merged_content": "Melanie is a big fan of pottery and finds it calming and creative. Melanie signed up for a pottery class and finds it therapeutic for self-expression and creativity.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-counseling-motivation",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline is considering a career in counseling and mental health, particularly working with trans people to help them accept themselves and support their mental health.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-counseling-motivation-existing",
+        "content": "Caroline's motivation to pursue counseling comes from her own journey, the support she received, and the positive impact counseling had on her life.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "update_existing",
+        "target_memory_id": "mem-caroline-counseling-motivation-existing",
+        "merged_content": "Caroline's motivation to pursue counseling comes from her own journey, the support she received, and the positive impact counseling had on her life. Caroline is considering a career in counseling and mental health, particularly working with trans people to help them accept themselves and support their mental health.",
+        "reasoning": "New memory restates/elaborates the same underlying fact as the existing one; merge into a single updated memory."
+      }
+    },
+    {
+      "id": "consolidation-caroline-pride-events",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline had a great time with the whole gang at the Pride fest last year and values supportive friends.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-pride-events-existing",
+        "content": "Caroline and her mentee had a great time at the LGBT pride event the previous month.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-melanie-painting-vs-reading",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie continued expressing herself through reading and painting during her break from pottery.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-painting-vs-reading-existing",
+        "content": "Melanie expresses herself through painting and values art for showing who we really are and getting in touch with ourselves.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-caroline-supportgroup-vs-youthcenter",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline had the opportunity to volunteer at an LGBTQ+ youth center and found it gratifying to support and guide the young people there.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-supportgroup-vs-youthcenter-existing",
+        "content": "Caroline attended an LGBTQ support group recently and found the transgender stories inspiring.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-caroline-book-vs-mentalhealth",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline mentioned the importance of finding peace and mental health through expressions of authentic self.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-book-vs-mentalhealth-existing",
+        "content": "According to 'Becoming Nicole,' Caroline learned the importance of self-acceptance, finding support, and the existence of hope and love.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-caroline-friends-vs-help",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline received invaluable help from friends, family, and role models during the process of finding acceptance.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-friends-vs-help-existing",
+        "content": "Caroline has known her friends for 4 years, since moving from her home country, and values their love and help, especially after a tough breakup.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-caroline-conference-vs-parade",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline attended a pride parade recently and felt inspired by the community's energy and support for LGBTQ rights.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-conference-vs-parade-existing",
+        "content": "Caroline attended an LGBTQ conference recently and felt accepted and supported, emphasizing the importance of fighting for trans rights and spreading awareness.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-melanie-camping-vs-meteor",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie and her family watched the Perseid meteor shower during a camping trip last year and it was a memorable experience.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-camping-vs-meteor-existing",
+        "content": "Melanie went camping with her family in the mountains last week and had a great time exploring nature, roasting marshmallows, and hiking.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-caroline-pridewalk-vs-piano",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline attended an LGBTQ+ pride parade last week and felt a sense of belonging and happiness.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-pridewalk-vs-piano-existing",
+        "content": "Caroline is currently learning the piano to get creative.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-melanie-pottery-vs-camping",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie signed up for a pottery class and finds it therapeutic for self-expression and creativity.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-pottery-vs-camping-existing",
+        "content": "Melanie and her family enjoy camping at the beach as it brings them closer together.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "store_episodic",
+        "target_memory_id": null,
+        "merged_content": null,
+        "reasoning": "New memory is a distinct fact, not a restatement or contradiction of the existing one; store independently."
+      }
+    },
+    {
+      "id": "consolidation-caroline-city-conflict",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline mentioned she moved to Austin last year.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-city-conflict-existing",
+        "content": "Caroline said she still lives in her hometown and has never moved.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "flag_conflict",
+        "target_memory_id": "mem-caroline-city-conflict-existing",
+        "merged_content": null,
+        "reasoning": "New memory contradicts the existing one on the same subject; flag for review instead of auto-merging."
+      }
+    },
+    {
+      "id": "consolidation-melanie-job-conflict",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie said she works as a full-time nurse at a hospital.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-job-conflict-existing",
+        "content": "Melanie mentioned she is a stay-at-home parent and hasn't worked outside the home in years.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "flag_conflict",
+        "target_memory_id": "mem-melanie-job-conflict-existing",
+        "merged_content": null,
+        "reasoning": "New memory contradicts the existing one on the same subject; flag for review instead of auto-merging."
+      }
+    },
+    {
+      "id": "consolidation-caroline-pet-conflict",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Caroline mentioned she has never owned a pet and isn't interested in having one.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-caroline-pet-conflict-existing",
+        "content": "Caroline said her dog just had puppies and she's finding homes for them.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "flag_conflict",
+        "target_memory_id": "mem-caroline-pet-conflict-existing",
+        "merged_content": null,
+        "reasoning": "New memory contradicts the existing one on the same subject; flag for review instead of auto-merging."
+      }
+    },
+    {
+      "id": "consolidation-melanie-diet-conflict",
+      "suite": "consolidation_locomo_holdout",
+      "newMemory": {
+        "content": "Melanie said she's been a strict vegetarian since childhood.",
+        "type": "episodic"
+      },
+      "existingMemory": {
+        "id": "mem-melanie-diet-conflict-existing",
+        "content": "Melanie mentioned she grilled burgers for the family barbecue last weekend.",
+        "type": "episodic"
+      },
+      "expected": {
+        "action": "flag_conflict",
+        "target_memory_id": "mem-melanie-diet-conflict-existing",
+        "merged_content": null,
+        "reasoning": "New memory contradicts the existing one on the same subject; flag for review instead of auto-merging."
+      }
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from psm_model.prompts import (
+    CONSOLIDATION_SYSTEM_INSTRUCTION,
     RECALL_SYSTEM_INSTRUCTION,
     render_expected_output,
     row_task,
@@ -19,14 +20,36 @@ PROD_STORAGE_USER_PREFIX = (
 
 
 def compact_storage_json(decision: dict[str, Any]) -> str:
+    # Reasoning-first key order (2026-07-11): training the model to generate its
+    # justification BEFORE the action/memory/facts commits it lets the autoregressive
+    # generation actually condition the decision on the reasoning tokens, instead of
+    # locking in "action" as literally the first token generated with no prior
+    # deliberation. Matches the "Free-Thinking" framing from small-LM fine-tuning
+    # literature, which showed the largest accuracy gains for the smallest models.
+    # json.loads() (used by every downstream parser) is order-independent, so this is
+    # safe to change without touching any consumer.
     payload = {
+        "reasoning": decision["reasoning"],
         "action": decision["action"],
         "memory": decision.get("memory"),
         "facts": decision.get("facts") or [],
         "indexables": decision.get("indexables") or [],
-        "reasoning": decision["reasoning"],
     }
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return json.dumps(payload, ensure_ascii=False, sort_keys=False, separators=(",", ":"))
+
+
+def compact_consolidation_json(decision: dict[str, Any]) -> str:
+    # Same reasoning-first fix as compact_storage_json (2026-07-12): consolidation's
+    # schema also requires "reasoning" but every prior round emitted it via
+    # sort_keys=True alphabetical order (action, merged_content, reasoning,
+    # target_memory_id) -- action still committed before any justification.
+    payload = {
+        "reasoning": decision["reasoning"],
+        "action": decision["action"],
+        "target_memory_id": decision.get("target_memory_id"),
+        "merged_content": decision.get("merged_content"),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=False, separators=(",", ":"))
 
 
 def render_storage_assistant_output(expected: dict[str, Any], *, output_format: str) -> str:
@@ -52,6 +75,20 @@ def row_messages(
             + json.dumps(input_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         )
         assistant = json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+            {"role": "assistant", "content": assistant},
+        ]
+
+    if task == "consolidate":
+        system = CONSOLIDATION_SYSTEM_INSTRUCTION
+        user = (
+            "Decide store_episodic, update_existing, or flag_conflict as JSON only. "
+            "First write reasoning, then action, target_memory_id, and merged_content.\n"
+            + json.dumps(input_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        )
+        assistant = compact_consolidation_json(expected)
         return [
             {"role": "system", "content": system},
             {"role": "user", "content": user},

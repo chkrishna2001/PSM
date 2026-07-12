@@ -1,0 +1,123 @@
+{
+  "cases": [
+    {
+      "id": "coding-agent-adapter-verified-hf",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Confirmed - commits from 2026-07-05 09:54 UTC (today, minutes ago), matching this exact retrain run. The adapter is safely verified on HF hub. Now let's pull it locally and re-run the eval.",
+      "keyTokens": ["adapter", "verified", "hf hub"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-parse-failure-finding",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is the real finding - most \"ignore\" decisions aren't the model choosing to ignore, they're parse failures being fail-safed into ignore. Let me quantify how widespread this is.",
+      "keyTokens": ["parse failures", "fail-safed", "ignore"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-run-complete-hf",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good news - checking before I touch anything else: the full 80-step run completed and the adapter and metrics are already safely on HF (checkpoint-40, checkpoint-80, final adapter with adapter_model.safetensors).",
+      "keyTokens": ["80-step run", "checkpoint-80", "hf"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-hallucination-not-truncation",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Found it - this is not a truncation bug at all. The model appears to be hallucinating malformed structure in the tags/product/range fields, not running out of tokens.",
+      "keyTokens": ["hallucinating", "malformed structure", "not a truncation bug"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-ingestion-numbers",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Ingestion itself finished - seen: 1032, stored: 104, ignored: 928, failed: 0, matching the full LoCoMo turn count and confirming an apples-to-apples comparison with v5n-dpo's known 797/1032.",
+      "keyTokens": ["1032", "stored: 104", "apples-to-apples"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-commit-experiment-2",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Implemented and committed the next experiment. Commit: f07fc82 Experiment 2: similarity matching. Trace.cs now keeps a tiny evolving prototype to compare against instead of raw history.",
+      "keyTokens": ["f07fc82", "experiment 2", "trace.cs"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-measurement-admission-rule",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The Measurement Admission Rule is now written down as the Phase 1A gate. I'll mirror it in the ledger and then implement Experiment 16.",
+      "keyTokens": ["measurement admission rule", "phase 1a gate"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-contradiction-rejected",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The ledger now records the contradiction as rejected, not as a vague future concern. I'm building once and checking the diff, then I'll commit this as the contradiction experiment.",
+      "keyTokens": ["contradiction as rejected", "ledger"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-azure-secrets-writeonly",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Azure Pipelines does not allow direct retrieval of secret values once stored. This is intentional - secrets are write-only to prevent leakage. You cannot print them, fetch them via API, or export them after creation.",
+      "keyTokens": ["write-only", "azure pipelines", "secret values"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-powershell-path-resolution",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "There is nothing wrong with the script itself. The error is entirely about path resolution, not Base64 or the clipboard.",
+      "keyTokens": ["path resolution", "nothing wrong with the script"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-experiment-19-wired",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Experiment 19 is wired into the harness. I reused the same measured-comparison path by factoring the stream runner, so flat vs separated is still the only comparison variable.",
+      "keyTokens": ["experiment 19", "harness", "stream runner"],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-ssh-timeout-check",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The local orchestrating script crashed on the final results-pull step (SSH timeout), but that doesn't necessarily mean the actual job on the pod failed - let me check live state directly.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-tests-pass-nextstep",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good, storage_rewards tests pass. Now let's syntax-check the edited files compile cleanly and check for any test file covering eval_grounding.py aggregate functions.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-checking-final-status",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Commit created. I'm checking the final status and recent history so I can close this out with the exact state and the new contradiction we found.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-checking-overclaims",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I'm checking for remaining solution-shaped wording and overclaims now. If anything still says the matcher is the bottleneck or names mechanisms as likely answers, I'll trim it.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-staged-gitignore-warning",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Staged. The global Git ignore warning is outside the repo and didn't block anything.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-docs-agree-sanity-check",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now the README, roadmap, and observation note agree with the actual result. I'm doing the final status plus one build/run sanity check on the implemented experiment path.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    }
+  ]
+}

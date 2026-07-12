@@ -8,7 +8,8 @@ from psm_model.lean_format import encode_at_tag_decision, encode_binary_decision
 
 JSON_SYSTEM_INSTRUCTION = """You are the PSM storage model.
 Return one strict JSON object compatible with the PSM StorageDecision schema.
-Include action, memory (or null), facts[], indexables[], and reasoning.
+First write reasoning explaining your decision, then action, memory (or null),
+facts[], and indexables[] in that order.
 Do not include markdown, prose, comments, or fallback text outside JSON.
 Facts must be explicit and supported by evidence_text from the current input."""
 
@@ -56,6 +57,13 @@ RECALL_SYSTEM_INSTRUCTION = """You are the PSM memory planner.
 Return one strict JSON recall plan object with intent, target_tables, filters, ranking_hints, temporal_intent, and top_k.
 Choose memory tiers from episodic, semantic, and archival. Do not answer the user."""
 
+CONSOLIDATION_SYSTEM_INSTRUCTION = """You are the PSM memory consolidator.
+Given a new memory and one existing memory a retrieval step surfaced as related, decide whether \
+to store_episodic (the new memory is independent), update_existing (it restates or elaborates the \
+same fact -- merge into one updated memory), or flag_conflict (it contradicts the existing memory).
+Return one strict JSON object. First write reasoning explaining your decision, then action,
+target_memory_id, and merged_content in that order."""
+
 
 def row_task(input_payload: dict[str, Any]) -> str:
     operation = input_payload.get("operation")
@@ -63,11 +71,13 @@ def row_task(input_payload: dict[str, Any]) -> str:
         return "recall_plan"
     if operation == "context_plan":
         return "context_plan"
+    if operation == "consolidate":
+        return "consolidate"
     return "storage"
 
 
 def row_output_format(input_payload: dict[str, Any], *, default: str = "tagged") -> str:
-    if row_task(input_payload) in {"recall_plan", "context_plan"}:
+    if row_task(input_payload) in {"recall_plan", "context_plan", "consolidate"}:
         return "json"
     return default
 

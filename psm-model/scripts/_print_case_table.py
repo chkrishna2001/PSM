@@ -9,7 +9,8 @@ print(json.dumps(r["aggregate"], indent=2))
 for c in r["cases"]:
     print(
         f"{c['id']:22} expect={str(c.get('expectAction')):6} action={str(c.get('action')):16} "
-        f"eff={c['effective_stored']} repair={c.get('repair_status')} guard={c.get('guard_route')}"
+        f"eff={c['effective_stored']} repair={c.get('repair_status')} guard={c.get('guard_route')} "
+        f"ceiling={c.get('hit_token_ceiling')} closes={c.get('json_closes_cleanly')}"
     )
     if c.get("issues"):
         print("   issue:", c["issues"][0])

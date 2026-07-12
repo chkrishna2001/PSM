@@ -1,0 +1,5321 @@
+{
+  "cases": [
+    {
+      "id": "recall-locomo-conv-26-0",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline go to the LGBTQ support group?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "LGBTQ",
+          "support",
+          "group"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-1",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie paint a sunrise?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "paint",
+          "sunrise"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-2",
+      "suite": "recall_locomo_holdout",
+      "question": "What fields would Caroline be likely to pursue in her educaton?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "fields",
+          "Caroline",
+          "likely",
+          "pursue"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-3",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline research?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "research"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-4",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Caroline's identity?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "identity"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-5",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie run a charity race?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "run",
+          "charity",
+          "race"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-6",
+      "suite": "recall_locomo_holdout",
+      "question": "When is Melanie planning on going camping?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "planning",
+          "going",
+          "camping"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-7",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Caroline's relationship status?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "relationship",
+          "status"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-8",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline give a speech at a school?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "give",
+          "speech",
+          "school"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-9",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline meet up with her friends, family, and mentors?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "meet",
+          "friends",
+          "family"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-10",
+      "suite": "recall_locomo_holdout",
+      "question": "How long has Caroline had her current group of friends for?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "long",
+          "Caroline",
+          "current",
+          "group"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-11",
+      "suite": "recall_locomo_holdout",
+      "question": "Where did Caroline move from 4 years ago?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "move",
+          "years",
+          "ago"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-12",
+      "suite": "recall_locomo_holdout",
+      "question": "How long ago was Caroline's 18th birthday?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "long",
+          "ago",
+          "Caroline's",
+          "birthday"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-13",
+      "suite": "recall_locomo_holdout",
+      "question": "What career path has Caroline decided to persue?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "career",
+          "path",
+          "Caroline",
+          "decided"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-14",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Caroline still want to pursue counseling as a career if she hadn't received support growing up?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "still",
+          "want",
+          "pursue"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-15",
+      "suite": "recall_locomo_holdout",
+      "question": "What activities does Melanie partake in?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "activities",
+          "Melanie",
+          "partake"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-16",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie sign up for a pottery class?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "sign",
+          "pottery",
+          "class"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-17",
+      "suite": "recall_locomo_holdout",
+      "question": "When is Caroline going to the transgender conference?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "going",
+          "transgender",
+          "conference"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-18",
+      "suite": "recall_locomo_holdout",
+      "question": "Where has Melanie camped?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "camped"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-19",
+      "suite": "recall_locomo_holdout",
+      "question": "What do Melanie's kids like?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "kids",
+          "like"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-20",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie go to the museum?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "museum"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-21",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline have a picnic?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "picnic"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-22",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Caroline likely have Dr. Seuss books on her bookshelf?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "likely",
+          "Seuss",
+          "books"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-23",
+      "suite": "recall_locomo_holdout",
+      "question": "What books has Melanie read?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "books",
+          "Melanie",
+          "read"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-24",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Melanie do to destress?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "destress"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-25",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline go to the LGBTQ conference?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "LGBTQ",
+          "conference"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-26",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie read the book \"nothing is impossible\"?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "read",
+          "book",
+          "nothing"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-27",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Caroline pursue writing as a career option?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "pursue",
+          "writing",
+          "career"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-28",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline go to the adoption meeting?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "adoption",
+          "meeting"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-29",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie go to the pottery workshop?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "pottery",
+          "workshop"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-30",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Melanie be considered a member of the LGBTQ community?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "considered",
+          "member",
+          "LGBTQ"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-31",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie go camping in June?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "camping",
+          "June"
+        ],
+        "temporal_intent": "June",
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-32",
+      "suite": "recall_locomo_holdout",
+      "question": "What LGBTQ+ events has Caroline participated in?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "LGBTQ",
+          "events",
+          "Caroline",
+          "participated"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-33",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline go to a pride parade during the summer?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "pride",
+          "parade",
+          "during"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-34",
+      "suite": "recall_locomo_holdout",
+      "question": "What events has Caroline participated in to help children?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "events",
+          "Caroline",
+          "participated",
+          "help"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-35",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie go camping in July?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "camping",
+          "July"
+        ],
+        "temporal_intent": "July",
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-36",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline join a mentorship program?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "join",
+          "mentorship",
+          "program"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-37",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie paint recently?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "paint",
+          "recently"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-38",
+      "suite": "recall_locomo_holdout",
+      "question": "What activities has Melanie done with her family?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "activities",
+          "Melanie",
+          "done",
+          "family"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-39",
+      "suite": "recall_locomo_holdout",
+      "question": "In what ways is Caroline participating in the LGBTQ community?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "ways",
+          "Caroline",
+          "participating",
+          "LGBTQ"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-40",
+      "suite": "recall_locomo_holdout",
+      "question": "How many times has Melanie gone to the beach in 2023?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "many",
+          "times",
+          "Melanie",
+          "gone"
+        ],
+        "temporal_intent": "2023",
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-41",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline join a new activist group?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "join",
+          "new",
+          "activist"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-42",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Melanie be more interested in going to a national park or a theme park?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "more",
+          "interested",
+          "going"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-43",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of art does Caroline make?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "art",
+          "Caroline",
+          "make"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-44",
+      "suite": "recall_locomo_holdout",
+      "question": "When is Melanie's daughter's birthday?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "daughter's",
+          "birthday"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-45",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline attend a pride parade in August?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "attend",
+          "pride",
+          "parade"
+        ],
+        "temporal_intent": "August",
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-46",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Melanie be considered an ally to the transgender community?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "considered",
+          "ally",
+          "transgender"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-47",
+      "suite": "recall_locomo_holdout",
+      "question": "Who supports Caroline when she has a negative experience?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "supports",
+          "Caroline",
+          "she",
+          "negative"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-48",
+      "suite": "recall_locomo_holdout",
+      "question": "What types of pottery have Melanie and her kids made?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "types",
+          "pottery",
+          "Melanie",
+          "kids"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-49",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline and Melanie go to a pride fesetival together?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "Melanie",
+          "pride",
+          "fesetival"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-50",
+      "suite": "recall_locomo_holdout",
+      "question": "What would Caroline's political leaning likely be?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "political",
+          "leaning",
+          "likely"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-51",
+      "suite": "recall_locomo_holdout",
+      "question": "What has Melanie painted?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "painted"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-52",
+      "suite": "recall_locomo_holdout",
+      "question": "What are Melanie's pets' names?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "pets'",
+          "names"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-53",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline apply to adoption agencies?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "apply",
+          "adoption",
+          "agencies"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-54",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline draw a self-portrait?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "draw",
+          "self-portrait"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-55",
+      "suite": "recall_locomo_holdout",
+      "question": "What subject have Caroline and Melanie both painted?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "subject",
+          "Caroline",
+          "Melanie",
+          "painted"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-56",
+      "suite": "recall_locomo_holdout",
+      "question": "What symbols are important to Caroline?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "symbols",
+          "important",
+          "Caroline"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-57",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline encounter people on a hike and have a negative experience?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "encounter",
+          "people",
+          "hike"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-58",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie make a plate in pottery class?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "make",
+          "plate",
+          "pottery"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-59",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Caroline be considered religious?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "considered",
+          "religious"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-60",
+      "suite": "recall_locomo_holdout",
+      "question": "What instruments does Melanie play?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "instruments",
+          "Melanie",
+          "play"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-61",
+      "suite": "recall_locomo_holdout",
+      "question": "What musical artists/bands has Melanie seen?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "musical",
+          "artists",
+          "bands",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-62",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie go to the park?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "park"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-63",
+      "suite": "recall_locomo_holdout",
+      "question": "When is Caroline's youth center putting on a talent show?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "youth",
+          "center",
+          "putting"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-64",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Melanie likely enjoy the song \"The Four Seasons\" by Vivaldi?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "likely",
+          "enjoy",
+          "song"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-65",
+      "suite": "recall_locomo_holdout",
+      "question": "What are some changes Caroline has faced during her transition journey?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "some",
+          "changes",
+          "Caroline",
+          "faced"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-66",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Melanie do with her family on hikes?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "family",
+          "hikes"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-67",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline go biking with friends?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "biking",
+          "friends"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-68",
+      "suite": "recall_locomo_holdout",
+      "question": "How long has Melanie been practicing art?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "long",
+          "Melanie",
+          "been",
+          "practicing"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-69",
+      "suite": "recall_locomo_holdout",
+      "question": "What personality traits might Melanie say Caroline has?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "personality",
+          "traits",
+          "might",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-70",
+      "suite": "recall_locomo_holdout",
+      "question": "What transgender-specific events has Caroline attended?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "transgender-specific",
+          "events",
+          "Caroline",
+          "attended"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-71",
+      "suite": "recall_locomo_holdout",
+      "question": "What book did Melanie read from Caroline's suggestion?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "book",
+          "Melanie",
+          "read",
+          "Caroline's"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-72",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie's friend adopt a child?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "friend",
+          "adopt",
+          "child"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-73",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie get hurt?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "get",
+          "hurt"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-74",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie's family go on a roadtrip?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "family",
+          "roadtrip"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-75",
+      "suite": "recall_locomo_holdout",
+      "question": "How many children does Melanie have?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "many",
+          "children",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-76",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie go on a hike after the roadtrip?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "hike",
+          "after",
+          "roadtrip"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-77",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Melanie go on another roadtrip soon?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "another",
+          "roadtrip",
+          "soon"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-78",
+      "suite": "recall_locomo_holdout",
+      "question": "What items has Melanie bought?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "items",
+          "Melanie",
+          "bought"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-79",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Caroline pass the adoption interview?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "pass",
+          "adoption",
+          "interview"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-80",
+      "suite": "recall_locomo_holdout",
+      "question": "When did Melanie buy the figurines?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "buy",
+          "figurines"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-81",
+      "suite": "recall_locomo_holdout",
+      "question": "Would Caroline want to move back to her home country soon?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "semantic",
+          "episodic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "want",
+          "move",
+          "back"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-82",
+      "suite": "recall_locomo_holdout",
+      "question": "What did the charity race raise awareness for?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "charity",
+          "race",
+          "raise",
+          "awareness"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-83",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie realize after the charity race?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "realize",
+          "after",
+          "charity"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-84",
+      "suite": "recall_locomo_holdout",
+      "question": "How does Melanie prioritize self-care?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "prioritize",
+          "self-care"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-85",
+      "suite": "recall_locomo_holdout",
+      "question": "What are Caroline's plans for the summer?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "plans",
+          "summer"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-86",
+      "suite": "recall_locomo_holdout",
+      "question": "What type of individuals does the adoption agency Caroline is considering support?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "type",
+          "individuals",
+          "adoption",
+          "agency"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-87",
+      "suite": "recall_locomo_holdout",
+      "question": "Why did Caroline choose the adoption agency?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "choose",
+          "adoption",
+          "agency"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-88",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Caroline excited about in the adoption process?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "excited",
+          "adoption",
+          "process"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-89",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Melanie think about Caroline's decision to adopt?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "think",
+          "Caroline's",
+          "decision"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-90",
+      "suite": "recall_locomo_holdout",
+      "question": "How long have Mel and her husband been married?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "long",
+          "Mel",
+          "husband",
+          "been"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-91",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Caroline's necklace symbolize?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "necklace",
+          "symbolize"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-92",
+      "suite": "recall_locomo_holdout",
+      "question": "What country is Caroline's grandma from?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "country",
+          "Caroline's",
+          "grandma"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-93",
+      "suite": "recall_locomo_holdout",
+      "question": "What was grandma's gift to Caroline?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "grandma's",
+          "gift",
+          "Caroline"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-94",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Melanie's hand-painted bowl a reminder of?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "hand-painted",
+          "bowl",
+          "reminder"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-95",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie and her family do while camping?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "family",
+          "while",
+          "camping"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-96",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of counseling and mental health services is Caroline interested in pursuing?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "counseling",
+          "mental",
+          "health"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-97",
+      "suite": "recall_locomo_holdout",
+      "question": "What workshop did Caroline attend recently?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "workshop",
+          "Caroline",
+          "attend",
+          "recently"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-98",
+      "suite": "recall_locomo_holdout",
+      "question": "What was discussed in the LGBTQ+ counseling workshop?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "discussed",
+          "LGBTQ",
+          "counseling",
+          "workshop"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-99",
+      "suite": "recall_locomo_holdout",
+      "question": "What motivated Caroline to pursue counseling?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "motivated",
+          "Caroline",
+          "pursue",
+          "counseling"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-100",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of place does Caroline want to create for people?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "place",
+          "Caroline",
+          "want"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-101",
+      "suite": "recall_locomo_holdout",
+      "question": "Did Melanie make the black and white bowl in the photo?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "make",
+          "black",
+          "white"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-102",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of books does Caroline have in her library?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "books",
+          "Caroline",
+          "library"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-103",
+      "suite": "recall_locomo_holdout",
+      "question": "What was Melanie's favorite book from her childhood?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "favorite",
+          "book",
+          "childhood"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-104",
+      "suite": "recall_locomo_holdout",
+      "question": "What book did Caroline recommend to Melanie?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "book",
+          "Caroline",
+          "recommend",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-105",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline take away from the book \"Becoming Nicole\"?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "take",
+          "away",
+          "book"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-106",
+      "suite": "recall_locomo_holdout",
+      "question": "What are the new shoes that Melanie got used for?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "new",
+          "shoes",
+          "Melanie",
+          "got"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-107",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Melanie's reason for getting into running?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "reason",
+          "getting",
+          "into"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-108",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Melanie say running has been great for?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "say",
+          "running",
+          "been"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-109",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Mel and her kids make during the pottery workshop?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Mel",
+          "kids",
+          "make",
+          "during"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-110",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of pot did Mel and her kids make with clay?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "pot",
+          "Mel",
+          "kids"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-111",
+      "suite": "recall_locomo_holdout",
+      "question": "What creative project do Mel and her kids do together besides pottery?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "creative",
+          "project",
+          "Mel",
+          "kids"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-112",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Mel and her kids paint in their latest project in July 2023?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Mel",
+          "kids",
+          "paint",
+          "latest"
+        ],
+        "temporal_intent": "2023",
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-113",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline see at the council meeting for adoption?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "see",
+          "council",
+          "meeting"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-114",
+      "suite": "recall_locomo_holdout",
+      "question": "What do sunflowers represent according to Caroline?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "sunflowers",
+          "represent",
+          "according",
+          "Caroline"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-115",
+      "suite": "recall_locomo_holdout",
+      "question": "Why are flowers important to Melanie?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "flowers",
+          "important",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-116",
+      "suite": "recall_locomo_holdout",
+      "question": "What inspired Caroline's painting for the art show?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "inspired",
+          "Caroline's",
+          "painting",
+          "art"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-117",
+      "suite": "recall_locomo_holdout",
+      "question": "How often does Melanie go to the beach with her kids?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "often",
+          "Melanie",
+          "beach",
+          "kids"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-118",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie and her family see during their camping trip last year?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "family",
+          "see",
+          "during"
+        ],
+        "temporal_intent": "last year",
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-119",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Melanie feel while watching the meteor shower?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "feel",
+          "while",
+          "watching"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-120",
+      "suite": "recall_locomo_holdout",
+      "question": "Whose birthday did Melanie celebrate recently?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "birthday",
+          "Melanie",
+          "celebrate",
+          "recently"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-121",
+      "suite": "recall_locomo_holdout",
+      "question": "Who performed at the concert at Melanie's daughter's birthday?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "performed",
+          "concert",
+          "Melanie's",
+          "daughter's"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-122",
+      "suite": "recall_locomo_holdout",
+      "question": "Why did Melanie choose to use colors and patterns in her pottery project?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "choose",
+          "use",
+          "colors"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-123",
+      "suite": "recall_locomo_holdout",
+      "question": "What pet does Caroline have?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "pet",
+          "Caroline"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-124",
+      "suite": "recall_locomo_holdout",
+      "question": "What pets does Melanie have?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "pets",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-125",
+      "suite": "recall_locomo_holdout",
+      "question": "Where did Oliver hide his bone once?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Oliver",
+          "hide",
+          "bone",
+          "once"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-126",
+      "suite": "recall_locomo_holdout",
+      "question": "What activity did Caroline used to do with her dad?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "activity",
+          "Caroline",
+          "used",
+          "dad"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-127",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline make for a local church?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "make",
+          "local",
+          "church"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-128",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline find in her neighborhood during her walk?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "find",
+          "neighborhood",
+          "during"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-129",
+      "suite": "recall_locomo_holdout",
+      "question": "Which song motivates Caroline to be courageous?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "song",
+          "motivates",
+          "Caroline",
+          "courageous"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-130",
+      "suite": "recall_locomo_holdout",
+      "question": "Which  classical musicians does Melanie enjoy listening to?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "classical",
+          "musicians",
+          "Melanie",
+          "enjoy"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-131",
+      "suite": "recall_locomo_holdout",
+      "question": "Who is Melanie a fan of in terms of modern music?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "fan",
+          "terms",
+          "modern"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-132",
+      "suite": "recall_locomo_holdout",
+      "question": "How long has Melanie been creating art?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "long",
+          "Melanie",
+          "been",
+          "creating"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-133",
+      "suite": "recall_locomo_holdout",
+      "question": "What precautionary sign did Melanie see at the café?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "precautionary",
+          "sign",
+          "Melanie",
+          "see"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-134",
+      "suite": "recall_locomo_holdout",
+      "question": "What advice does Caroline give for getting started with adoption?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "advice",
+          "Caroline",
+          "give",
+          "getting"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-135",
+      "suite": "recall_locomo_holdout",
+      "question": "What setback did Melanie face in October 2023?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "setback",
+          "Melanie",
+          "face",
+          "October"
+        ],
+        "temporal_intent": "2023",
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-136",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Melanie do to keep herself busy during her pottery break?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "keep",
+          "herself",
+          "busy"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-137",
+      "suite": "recall_locomo_holdout",
+      "question": "What painting did Melanie show to Caroline on October 13, 2023?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "painting",
+          "Melanie",
+          "show",
+          "Caroline"
+        ],
+        "temporal_intent": "2023",
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-138",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of painting did Caroline share with Melanie on October 13, 2023?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "painting",
+          "Caroline",
+          "share"
+        ],
+        "temporal_intent": "2023",
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-139",
+      "suite": "recall_locomo_holdout",
+      "question": "What was the poetry reading that Caroline attended about?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "poetry",
+          "reading",
+          "Caroline",
+          "attended"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-140",
+      "suite": "recall_locomo_holdout",
+      "question": "What did the posters at the poetry reading say?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "posters",
+          "poetry",
+          "reading",
+          "say"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-141",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Caroline's drawing symbolize for her?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "drawing",
+          "symbolize"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-142",
+      "suite": "recall_locomo_holdout",
+      "question": "How do Melanie and Caroline describe their journey through life together?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "Caroline",
+          "describe",
+          "journey"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-143",
+      "suite": "recall_locomo_holdout",
+      "question": "What happened to Melanie's son on their road trip?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "happened",
+          "Melanie's",
+          "son",
+          "road"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-144",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Melanie's son handle the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "son",
+          "handle",
+          "accident"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-145",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Melanie feel about her family after the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "feel",
+          "family",
+          "after"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-146",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Melanie's children handle the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "children",
+          "handle",
+          "accident"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-147",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Melanie feel after the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "feel",
+          "after",
+          "accident"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-148",
+      "suite": "recall_locomo_holdout",
+      "question": "What was Melanie's reaction to her children enjoying the Grand Canyon?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "reaction",
+          "children",
+          "enjoying"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-149",
+      "suite": "recall_locomo_holdout",
+      "question": "What do Melanie's family give her?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "family",
+          "give"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-150",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Melanie feel about her family supporting her?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "feel",
+          "family",
+          "supporting"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-151",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie do after the road trip to relax?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 8,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic",
+          "archival"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "after",
+          "road",
+          "trip"
+        ],
+        "temporal_intent": null,
+        "top_k": 8
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-152",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline realize after her charity race?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "realize",
+          "after",
+          "charity"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-153",
+      "suite": "recall_locomo_holdout",
+      "question": "What are Melanie's plans for the summer with respect to adoption?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "plans",
+          "summer",
+          "respect"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-154",
+      "suite": "recall_locomo_holdout",
+      "question": "What type of individuals does the adoption agency Melanie is considering support?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "type",
+          "individuals",
+          "adoption",
+          "agency"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-155",
+      "suite": "recall_locomo_holdout",
+      "question": "Why did Melanie choose the adoption agency?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "choose",
+          "adoption",
+          "agency"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-156",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Melanie excited about in her adoption process?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "excited",
+          "adoption",
+          "process"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-157",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Melanie's necklace symbolize?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie's",
+          "necklace",
+          "symbolize"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-158",
+      "suite": "recall_locomo_holdout",
+      "question": "What country is Melanie's grandma from?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "country",
+          "Melanie's",
+          "grandma"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-159",
+      "suite": "recall_locomo_holdout",
+      "question": "What was grandma's gift to Melanie?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "grandma's",
+          "gift",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-160",
+      "suite": "recall_locomo_holdout",
+      "question": "What was grandpa's gift to Caroline?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "grandpa's",
+          "gift",
+          "Caroline"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-161",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Caroline's hand-painted bowl a reminder of?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "hand-painted",
+          "bowl",
+          "reminder"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-162",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline and her family do while camping?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "family",
+          "while",
+          "camping"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-163",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of counseling and mental health services is Melanie interested in pursuing?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "counseling",
+          "mental",
+          "health"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-164",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of counseling workshop did Melanie attend recently?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "counseling",
+          "workshop",
+          "Melanie"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-165",
+      "suite": "recall_locomo_holdout",
+      "question": "What motivated Melanie to pursue counseling?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "motivated",
+          "Melanie",
+          "pursue",
+          "counseling"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-166",
+      "suite": "recall_locomo_holdout",
+      "question": "What kind of place does Melanie want to create for people?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "kind",
+          "place",
+          "Melanie",
+          "want"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-167",
+      "suite": "recall_locomo_holdout",
+      "question": "Did Caroline make the black and white bowl in the photo?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "make",
+          "black",
+          "white"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-168",
+      "suite": "recall_locomo_holdout",
+      "question": "What are the new shoes that Caroline got used for?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "new",
+          "shoes",
+          "Caroline",
+          "got"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-169",
+      "suite": "recall_locomo_holdout",
+      "question": "What is Caroline's reason for getting into running?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "reason",
+          "getting",
+          "into"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-170",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Caroline say running has been great for?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "say",
+          "running",
+          "been"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-171",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie see at the council meeting for adoption?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "see",
+          "council",
+          "meeting"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-172",
+      "suite": "recall_locomo_holdout",
+      "question": "What inspired Melanie's painting for the art show?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "inspired",
+          "Melanie's",
+          "painting",
+          "art"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-173",
+      "suite": "recall_locomo_holdout",
+      "question": "What inspired Caroline's sculpture for the art show?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "inspired",
+          "Caroline's",
+          "sculpture",
+          "art"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-174",
+      "suite": "recall_locomo_holdout",
+      "question": "How often does Caroline go to the beach with her kids?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "often",
+          "Caroline",
+          "beach",
+          "kids"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-175",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline and her family see during their camping trip last year?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "family",
+          "see",
+          "during"
+        ],
+        "temporal_intent": "last year",
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-176",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Caroline feel while watching the meteor shower?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "feel",
+          "while",
+          "watching"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-177",
+      "suite": "recall_locomo_holdout",
+      "question": "Why did Caroline choose to use colors and patterns in her pottery project?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "choose",
+          "use",
+          "colors"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-178",
+      "suite": "recall_locomo_holdout",
+      "question": "Is Oscar Melanie's pet?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Oscar",
+          "Melanie's",
+          "pet"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-179",
+      "suite": "recall_locomo_holdout",
+      "question": "Where did Oscar hide his bone once?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Oscar",
+          "hide",
+          "bone",
+          "once"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-180",
+      "suite": "recall_locomo_holdout",
+      "question": "What activity did Melanie used to do with her dad?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "activity",
+          "Melanie",
+          "used",
+          "dad"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-181",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie make for a local church?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "make",
+          "local",
+          "church"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-182",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Melanie find in her neighborhood during her walk?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Melanie",
+          "find",
+          "neighborhood",
+          "during"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-183",
+      "suite": "recall_locomo_holdout",
+      "question": "Which song motivates Melanie to be courageous?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "song",
+          "motivates",
+          "Melanie",
+          "courageous"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-184",
+      "suite": "recall_locomo_holdout",
+      "question": "What type of instrument does Caroline play?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "type",
+          "instrument",
+          "Caroline",
+          "play"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-185",
+      "suite": "recall_locomo_holdout",
+      "question": "Which classical musicians does Caroline enjoy listening to?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "classical",
+          "musicians",
+          "Caroline",
+          "enjoy"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-186",
+      "suite": "recall_locomo_holdout",
+      "question": "Who is Caroline a fan of in terms of modern music?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "fan",
+          "terms",
+          "modern"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-187",
+      "suite": "recall_locomo_holdout",
+      "question": "What precautionary sign did Caroline see at the café?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "precautionary",
+          "sign",
+          "Caroline",
+          "see"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-188",
+      "suite": "recall_locomo_holdout",
+      "question": "What setback did Caroline face recently?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "setback",
+          "Caroline",
+          "face",
+          "recently"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-189",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Caroline do to keep herself busy during her pottery break?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "keep",
+          "herself",
+          "busy"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-190",
+      "suite": "recall_locomo_holdout",
+      "question": "What was the poetry reading that Melanie attended about?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "poetry",
+          "reading",
+          "Melanie",
+          "attended"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-191",
+      "suite": "recall_locomo_holdout",
+      "question": "What happened to Caroline's son on their road trip?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "happened",
+          "Caroline's",
+          "son",
+          "road"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-192",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Caroline's son handle the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "son",
+          "handle",
+          "accident"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-193",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Caroline feel about her family after the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "feel",
+          "family",
+          "after"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-194",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Caroline's children handle the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "children",
+          "handle",
+          "accident"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-195",
+      "suite": "recall_locomo_holdout",
+      "question": "How did Caroline feel after the accident?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "feel",
+          "after",
+          "accident"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-196",
+      "suite": "recall_locomo_holdout",
+      "question": "What was Caroline's reaction to her children enjoying the Grand Canyon?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline's",
+          "reaction",
+          "children",
+          "enjoying"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-197",
+      "suite": "recall_locomo_holdout",
+      "question": "What did Caroline do after the road trip to relax?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "after",
+          "road",
+          "trip"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    },
+    {
+      "id": "recall-locomo-conv-26-198",
+      "suite": "recall_locomo_holdout",
+      "question": "What does Caroline love most about camping with her family?",
+      "availableTables": [
+        "episodic",
+        "semantic",
+        "archival"
+      ],
+      "requestedTopK": 5,
+      "expected": {
+        "intent": "recall",
+        "target_tables": [
+          "episodic",
+          "semantic"
+        ],
+        "filters": {},
+        "ranking_hints": [
+          "Caroline",
+          "love",
+          "most",
+          "camping"
+        ],
+        "temporal_intent": null,
+        "top_k": 5
+      }
+    }
+  ]
+}

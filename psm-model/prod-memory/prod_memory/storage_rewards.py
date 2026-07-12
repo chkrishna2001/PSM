@@ -21,6 +21,11 @@ def _expected_store(expected: dict[str, Any]) -> bool:
     return _normalize_action(str(expected.get("action") or "")) not in {"ignore", "ignore_noise"}
 
 
+def is_json_complete(raw: str, *, parse_valid: bool) -> bool:
+    """True when raw model output parses and closes its JSON object cleanly (no mid-string cutoff)."""
+    return parse_valid and raw.strip().endswith("}") and "..." not in raw[-24:]
+
+
 def score_storage_decision(
     *,
     remember_target: str,
@@ -42,7 +47,7 @@ def score_storage_decision(
     overlap = grounding_overlap_score(remember_target, stored_text)
     content_grounded = (not pred_store) or bool(overlap["grounded"])
     no_bleed = not (pred_store and has_curriculum_bleed(stored_text))
-    complete_json = parse_valid and raw.strip().endswith("}") and "..." not in raw[-24:]
+    complete_json = is_json_complete(raw, parse_valid=parse_valid)
 
     components = {
         "parse_valid": 1.0 if parse_valid else 0.0,
