@@ -948,9 +948,9 @@ RunPod hygiene rule.
 ## Cross-adapter status (all three, 2026-07-12 end of session, updated)
 | Adapter | Status | Best result | Production wiring |
 |---|---|---|---|
-| **Storage** | Real, iterated 10x (6 reverted: dpo4, dpo5, dpo6, v6, v7, v9) | **v10: 0.7059 action_match (coding-agent gate, primary bar)** — methodology fix (reasoning-first JSON order, correct LR, full epoch coverage) beat 6 prior data/calibration-only attempts that all plateaued at 0.47-0.65; cracks 2 cases that failed in every previous round. Real tradeoff: secondary LoCoMo gate regressed 0.80→0.40 (judged acceptable — that gate is an explicit lower-priority stretch goal, not the deploy bar) | **Promoted, live** (only adapter actually deployed) |
+| **Storage** | Real, iterated 11x (6 reverted: dpo4, dpo5, dpo6, v6, v7, storage-v9) | **v11: 0.7647 action_match (13/17, coding-agent gate, primary bar)** — v10's methodology fix (reasoning-first JSON, correct LR, full epochs) got to 0.7059; v11 added 22 targeted hand-labeled examples of the exact terse-finding-vs-narration boundary v10 kept missing, gaining +1 net case (fixed run-complete-hf) with zero regressions and all 6 ignore cases still correct. 3 hard store cases still miss. LoCoMo no longer gated here — a separate chat-register adapter will own that domain | **Promoted, live** (only adapter actually deployed) |
 | **Retrieval-plan** | Real, iterated 3x | **v3: 1.00 parse, 0.935 target_tables_exact, 0.995 primary-table, 0.951 ranking_hints, 1.00 top_k, 0.985 temporal (199-case holdout)** — full retrain at LR 1e-4/~6 epochs (same methodology fix as storage, minus reasoning-reorder since the schema has no reasoning field) beat v2 on every metric, closest of the three to the 95% bar | Not started — `DeterministicPlanRuntime` overrides always |
-| **Consolidation** | Real, iterated 10x (4 reverted: DPO attempt 4, v5, v6, v7) | **v4: 0.826 action_match (19/23), `update_existing` and `flag_conflict` both saturated at 100%, only `store_episodic` has residual errors (6/9)** — SFT-boost + more real data, still the best result. The storage-style methodology fix (full retrain, LR 1e-4) was tried and **regressed hard to 0.565** (v6, collapsed toward over-predicting store_episodic); a gentler resume-patch version (v7, LR 1e-5) recovered partially to 0.652 but still underperformed v4 — v4 remains promoted | Not started — `update_with_supersede`/`conflict_log_and_hold` don't call any model |
+| **Consolidation** | Real, iterated 12x (6 reverted: DPO attempt 4, v5, v6, v7, v8, v9) | **v4: 0.826 action_match (19/23), `update_existing`+`flag_conflict` both 100%, only `store_episodic` residual (6/9)** — still the best and promoted. Every attempt to beat it failed: v6/v7 (storage-style high-LR retrain) collapsed to 0.565/0.652; v8 (10 new real update pairs, boost removed) tied at 0.652 with a mirror failure; v9 (same 10 new pairs WITH v4's boost kept) tied v4 exactly at 0.826 but redistributed errors (update 7/10 down, store 8/9 up). Ceiling is genuinely deeper than data volume — adding real pairs just shifts *which* boundary cases fail | Not started — `update_with_supersede`/`conflict_log_and_hold` don't call any model |
 
 **None of the three are at the 99% target, though storage and consolidation both made real
 gains this session.** Storage's "0.5B capacity ceiling" conclusion from earlier in this
@@ -1334,16 +1334,257 @@ After verification, pods `wu03sgahoq4uf1` and `2vzo9yf0nw7fde` were permanently 
 Nothing else needs uploading or downloading for these runs. The remaining work is local
 evaluation of storage-v11 and consolidation-v9, followed by evidence-based promotion decisions.
 
-## Next action (2026-07-12, latest)
+### Gate expansion + PiSSA + 37-case v11 baseline (2026-07-12, latest)
 
-1. Evaluate local `hf-prod-storage-v11-qwen0.5b` on the primary 17-case coding-agent gate and
-   secondary 15-case realistic/LoCoMo gate used for storage-v10. Do not promote unless it improves
-   the targeted under-storing pattern without giving back v10's primary-gate gain.
-2. Evaluate local `hf-prod-consolidation-v9-qwen0.5b` on the 23-case consolidation holdout and
-   compare per-class results directly with v4 (0.826) and v8 (0.652). Keep v4 promoted unless v9
-   demonstrates a real aggregate or boundary-case improvement.
-3. No pod deployment is needed for either evaluation; both adapters are local and CPU evaluation
-   is the intended next step.
+**Expanded the coding-agent gate 17 → 37 cases (21 store / 16 ignore), zero contamination**
+verified against the full v11 curriculum. Rationale: a 17-case gate cannot express 95% (each
+case = 5.9%; steps are 82/88/94/100%), and one case flipping is a 6-pt swing. The 20 new cases
+are hand-labeled from untouched claude_code (ignore/process-narration) and codex-experiment
+(store/durable-findings) turns. 95% is now measurable (35/37 = 94.6%).
+
+**Gate further expanded 37 → 100 cases (53 store / 47 ignore), zero contamination** (user asked
+for 100 for ~1% granularity). Register-matched Claude Code + Codex agent turns as the backbone,
+plus ~12 ChatGPT technical-fact turns (Bulkhead/DuckDB/K8s/YARP/Postgres/.NET) for topic
+diversity. Genuinely-ambiguous "ledger now records" turns deliberately EXCLUDED from the gate
+(they belong in training with consistent labels, not as test cases with shaky labels). Note: the
+untouched register-matched pool is largely one codex research topic, so ChatGPT technical facts
+were needed to diversify the store side; that mixed-register composition is intentional.
+
+**v11 baselines across gate sizes (same checkpoint, different gates):** 13/17 = 0.7647 (noisy) →
+32/37 = 0.8649 → **82/100 = 0.82** (definitive). The 100-case number is the trustworthy one.
+Per-class: store 44/53, ignore 40/47. The 18 failures split into two fixable patterns: **9
+under-stores** (3 hard "ledger" terse-decisions + ~6 standalone technical FACTS like
+DuckDB-no-XML / YARP / Postgres-operator — the model under-stores pure reference facts because
+training is mostly agent-*work* turns, not standalone technical statements) + **7 over-stores**
+(transient infra status: commits-landed, adapter-downloaded, staged-committing). Target 95% =
+fix 13 of 18. This is a concrete, two-pattern target, not a vague grind.
+
+**PiSSA init wired into the training stack** (`hf_lora_train.py`, arXiv:2404.02948): SVD-based
+LoRA init instead of random, with the required save-time weight-conversion
+(`path_initial_model_for_weight_conversion`) so the adapter loads on the ORIGINAL base, not the
+PiSSA residual. `HF_LORA_INIT=pissa` env / `lora_init` profile key / `--lora-init` CLI thread it
+through. storage-v12 = v11 curriculum + PiSSA, training now as an A/B to isolate the init's
+contribution. Research also surfaced PromptMix-style consistent relabeling (fixes the "ledger now
+records" label noise) and focal loss (hard-token gradient focus) as the next two levers.
+
+### PromptMix relabeling result (2026-07-13): ruled out — v11 stays
+
+storage-v13 = v11 + PromptMix-style consistent relabeling: fixed the 1 mislabeled "ledger now
+reflects contradiction" ignore→store, +11 store rows (terse decisions + standalone technical
+facts: gRPC/JWT/Redis/Docker/Postgres/async), +8 ignore rows (transient infra status), all one
+consistent rule, zero gate contamination, v11's recipe, on A5000. **Result: 0.79 (79/100),
+REGRESSED 3 pts from v11's 0.82** — and the wrong direction: store DROPPED 44→38 (MORE
+under-storing), ignore rose 40→43. Adding targeted store data made the model *more conservative*,
+not less. The 6 technical-fact store examples did NOT generalize to the gate's *different* held-out
+technical facts (duckdb/yarp/postgres). **Ruled out; v11 (0.82) stays promoted.**
+
+### Teacher-relabel PILOT result (2026-07-13): hypothesis CONFIRMED, proceed to full relabel
+
+Cloudflare Workers AI (Llama-3.3-70B, `@cf/meta/llama-3.3-70b-instruct-fp8-fast`) relabeled a
+92-row sample of the real base curriculum under one durability rule. **Result: 28.3% flip rate;
+22.8% of auto-`store` labels flipped to `ignore`; store fraction 91.3% → 73.9%.** Decisive
+confirmation the base labels systematically OVER-store on real inputs. The store→ignore flips are
+textbook transient content: greetings/personas, acknowledgements ("Excellent!"), how-to commands,
+operational status ("Created the release commit and tag"), clarifying questions — all auto-labeled
+store, correctly ignore. This over-labeling taught the model "store = substantial content," which
+explains BOTH the gate's over-stores AND under-stores (terse real decisions look thin vs the rich
+over-labeled training stores). Creds via `o` (cloudflarekey/cloudflareaccountid); first runs hung
+on the `o`/clipboard fetch inside a detached process — fixed by passing creds via env.
+**Next: full relabel of all 1389 real prod_extraction_v1 rows (apply store→ignore flips, keep real
+inputs + extraction for genuine stores), rebuild curriculum, retrain as storage-v15, eval vs 0.82.**
+
+### Data audit: it's LABEL quality on REAL data, not synthetic (2026-07-13)
+
+User pushed back on synthetic data ("real data is better"). Correct — and the audit resolves it:
+the fix is teacher-RELABELING our REAL data, not synthetic generation. Two knobs differ:
+INPUT (turn text) — real wins (avoids distribution shift / model collapse); LABEL (store/ignore)
+— a strong teacher beats our auto-labels. Our bottleneck is the LABEL knob on real inputs.
+
+Audit of the base curriculum (`hf-prod-v5n.jsonl`, 1908 rows, `prod_extraction_v1` = 1389 real
+coding-agent turns):
+- **Action dist: 91% store (1743) / 8.6% ignore (165).** Implausibly store-heavy — real coding
+  sessions are mostly transient turns (status/next-step) that should be ignore; a genuine store
+  rate is ~20-40%. This skew = systematic OVER-labeling.
+- Inputs are real + on-domain (off-domain keyword hits ~2%, mostly false positives) — GOOD, keep them.
+- The label noise is NOT surface-detectable: transient-marker and off-domain heuristics catch only
+  1-2%, because judging "durable vs transient" on a substantive response needs SEMANTIC judgment —
+  exactly what a strong teacher provides and heuristics/synthetic can't. This is why the model
+  learned a muddy "store = substantial content" boundary and under-stores the gate's terse
+  decisions + technical facts.
+- **Teacher-labeling infra already exists**: `openrouter_teacher.py`, `binary_gate_teacher.py`,
+  `label_from_assistant.py` — so relabeling ~1400 real rows with a strong model is tractable.
+
+**Conclusion + plan: keep the real inputs, teacher-relabel them with one consistent
+durability rule (a strong model via openrouter_teacher), which should rebalance to a realistic
+store/ignore ratio and sharpen the boundary — directly targeting the gate under-store failures.
+This is the real-data path (user's instinct confirmed), NOT synthetic generation.**
+
+### Two-stage decompose result + DATA SCALE is the remaining lever (2026-07-13)
+
+storage-cls-v1 = dedicated two-stage decision classifier (reasoning-first but decision-only output
+{reasoning, action:store|ignore}, extraction stripped), the function-calling recipe. **Result:
+0.75 raw decision accuracy — WORSE than v11's 0.82.** Stripping extraction HURT the decision by 7
+pts: v11's full-JSON format keeps extraction as a useful auxiliary task that helps the store/ignore
+decision (documented multi-task benefit). Two-stage decompose ruled out; v11's reasoning-first
+full-JSON is the best decision format found.
+
+**Complete storage lever scoreboard — every non-data lever exhausted, none beat v11=0.82:**
+| lever type | attempt | vs 0.82 |
+|---|---|---|
+| init | PiSSA (v12) | 0.72 ✗ |
+| loss | focal (v14) | 0.78 ✗ |
+| relabeling | PromptMix (v13) | 0.82 tied |
+| calibration | threshold, binary+JSON | 0.66 / 0.79 ✗ |
+| architecture | two-stage decompose (cls-v1) | 0.75 ✗ |
+| **data scale** | **not yet tried** | **the remaining lever** |
+
+**This is NOT a capacity ceiling — it's process-of-elimination pointing at DATA.** Init, loss,
+relabeling, calibration, and architecture are all exhausted. The research's strongest lever for
+small-model classification — "SFT on synthetically-generated data reliably produces small models
+that match/exceed 70B teachers" — is the one untried thing. Our curriculum is ~2000 rows (partly
+auto-labeled, ~150 hand-labeled); the paper that broke the last plateau (arXiv:2606.08051) used
+8015 clean samples; function-calling wins use thousands. **Next research-directed step: scale the
+training data via teacher (strong-model) labeling / synthetic generation to thousands of clean,
+diverse store/ignore examples across the boundary — the one lever that actually explains how small
+models match large ones.** This is a larger build (generation + quality control) than the tweaks
+tried so far.
+
+### Threshold calibration + RETRACTION of the "ceiling" claim (2026-07-13)
+
+User rightly pushed back on the "0.82 is the 0.5B ceiling" conclusion (same premature-ceiling
+mistake as the reasoning-first episode): 20M models do function calling, 300M models extract well
+— a store/ignore decision is not capacity-limited. Research confirmed the real diagnosis: the
+"everything pushes toward ignore" pattern is a documented **negative/class-imbalance bias**, and
+the literature's #1 fix (arXiv:2409.19751, most-effective + cheapest across 30 datasets) is
+**decision-threshold calibration**, NOT more training tweaks.
+
+Tested calibration on v11 (no retraining):
+- **Binary mode**: argmax 0.59 → threshold-calibrated (honest 5-fold) **0.66** (+7 pts — mechanism
+  is real!) but binary mode's ceiling (0.66) is far below JSON mode's 0.82 (the model wasn't
+  trained for bare binary output; it's off-distribution).
+- **JSON action-token mode** (the real decision): argmax 0.72 → calibrated honest **0.79**, still
+  below greedy's 0.82. The reasoning-first decision is COMMITTED during reasoning generation, so
+  the action token has no cleanly-thresholdable scalar — greedy is already the best decoding.
+
+**Conclusion: calibration is genuinely ruled out (tested, doesn't beat 0.82) BUT the "capacity
+ceiling" is RETRACTED.** The evidence points to a specific structural cause: the model's
+store/ignore signal is entangled in generative reasoning and there's no clean calibratable
+probability. The research-indicated next lever is **two-stage decomposition** — a DEDICATED binary
+store/ignore classifier (clean, well-ordered, calibratable output) feeding extraction only on
+store, exactly how small function-calling models (Phi-4-mini ≥97% BFCL) win. Plus data scale
+(small-model classification successes use thousands of clean synthetic rows, not our ~2000
+partly-auto-labeled). NOT a ceiling — an untried structural approach.
+
+### Focal loss result + earlier (now-RETRACTED) ceiling framing (2026-07-13)
+
+storage-v14 = v13 curriculum + token-level focal loss (gamma=2, down-weight easy tokens / focus
+hard-token gradient; confirmed active in log). **Result on corrected 50/50 gate: 78/100 (store
+34/50, ignore 44/50) — REGRESSED from v11=81 / v13=82.** Same failure shape as every other lever:
+it pushed the model MORE conservative (store down, ignore up), worsening the under-store gap
+rather than closing it.
+
+**All three research-backed levers have now failed to beat v11≈0.82:**
+| lever | corrected-gate score | effect |
+|---|---|---|
+| v11 (baseline SFT: reasoning-first + LR 1e-4 + 6 epochs) | **81** | balanced (store 41 / ignore 40) |
+| v13 PromptMix consistent relabel | 82 | tied; more conservative (store 37 / ignore 45) |
+| v12 PiSSA init | 72 | hurt; much more conservative (store 29) |
+| v14 focal loss gamma=2 | 78 | hurt; more conservative (store 34) |
+
+**The consistent, robust finding: every intervention that changed the model shifted it toward
+`ignore` (more conservative), never toward closing the under-store gap.** v11's ~0.81-0.82 is a
+stable local optimum that PiSSA, PromptMix relabeling, and focal loss all failed to beat. **This
+is the realistic 0.5B ceiling for this fuzzy store/ignore boundary.** The remaining ~18 failures
+split ~9 under-store (technical facts + terse decisions) / ~10 over-store (transient status);
+the model has a fixed calibration point where these levers only trade one error type for the
+other. Beating 0.82 meaningfully would need a fundamentally different approach (two-stage
+classify-then-extract, or class-weighting to force more storing, or a bigger model — the last
+violates the 0.5B hook-latency constraint), or much larger real training data at scale, not the
+~20-150-row targeted additions tried here. **Recommendation: accept v11=0.82 as the storage
+result (a strong number on a genuinely ambiguous boundary) and shift effort to consolidation
+(v4=0.826) or the chat-register adapter.** v11 stays the promoted storage default.
+
+### Label audit (2026-07-13): corrected gate, PromptMix was neutral not a regression
+
+Per user direction ("audit labels then focal loss"), audited the persistent under-store cases
+against a crisp consistent rule: **operational/session mechanics** (a run/pod/job completing,
+artifacts uploaded/verified/synced, "X is wired in" implementation status) = **ignore** (ephemeral;
+a memory keeps the result, not the mechanics); **findings/diagnoses/decisions/reusable technical
+rules** = store. This flipped 3 cases I'd mislabeled store→ignore (`run-complete-hf`,
+`adapter-verified-hf`, `experiment-19-wired` — all operational status). Gate now 50 store/50 ignore.
+The technical-fact cases (DuckDB/YARP/Postgres) STAY store — PSM's `promote_semantic` exists for
+exactly those reusable rules, so under-storing them is a real model gap, not a label error.
+
+**Recomputed on the corrected gate (predictions unchanged, only labels): v11 = 81/100 (store
+41/50, ignore 40/50), v13 = 82/100 (store 37/50, ignore 45/50), v12 PiSSA = 72/100.** So v13
+(PromptMix) is TIED with v11, not a regression — the earlier "v13 = 0.79" was mostly the 3
+mislabeled operational cases (which v11 stored "correctly" under the old wrong labels). Revised
+conclusion: **PiSSA hurt, PromptMix was neutral; v11≈v13≈0.81-0.82 is the honest clean baseline.**
+v11 stays promoted (better store recall 41 vs 37, and under-storing is the priority gap).
+
+### Storage strategic state (2026-07-13): v11=0.82 is a stubborn optimum
+
+**Two research-backed levers now both failed to beat v11=0.82: PiSSA (0.73) and PromptMix
+relabeling (0.79).** The failure profile is consistent — dominated by store→ignore (under-storing)
+on terse decisions + standalone technical facts. Targeted store data doesn't fix it (v13 made it
+worse). Three honest reads: (a) high run-to-run variance at the ~1% data-delta scale means small
+additions are noise-dominated; (b) the ~9 under-store cases sit near the true decision boundary
+and resist reinforcement; (c) some gate "store" labels are genuine judgment calls — e.g. "DuckDB
+cannot query XML" is a standalone technical fact; whether a memory system should store general
+technical knowledge vs only project-specific state is a debatable product decision, so the model's
+"ignore" is defensible, not clearly wrong. Remaining coded lever: focal loss (v14). But given two
+failures, the strategic question is whether 95% on this fuzzy, partly-debatable boundary is the
+right bar, or whether v11=0.82 (with a cleaner-labeled gate) is already near the realistic ceiling.
+
+### PiSSA A/B result (2026-07-13): ruled out — v11 stays
+
+storage-v12 = v11's exact curriculum + PiSSA init (SVD-based, arXiv:2404.02948), clean A/B (only
+init changed). Save-conversion verified correct (`converting PiSSA adapter -> standard LoRA`;
+converted adapter r=32/alpha=64/init=True as expected; train loss 0.2293 vs v11's 0.2493, so it
+DID converge faster/lower as advertised). **But on the 100-case gate it REGRESSED: 0.73 (73/100)
+vs v11's 0.82.** Not a broken save — the per-class split is coherent (store 32/53 DOWN from 44,
+ignore 43/47 UP from 40). PiSSA's principal-SVD init biased the model *more conservative* (toward
+the default `ignore`), which is exactly the wrong direction given our primary gap is under-storing.
+Lower train loss did not translate to better held-out judgment — PiSSA fit the majority behavior
+harder. **Conclusion: PiSSA ruled out for this fuzzy-boundary classification task** (it helps on
+math/reasoning per the paper, not here). v11 (0.82) remains the promoted storage default. The
+PiSSA plumbing stays in the codebase (`lora_init` param) but is not used. Next levers for the 18
+failures: PromptMix-style consistent relabeling (under-stores) + focal loss (hard boundary).
+
+### Eval outcomes (2026-07-12, completed)
+
+**Storage-v11: 0.7647 (13/17) on the primary coding-agent gate — real improvement, PROMOTED.**
+Up from v10's 0.7059 (12/17). The 22 targeted hand-labeled examples of the terse-finding-vs-
+narration boundary fixed `coding-agent-run-complete-hf` (a store case v10 wrongly ignored),
+gained +1 net case, and kept all 6 ignore cases correct with zero regressions. 3 hard store
+cases still miss (`measurement-admission-rule`, `contradiction-rejected`, `powershell-path-
+resolution`). **No LoCoMo eval was run — decision (user, 2026-07-12): the coding-agent storage
+adapter is judged ONLY on the coding-agent gate; the chat/casual-conversation register gets its
+own dedicated adapter, so LoCoMo performance on this adapter is irrelevant and not worth
+measuring.** `hf-prod-storage-v11-qwen0.5b` supersedes v10 as the promoted storage default.
+
+**Consolidation-v9: 0.826 (19/23) — exact tie with v4, NOT promoted; v4 stays.** The 10 new real
+`update_existing` pairs (with v4's 2x store boost kept) did not improve the aggregate. Per-class:
+`update_existing` 7/10 (DOWN from v4's perfect 10/10), `store_episodic` 8/9 (UP from v4's 6/9),
+`flag_conflict` 4/4 (same). Same total, redistributed errors — the new data shifts *which*
+boundary cases fail rather than reducing how many. This is now the 6th consecutive failed attempt
+to beat v4 (DPO-4, v5, v6, v7, v8, v9). Firm conclusion: **consolidation's ceiling is not a data-
+volume or boost-ratio problem** — the `store_episodic`↔`update_existing` boundary on
+thematically-similar-but-distinct pairs is genuinely ambiguous at 0.5B, and marginal real data
+just moves the failures around. Next real lever would be a qualitatively different approach
+(e.g. a two-stage similarity-then-decision split, or a larger model — but the latter violates the
+0.5B hook-latency constraint), not more of the same data.
+
+### Next action (2026-07-12, latest)
+
+1. Storage: v11 promoted at 0.7647. The 3 remaining misses are terse rule/finding statements;
+   another targeted data round could try them, but returns are diminishing — weigh against the
+   new chat-register adapter work.
+2. Consolidation: v4 stays promoted at 0.826. Stop iterating on data volume/boost — 6 attempts
+   have confirmed that lever is exhausted. Revisit only with a structurally different method.
+3. New adapter (planned): a separate chat/casual-conversation (LoCoMo-register) storage adapter,
+   so the coding-agent adapter no longer carries that domain. This is why storage is no longer
+   dual-gated against LoCoMo.
 4. The older action list below is retained as historical context; current priorities above take
    precedence.
 

@@ -181,6 +181,8 @@ tmux new-session -d -s psm-hf-lora bash -lc "
   export PSM_HF_MODEL_REPO='$MODEL_REPO'
   export HF_HOME=\"\${HF_HOME:-/workspace/.cache/huggingface}\"
   export HF_RESUME_ADAPTER='${RESUME_ADAPTER:-}'
+  export HF_LORA_INIT='${HF_LORA_INIT:-default}'
+  export HF_FOCAL_GAMMA='${HF_FOCAL_GAMMA:-0}'
   python -m psm_model.hf_lora_train \
     --curriculum '$CURRICULUM' \
     --output-dir '$OUT_DIR' \
@@ -193,6 +195,8 @@ tmux new-session -d -s psm-hf-lora bash -lc "
     --grad-accum '$GRAD_ACCUM' \
     --learning-rate '$LEARNING_RATE' \
     --save-steps '$SAVE_STEPS' \
+    --lora-init '${HF_LORA_INIT:-default}' \
+    --focal-gamma '${HF_FOCAL_GAMMA:-0}' \
     2>&1 | tee '$TRAIN_LOG'
   bash '$UPLOAD_SCRIPT' 2>&1 | tee -a '$TRAIN_LOG'
   touch '$TRAIN_DONE'

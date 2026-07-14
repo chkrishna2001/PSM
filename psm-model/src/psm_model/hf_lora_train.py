@@ -68,6 +68,8 @@ def train_hf_lora(
     save_steps: int = 200,
     logging_steps: int = 20,
     resume_adapter: str | None = None,
+    lora_init: str = "default",
+    focal_gamma: float = 0.0,
 ) -> dict[str, Any]:
     try:
         import torch
@@ -106,6 +108,14 @@ def train_hf_lora(
     model = AutoModelForCausalLM.from_pretrained(resolved_model, **load_kwargs)
     model.config.use_cache = False
 
+    resolved_init = (lora_init or os.environ.get("HF_LORA_INIT") or "default").strip().lower()
+    # PiSSA (arXiv:2404.02948): initialize the adapter from the principal singular
+    # vectors of the frozen weights instead of random/zero. Faster convergence + higher
+    # accuracy in limited-data regimes. "pissa_niter_4" uses fast randomized SVD.
+    init_weights: Any = True
+    is_pissa = resolved_init in {"pissa", "pissa_niter_4", "pissa_niter_16"}
+    if is_pissa:
+        init_weights = "pissa_niter_4" if resolved_init == "pissa" else resolved_init
     lora_config = LoraConfig(
         r=lora_r,
         lora_alpha=lora_alpha,
@@ -113,9 +123,13 @@ def train_hf_lora(
         bias="none",
         task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        init_lora_weights=init_weights,
     )
     resolved_resume = (resume_adapter or os.environ.get("HF_RESUME_ADAPTER") or "").strip()
+    pissa_init_dir: Path | None = None
     if resolved_resume:
+        if is_pissa:
+            raise ValueError("PiSSA init is incompatible with --resume-adapter (fresh init only)")
         adapter_path = Path(resolved_resume)
         if not adapter_path.is_dir():
             raise FileNotFoundError(f"resume adapter missing: {resolved_resume}")
@@ -123,6 +137,13 @@ def train_hf_lora(
         model = PeftModel.from_pretrained(model, str(adapter_path), is_trainable=True)
     else:
         model = get_peft_model(model, lora_config)
+        if is_pissa:
+            # Save the pristine PiSSA-initialized adapter so we can convert the trained
+            # adapter back into a standard LoRA delta loadable on the ORIGINAL base
+            # weights (our eval loads on the original Qwen, not the PiSSA residual).
+            pissa_init_dir = output_dir / "pissa_init"
+            print(f"PiSSA init ({init_weights}); saving initial adapter to {pissa_init_dir}", flush=True)
+            model.save_pretrained(str(pissa_init_dir))
     model.print_trainable_parameters()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -144,14 +165,53 @@ def train_hf_lora(
         dataloader_pin_memory=True,
     )
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset,
-    )
+    resolved_gamma = float(os.environ.get("HF_FOCAL_GAMMA", focal_gamma) or 0.0)
+    if resolved_gamma > 0.0:
+        import torch.nn.functional as F
+
+        class _FocalTrainer(Trainer):
+            # Focal loss (arXiv:1708.02002 shape, token-level for LM): down-weight easy tokens
+            # (1-p_t)^gamma, focus gradient on hard tokens. Only assistant tokens contribute
+            # (prompt labels are -100). Targets the hard store/ignore boundary cases.
+            def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+                labels = inputs.pop("labels")
+                outputs = model(**inputs)
+                logits = outputs.logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                vocab = logits.size(-1)
+                flat_logits = logits.view(-1, vocab)
+                flat_labels = shift_labels.view(-1)
+                mask = flat_labels != -100
+                logp = F.log_softmax(flat_logits, dim=-1)
+                safe = flat_labels.clone()
+                safe[~mask] = 0
+                tok_logp = logp.gather(-1, safe.unsqueeze(-1)).squeeze(-1)
+                pt = tok_logp.exp()
+                focal = -((1.0 - pt) ** resolved_gamma) * tok_logp
+                focal = focal[mask]
+                loss = focal.mean() if focal.numel() else flat_logits.sum() * 0.0
+                return (loss, outputs) if return_outputs else loss
+
+        print(f"using focal loss (gamma={resolved_gamma})", flush=True)
+        trainer = _FocalTrainer(model=model, args=training_args, train_dataset=dataset)
+    else:
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=dataset,
+        )
     print("starting trainer.train()", flush=True)
     train_result = trainer.train()
-    trainer.save_model(str(output_dir / "adapter"))
+    if pissa_init_dir is not None:
+        # Convert the trained PiSSA adapter into a standard LoRA delta relative to the
+        # original base weights, so it loads on plain Qwen without the PiSSA residual.
+        print(f"converting PiSSA adapter -> standard LoRA (base={pissa_init_dir})", flush=True)
+        model.save_pretrained(
+            str(output_dir / "adapter"),
+            path_initial_model_for_weight_conversion=str(pissa_init_dir),
+        )
+    else:
+        trainer.save_model(str(output_dir / "adapter"))
     tokenizer.save_pretrained(str(output_dir / "adapter"))
 
     metrics = {
@@ -382,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--learning-rate", type=float, default=2e-4)
     parser.add_argument("--save-steps", type=int, default=200)
     parser.add_argument("--resume-adapter", default=None, help="Continue training from existing LoRA adapter dir.")
+    parser.add_argument("--lora-init", default="default", help="LoRA init: 'default' or 'pissa' (SVD-based, arXiv:2404.02948).")
+    parser.add_argument("--focal-gamma", type=float, default=0.0, help="Focal loss gamma (0=off, 2=standard).")
     parser.add_argument("--mode", choices=["sft", "dpo"], default="sft")
     parser.add_argument("--beta", type=float, default=0.2, help="DPO beta (mode=dpo only)")
     args = parser.parse_args(argv)
@@ -413,6 +475,8 @@ def main(argv: list[str] | None = None) -> int:
             learning_rate=args.learning_rate,
             save_steps=args.save_steps,
             resume_adapter=args.resume_adapter,
+            lora_init=args.lora_init,
+            focal_gamma=args.focal_gamma,
         )
     print(json.dumps(metrics, indent=2))
     return 0

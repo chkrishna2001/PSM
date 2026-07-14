@@ -215,6 +215,92 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "grad_accum": "8",
         "max_length": "2048",
     },
+    "storage-v16": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v16.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v16-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v16-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v16",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-v15": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v15.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v15-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v15-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v15",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-cls-v1": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-cls-v1.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-cls-v1-qwen0.5b",
+        "run_prefix": "hf-prod-storage-cls-v1-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-cls-v1",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-v14": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v13.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v14-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v14-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v13",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+        "focal_gamma": "2.0",
+    },
+    "storage-v13": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v13.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v13-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v13-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v13",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-v12": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v11.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v12-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v12-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v11",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+        "lora_init": "pissa",
+    },
     "v5o-sft": {
         "curriculum": "psm-model/prod-memory/data/hf-prod-v5o-sft.jsonl",
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-v5o-sft-qwen0.5b",
@@ -802,8 +888,11 @@ def main() -> int:
     proxy_user = args.proxy_user.strip()
     if args.deploy and not pod_id:
         gpu_prefs = args.gpu_preferences
-        if not gpu_prefs and args.profile in ("v5e", "v5f", "v5g", "v5h", "v5m", "v5n", "v5n-dpo", "v5n-dpo2", "v5n-dpo3", "v5n-dpo4", "v5n-dpo5", "v5n-dpo6", "storage-v6", "storage-v7", "storage-v9", "storage-v10", "storage-v11", "recall-plan-v1", "recall-plan-v2", "recall-plan-v3", "consolidation-v1", "consolidation-v2", "consolidation-v3", "consolidation-v4", "consolidation-v5", "consolidation-v6", "consolidation-v7", "consolidation-v8", "consolidation-v9", "consolidation-dpo-v1", "v5q", "v5q-dpo", "v5o-sft", "v5o-dpo", "v5p", "v5i", "v5j", "v5k-gate", "v5k-gate-fix", "v5k-gate-distill", "v5k-gate-dpo", "v5k-extract"):
-            gpu_prefs = "NVIDIA L4,NVIDIA RTX A5000,NVIDIA GeForce RTX 3090"
+        if not gpu_prefs and args.profile in ("v5e", "v5f", "v5g", "v5h", "v5m", "v5n", "v5n-dpo", "v5n-dpo2", "v5n-dpo3", "v5n-dpo4", "v5n-dpo5", "v5n-dpo6", "storage-v6", "storage-v7", "storage-v9", "storage-v10", "storage-v11", "storage-v12", "storage-v13", "storage-v14", "storage-v15", "storage-v16", "storage-cls-v1", "recall-plan-v1", "recall-plan-v2", "recall-plan-v3", "consolidation-v1", "consolidation-v2", "consolidation-v3", "consolidation-v4", "consolidation-v5", "consolidation-v6", "consolidation-v7", "consolidation-v8", "consolidation-v9", "consolidation-dpo-v1", "v5q", "v5q-dpo", "v5o-sft", "v5o-dpo", "v5p", "v5i", "v5j", "v5k-gate", "v5k-gate-fix", "v5k-gate-distill", "v5k-gate-dpo", "v5k-extract"):
+            # A5000 first: ~30% cheaper ($0.27 vs $0.39/hr) and faster for training than the
+            # inference-optimized L4 (Ampere ~768 GB/s bandwidth vs L4 ~300 GB/s); same 24 GB
+            # VRAM and our LoRA jobs use ~18 GB. L4 kept as fallback for its better availability.
+            gpu_prefs = "NVIDIA RTX A5000,NVIDIA L4,NVIDIA GeForce RTX 3090"
         pod_id, proxy_user = _deploy(gpu_preferences=gpu_prefs)
     if not pod_id or not proxy_user:
         print("pod_id and proxy_user required (or use --deploy)", file=sys.stderr)
@@ -858,6 +947,10 @@ def main() -> int:
         extra["HF_BATCH_SIZE"] = str(profile["batch_size"])
     if profile.get("grad_accum"):
         extra["HF_GRAD_ACCUM"] = str(profile["grad_accum"])
+    if profile.get("lora_init"):
+        extra["HF_LORA_INIT"] = str(profile["lora_init"])
+    if profile.get("focal_gamma"):
+        extra["HF_FOCAL_GAMMA"] = str(profile["focal_gamma"])
     if profile.get("train_mode"):
         extra["HF_TRAIN_MODE"] = str(profile["train_mode"])
     if profile.get("dpo_beta"):
