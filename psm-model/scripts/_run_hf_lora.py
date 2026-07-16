@@ -151,6 +151,21 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "resume_prefix": "hf-prod-v5h-qwen0.5b",
         "resume_adapter": "psm-model/prod-memory/checkpoints/hf-prod-v5h-qwen0.5b/adapter",
     },
+    "conversational-storage-v1": {
+        # New content domain (LoCoMo personal/social turns from conv-47/48/49/50, teacher-labeled),
+        # same schema and same recipe scale as storage-v6's "full rebalanced retrain" round (transient-
+        # dazzling-lake.md Phase 2/3). 2447 rows (1641 ignore / 481 promote_semantic / 325 store_episodic).
+        "curriculum": "psm-model/prod-memory/data/hf-prod-conversational-storage-v1.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-conversational-storage-v1-qwen0.5b",
+        "run_prefix": "hf-prod-conversational-storage-v1-qwen0.5b",
+        "curriculum_profile": "hf-prod-conversational-storage-v1",
+        "steps": 600,
+        "save_steps": 200,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-5",
+        "max_length": "2048",
+    },
     "storage-v6": {
         "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v6.jsonl",
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v6-qwen0.5b",
@@ -206,6 +221,50 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v11-qwen0.5b",
         "run_prefix": "hf-prod-storage-v11-qwen0.5b",
         "curriculum_profile": "hf-prod-storage-v11",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-v17": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v17.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v17-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v17-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v17",
+        "steps": 900,
+        "save_steps": 450,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-v16b-06b": {
+        # Capacity diagnostic: identical curriculum/recipe to storage-v16b (which scored 0.84 on
+        # Qwen2.5-0.5B) so the ONLY variable is the base model. Run with --model qwen0.6b.
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v16b.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v16b-qwen0.6b",
+        "run_prefix": "hf-prod-storage-v16b-qwen0.6b",
+        "curriculum_profile": "hf-prod-storage-v16b",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
+    "storage-v16b": {
+        "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v16b.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v16b-qwen0.5b",
+        "run_prefix": "hf-prod-storage-v16b-qwen0.5b",
+        "curriculum_profile": "hf-prod-storage-v16b",
         "steps": 800,
         "save_steps": 400,
         "recall_fraction": "0",
@@ -481,11 +540,46 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "grad_accum": "8",
         "max_length": "1024",
     },
+    "conversational-retrieval-plan-v1": {
+        # Same recipe as recall-plan-v3 (0.935 on the coding-domain recall gate) -- its curriculum was
+        # already ~98% LoCoMo-mined (1349/1372 rows from conv-47/48/49/50 via build_recall_locomo_rows.py),
+        # so this reuses that exact curriculum filtered down to just the locomo_recall rows, trained
+        # fresh as its own dedicated conversational-domain adapter (see transient-dazzling-lake.md Phase 3).
+        "curriculum": "psm-model/prod-memory/data/hf-prod-conversational-retrieval-plan-v1.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-conversational-retrieval-plan-v1-qwen0.5b",
+        "run_prefix": "hf-prod-conversational-retrieval-plan-v1-qwen0.5b",
+        "curriculum_profile": "hf-prod-conversational-retrieval-plan-v1",
+        "steps": 520,
+        "save_steps": 260,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "1024",
+    },
     "consolidation-v1": {
         "curriculum": "psm-model/prod-memory/data/hf-prod-consolidation-v1.jsonl",
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-consolidation-v1-qwen0.5b",
         "run_prefix": "hf-prod-consolidation-v1-qwen0.5b",
         "curriculum_profile": "hf-prod-consolidation-v1",
+        "steps": 400,
+        "save_steps": 200,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-5",
+        "max_length": "1024",
+    },
+    "conversational-consolidation-v1": {
+        # Same curriculum SOURCE as consolidation-v1 (build_consolidation_rows.py's
+        # build_consolidation_train_rows()) -- already entirely LoCoMo-derived (hand-verified pairs
+        # from conv-47/48/49/50's `observation` field), same recipe as consolidation-v1's first clean
+        # run, trained fresh as its own dedicated conversational-domain adapter (transient-dazzling-lake.md
+        # Phase 3). 101 rows (45 update_existing / 45 store_episodic / ~11 flag_conflict).
+        "curriculum": "psm-model/prod-memory/data/hf-prod-conversational-consolidation-v1.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-conversational-consolidation-v1-qwen0.5b",
+        "run_prefix": "hf-prod-conversational-consolidation-v1-qwen0.5b",
+        "curriculum_profile": "hf-prod-conversational-consolidation-v1",
         "steps": 400,
         "save_steps": 200,
         "recall_fraction": "0",
@@ -846,7 +940,7 @@ def main() -> int:
     parser.add_argument("--proxy-user", default="")
     parser.add_argument("--deploy", action="store_true")
     parser.add_argument("--delete-pod-id", default="", help="Stop/delete idle pod before launch.")
-    parser.add_argument("--model", default="qwen0.5b", choices=["qwen0.5b", "smol360m"])
+    parser.add_argument("--model", default="qwen0.5b", choices=["qwen0.5b", "qwen0.6b", "smol360m"])
     parser.add_argument("--profile", choices=sorted(HF_PROFILES), default="v5e")
     parser.add_argument("--steps", type=int, default=0)
     parser.add_argument("--upload-only", action="store_true")
@@ -888,7 +982,7 @@ def main() -> int:
     proxy_user = args.proxy_user.strip()
     if args.deploy and not pod_id:
         gpu_prefs = args.gpu_preferences
-        if not gpu_prefs and args.profile in ("v5e", "v5f", "v5g", "v5h", "v5m", "v5n", "v5n-dpo", "v5n-dpo2", "v5n-dpo3", "v5n-dpo4", "v5n-dpo5", "v5n-dpo6", "storage-v6", "storage-v7", "storage-v9", "storage-v10", "storage-v11", "storage-v12", "storage-v13", "storage-v14", "storage-v15", "storage-v16", "storage-cls-v1", "recall-plan-v1", "recall-plan-v2", "recall-plan-v3", "consolidation-v1", "consolidation-v2", "consolidation-v3", "consolidation-v4", "consolidation-v5", "consolidation-v6", "consolidation-v7", "consolidation-v8", "consolidation-v9", "consolidation-dpo-v1", "v5q", "v5q-dpo", "v5o-sft", "v5o-dpo", "v5p", "v5i", "v5j", "v5k-gate", "v5k-gate-fix", "v5k-gate-distill", "v5k-gate-dpo", "v5k-extract"):
+        if not gpu_prefs and args.profile in ("v5e", "v5f", "v5g", "v5h", "v5m", "v5n", "v5n-dpo", "v5n-dpo2", "v5n-dpo3", "v5n-dpo4", "v5n-dpo5", "v5n-dpo6", "storage-v6", "storage-v7", "storage-v9", "storage-v10", "storage-v11", "storage-v12", "storage-v13", "storage-v14", "storage-v15", "storage-v16", "storage-v16b", "storage-v16b-06b", "storage-v17", "storage-cls-v1", "recall-plan-v1", "recall-plan-v2", "recall-plan-v3", "consolidation-v1", "consolidation-v2", "consolidation-v3", "consolidation-v4", "consolidation-v5", "consolidation-v6", "consolidation-v7", "consolidation-v8", "consolidation-v9", "consolidation-dpo-v1", "v5q", "v5q-dpo", "v5o-sft", "v5o-dpo", "v5p", "v5i", "v5j", "v5k-gate", "v5k-gate-fix", "v5k-gate-distill", "v5k-gate-dpo", "v5k-extract"):
             # A5000 first: ~30% cheaper ($0.27 vs $0.39/hr) and faster for training than the
             # inference-optimized L4 (Ampere ~768 GB/s bandwidth vs L4 ~300 GB/s); same 24 GB
             # VRAM and our LoRA jobs use ~18 GB. L4 kept as fallback for its better availability.

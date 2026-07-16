@@ -43,8 +43,8 @@ if ! command -v tmux >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq tmux >/dev/null 2>&1 || true
 fi
 
-pip install -q torch transformers peft datasets accelerate huggingface_hub bitsandbytes 2>/dev/null \
-  || pip install -q torch transformers peft datasets accelerate huggingface_hub
+pip install -q torch "transformers==4.46.3" "peft==0.13.2" "accelerate==1.0.1" datasets huggingface_hub bitsandbytes 2>/dev/null \
+  || pip install -q torch "transformers==4.46.3" "peft==0.13.2" "accelerate==1.0.1" datasets huggingface_hub
 mkdir -p psm-model/prod-memory/data psm-model/prod-memory/checkpoints psm-model/prod-memory/results
 
 download_dataset() {

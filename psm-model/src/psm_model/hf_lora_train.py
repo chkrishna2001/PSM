@@ -8,6 +8,7 @@ from typing import Any
 
 DEFAULT_MODELS = {
     "qwen0.5b": "Qwen/Qwen2.5-0.5B-Instruct",
+    "qwen0.6b": "Qwen/Qwen3-0.6B",
     "smol360m": "HuggingFaceTB/SmolLM2-360M-Instruct",
 }
 

@@ -84,9 +84,14 @@ DEFAULT_TEMPLATE = {
 
 
 def _api_key_from_opener() -> str:
-    opener = "o"
-    if os.name == "nt":
-        opener = "o.exe"
+    # `o <key> -r` returns the secret on stdout. Prefer it over the old `o <key>` + clipboard read:
+    # the clipboard round-trip hangs inside detached/background processes and races anything else
+    # using the clipboard. Fall back to the clipboard only if -r yields nothing (older `o`).
+    opener = "o.exe" if os.name == "nt" else "o"
+    proc = subprocess.run([opener, "runpodkey", "-r"], check=False, capture_output=True, text=True)
+    key = (proc.stdout or "").strip()
+    if key:
+        return key
     subprocess.run([opener, "runpodkey"], check=True, capture_output=True, text=True)
     if os.name == "nt":
         clip = subprocess.run(
