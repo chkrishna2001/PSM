@@ -38,6 +38,9 @@ nano-psm/checkpoints/*
 !nano-psm/checkpoints/.gitkeep
 psm-model/checkpoints/*
 psm-model/tokenizers/*
+psm-model/prod-memory/checkpoints/*
+psm-model/prod-memory/onnx-runtime/
+psm-model/prod-memory/onnx-spike/
 models/
 *.pt
 *.onnx
@@ -55,6 +58,7 @@ psm_merged_fp16/
 __pycache__/
 *.pyc
 .venv/
+.olive-cache/
 nano-psm/.venv/
 .dotnet/
 .nuget/
@@ -77,3 +81,4 @@ psm-model/scripts/_runpod_locomo_nohup.sh
 Thumbs.db
 .vscode/
 .idea/
+.vs/

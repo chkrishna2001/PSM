@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>psm-memory</ToolCommandName>
+    <PackageId>PsmMemory.Cli</PackageId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PsmMemory.Core\PsmMemory.Core.csproj" />
+  </ItemGroup>
+
+</Project>

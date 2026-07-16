@@ -3526,7 +3526,7 @@
     {
       "id": "recall-locomo-conv-26-133",
       "suite": "recall_locomo_holdout",
-      "question": "What precautionary sign did Melanie see at the café?",
+      "question": "What precautionary sign did Melanie see at the caf\u00e9?",
       "availableTables": [
         "episodic",
         "semantic",
@@ -4996,7 +4996,7 @@
     {
       "id": "recall-locomo-conv-26-187",
       "suite": "recall_locomo_holdout",
-      "question": "What precautionary sign did Caroline see at the café?",
+      "question": "What precautionary sign did Caroline see at the caf\u00e9?",
       "availableTables": [
         "episodic",
         "semantic",
