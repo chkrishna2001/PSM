@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntimeGenAI;
 
 namespace PsmMemory.Core.Runtime;
@@ -89,7 +90,7 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
         if (!Directory.Exists(modelDirectory))
             throw new DirectoryNotFoundException($"PSM ONNX model directory not found: {modelDirectory}");
 
-        _model = new Model(modelDirectory);
+        _model = BuildAcceleratedModel(modelDirectory);
         _tokenizer = new Tokenizer(_model);
         _adapters = new Adapters(_model);
 
@@ -111,6 +112,62 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
 
     /// <summary>Domains whose adapters were actually found and loaded at construction time.</summary>
     public IReadOnlySet<PsmDomain> AvailableDomains => _availableDomains;
+
+    /// <summary>
+    /// The execution provider actually in use ("dml", "cuda", or "cpu") -- set once at construction
+    /// by <see cref="BuildAcceleratedModel"/>. Exposed for diagnostics/logging, not decision-making.
+    /// </summary>
+    public string ActiveExecutionProvider { get; private set; } = "cpu";
+
+    /// <summary>
+    /// Candidate hardware execution providers to try, per OS, in priority order, before falling back
+    /// to CPU. Each name must match both an onnxruntime-genai provider id (Config.AppendProvider) and
+    /// the accelerator package actually referenced for that RID in PsmMemory.Core.csproj -- requesting
+    /// a provider whose native library isn't present just fails fast and falls through to the next.
+    ///
+    /// "dml" (DirectML) is a single, vendor-agnostic package covering NVIDIA/AMD/Intel GPUs and NPUs
+    /// on Windows, ships as a normal NuGet package with no separate toolkit install -- the right
+    /// default for a local-first Windows install. "cuda" needs the NVIDIA CUDA Toolkit already present
+    /// (true on RunPod's cuda12.4.1-devel training/benchmark images, not guaranteed on an arbitrary
+    /// end-user machine) so it's only tried on Linux, where that's the standard GPU-cloud stack.
+    /// macOS has no accelerator entry yet (CPU only) pending confirmation that onnxruntime-genai's
+    /// CoreML support is mature enough to rely on -- add "coreml" here once verified.
+    /// </summary>
+    private static IReadOnlyList<string> CandidateProviders()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return new[] { "dml" };
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return new[] { "cuda" };
+        return Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// Tries each OS-appropriate hardware provider in order; the first one whose native library
+    /// actually loads and constructs a working Model wins. Never throws for a missing/incompatible
+    /// accelerator -- silently falls back to plain CPU (the same behavior as never having requested
+    /// an accelerator at all), since "GPU/NPU if available, otherwise CPU" must never crash the app.
+    /// </summary>
+    private Model BuildAcceleratedModel(string modelDirectory)
+    {
+        foreach (var provider in CandidateProviders())
+        {
+            try
+            {
+                using var config = new Config(modelDirectory);
+                config.ClearProviders();
+                config.AppendProvider(provider);
+                var model = new Model(config);
+                ActiveExecutionProvider = provider;
+                return model;
+            }
+            catch
+            {
+                // Native library missing (e.g. no CUDA Toolkit installed) or incompatible with this
+                // graph -- fall through to the next candidate, then eventually plain CPU below.
+            }
+        }
+        ActiveExecutionProvider = "cpu";
+        return new Model(modelDirectory);
+    }
 
     private bool TryLoadDomainAdapters(string adaptersDir, PsmDomain domain)
     {
@@ -162,22 +219,22 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
     public Task<string> GenerateStorageDecisionAsync(string prompt, PsmDomain domain = PsmDomain.Coding, CancellationToken ct = default)
     {
         EnsureDomainAvailable(domain);
-        return GenerateAsync(prompt, AdapterName(domain, AdapterTask.Storage), ct);
+        return GenerateAsync(prompt, AdapterName(domain, AdapterTask.Storage), earlyStopOnIgnore: true, ct);
     }
 
     public Task<string> GenerateRecallPlanAsync(string prompt, PsmDomain domain = PsmDomain.Coding, CancellationToken ct = default)
     {
         EnsureDomainAvailable(domain);
-        return GenerateAsync(prompt, AdapterName(domain, AdapterTask.RetrievalPlan), ct);
+        return GenerateAsync(prompt, AdapterName(domain, AdapterTask.RetrievalPlan), earlyStopOnIgnore: false, ct);
     }
 
     public Task<string> GenerateConsolidationDecisionAsync(string prompt, PsmDomain domain = PsmDomain.Coding, CancellationToken ct = default)
     {
         EnsureDomainAvailable(domain);
-        return GenerateAsync(prompt, AdapterName(domain, AdapterTask.Consolidation), ct);
+        return GenerateAsync(prompt, AdapterName(domain, AdapterTask.Consolidation), earlyStopOnIgnore: false, ct);
     }
 
-    private async Task<string> GenerateAsync(string prompt, string adapterName, CancellationToken ct)
+    private async Task<string> GenerateAsync(string prompt, string adapterName, bool earlyStopOnIgnore, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         // onnxruntime-genai's Model/Generator are not documented as safe for concurrent Run() calls
@@ -186,7 +243,7 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
         await _generationLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => Generate(prompt, adapterName), ct).ConfigureAwait(false);
+            return await Task.Run(() => Generate(prompt, adapterName, earlyStopOnIgnore), ct).ConfigureAwait(false);
         }
         finally
         {
@@ -194,7 +251,19 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
         }
     }
 
-    private string Generate(string prompt, string adapterName)
+    // The compact StorageDecision JSON scaffold (hf_prompts.py's compact_storage_json) writes
+    // "reasoning" first, then "action" -- once the model commits to action=ignore, the rest of
+    // the object (memory=null, empty facts/indexables) is fixed boilerplate nobody reads. Detecting
+    // that commitment and force-closing the JSON right there skips generating a full unread
+    // memory/facts/indexables scaffold for what, across every storage gate run this project has
+    // done, is the single most common decision (typically 55-70% of all storage calls) -- ported
+    // from prod_memory/eval_hf_grounding.py's _IgnorePrefixStoppingCriteria, adjusted for the
+    // reasoning-first key order (that Python constant's action-must-be-first assumption predates
+    // the 2026-07-11 reasoning-first change and would never fire against current model output).
+    private const string IgnoreActionMarker = "\"action\":\"ignore";
+    private const string IgnoreJsonClosingSuffix = "\",\"memory\":null,\"facts\":[],\"indexables\":[]}";
+
+    private string Generate(string prompt, string adapterName, bool earlyStopOnIgnore)
     {
         using var generatorParams = new GeneratorParams(_model);
         generatorParams.SetSearchOption("do_sample", false);
@@ -208,10 +277,23 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
         var promptTokenCount = generator.TokenCount();
 
         var generated = 0;
+        var ignoreDetected = false;
         while (!generator.IsDone() && generated < MaxNewTokens)
         {
             generator.GenerateNextToken();
             generated++;
+
+            // Cheap length guard (matches the Python version) avoids decoding on every single step
+            // before we're anywhere close to having written the marker.
+            if (earlyStopOnIgnore && generated >= 6)
+            {
+                var soFar = _tokenizer.Decode(generator.GetSequence(0).Slice((int)promptTokenCount));
+                if (soFar.Contains(IgnoreActionMarker, StringComparison.Ordinal))
+                {
+                    ignoreDetected = true;
+                    break;
+                }
+            }
         }
 
         var fullSequence = generator.GetSequence(0);
@@ -219,7 +301,19 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
         // Decode the full accumulated token-id list in one call (not token-by-token appended
         // strings) to avoid mangling multi-byte UTF-8 characters -- same fix applied in
         // psm-model/scripts/convert_adapters_onnx.py's Python smoke test this session.
-        return _tokenizer.Decode(newTokens);
+        var text = _tokenizer.Decode(newTokens);
+
+        if (ignoreDetected)
+        {
+            var markerIndex = text.IndexOf(IgnoreActionMarker, StringComparison.Ordinal);
+            if (markerIndex >= 0)
+            {
+                var prefixEnd = markerIndex + IgnoreActionMarker.Length;
+                text = text[..prefixEnd] + IgnoreJsonClosingSuffix;
+            }
+        }
+
+        return text;
     }
 
     public void Dispose()

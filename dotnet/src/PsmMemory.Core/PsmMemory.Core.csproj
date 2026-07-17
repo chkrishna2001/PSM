@@ -16,6 +16,22 @@
     <!-- Microsoft.Data.Sqlite 10.0.10 pulls in SQLitePCLRaw.lib.e_sqlite3 2.1.11, which has a known
          high-severity advisory (GHSA-2m69-gcr7-jv3q). Pin the fixed version directly. -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+  </ItemGroup>
+
+  <!-- Hardware-accelerated onnxruntime-genai package, picked per target RID at publish time.
+       OnnxPsmRuntime.BuildAcceleratedModel() then tries the matching provider at runtime (falling
+       back to plain CPU on any failure, e.g. a missing CUDA Toolkit). "dml" (DirectML) is a single
+       vendor-agnostic package covering NVIDIA/AMD/Intel GPUs and NPUs on Windows with no separate
+       toolkit install; "cuda" needs the NVIDIA CUDA Toolkit already present (true on RunPod's
+       training/benchmark images). No RID (plain dotnet build/test, or macOS) gets the base CPU-only
+       package; CoreML can replace the osx branch once verified mature enough to rely on. -->
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('win'))">
+    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI.DirectML" Version="0.14.1" />
+  </ItemGroup>
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI.Cuda" Version="0.14.1" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('osx'))">
     <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI" Version="0.14.1" />
   </ItemGroup>
 
