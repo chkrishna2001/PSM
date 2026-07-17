@@ -58,9 +58,11 @@ DOMAIN_ADAPTERS: dict[str, dict[str, Path]] = {
         "consolidation": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-consolidation-v4-qwen0.5b/adapter",
     },
     "conversational": {
-        # "storage": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-conversational-storage-v1-qwen0.5b/adapter",
-        # "retrieval_plan": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-conversational-retrieval-plan-v1-qwen0.5b/adapter",
-        # "consolidation": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-conversational-consolidation-v1-qwen0.5b/adapter",
+        # storage is v2, not v1 -- v1 scored only 65.9% action-match (heavily under-storing); v2's
+        # rebalanced curriculum + LR bump fixed it to 81.9%, matching the other two adapters' bar.
+        "storage": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-conversational-storage-v2-qwen0.5b/adapter",
+        "retrieval_plan": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-conversational-retrieval-plan-v1-qwen0.5b/adapter",
+        "consolidation": REPO_ROOT / "psm-model/prod-memory/checkpoints/hf-prod-conversational-consolidation-v1-qwen0.5b/adapter",
     },
 }
 

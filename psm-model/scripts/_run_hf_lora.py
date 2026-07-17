@@ -166,6 +166,27 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "learning_rate": "1e-5",
         "max_length": "2048",
     },
+    "conversational-storage-v2": {
+        # v1 gate result (419-case conv-26 holdout): 65.9% action-match, store_recall only 45.5%
+        # (86/189) vs ignore_recall 94.8% -- heavily under-storing. Root-cause fix mirrors the
+        # coding-domain storage adapter's own v6 (rebalance) + v10 (LR bump) rounds, which fixed
+        # the identical failure mode: build_conversational_storage_v2_curriculum.py duplicates the
+        # store-labeled subset once, lifting the store ratio from 33% to ~50% (close to the real
+        # gate's 45% split), paired with storage-v10/v11's LR 1e-4 (10x v1's 1e-5) + more steps --
+        # v6's rebalance alone did not fix the coding-domain adapter; the LR bump was also needed.
+        "curriculum": "psm-model/prod-memory/data/hf-prod-conversational-storage-v2.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-conversational-storage-v2-qwen0.5b",
+        "run_prefix": "hf-prod-conversational-storage-v2-qwen0.5b",
+        "curriculum_profile": "hf-prod-conversational-storage-v2",
+        "steps": 800,
+        "save_steps": 400,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "1e-4",
+        "batch_size": "2",
+        "grad_accum": "8",
+        "max_length": "2048",
+    },
     "storage-v6": {
         "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v6.jsonl",
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v6-qwen0.5b",

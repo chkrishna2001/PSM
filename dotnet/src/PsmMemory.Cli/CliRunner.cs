@@ -26,6 +26,7 @@ internal static class CliRunner
             "remember" => await Commands.RunRememberAsync(rest).ConfigureAwait(false),
             "recall" => await Commands.RunRecallAsync(rest).ConfigureAwait(false),
             "context" => await Commands.RunContextAsync(rest).ConfigureAwait(false),
+            "serve" => await Commands.RunServeAsync(rest).ConfigureAwait(false),
             "show" => Commands.RunShow(rest),
             "conflicts" => Commands.RunConflicts(rest),
             "init" or "migrate" => Commands.RunInit(rest),
@@ -53,11 +54,11 @@ internal static class Defaults
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "psm-model", "prod-memory", "onnx-runtime", "v1");
+            var candidate = Path.Combine(dir.FullName, "psm-model", "prod-memory", "onnx-runtime", "v2");
             if (Directory.Exists(candidate)) return candidate;
             dir = dir.Parent;
         }
-        return Path.Combine("psm-model", "prod-memory", "onnx-runtime", "v1");
+        return Path.Combine("psm-model", "prod-memory", "onnx-runtime", "v2");
     }
 
     /// <summary>

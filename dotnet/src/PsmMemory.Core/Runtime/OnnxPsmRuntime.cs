@@ -27,7 +27,7 @@ public sealed class OnnxPsmRuntime : IPsmRuntime, IDisposable
     /// absolute or otherwise-resolved path to the constructor — this SDK never hardcodes a
     /// machine-specific absolute path.
     /// </summary>
-    public const string DefaultRelativeModelDirectory = "psm-model/prod-memory/onnx-runtime/v1";
+    public const string DefaultRelativeModelDirectory = "psm-model/prod-memory/onnx-runtime/v2";
 
     /// <summary>HF repo <see cref="CreateAsync"/> downloads from when the local model directory is missing/incomplete.</summary>
     public const string DefaultHfRepoId = "chkrishna2001/psm-memory-qwen0.5b";

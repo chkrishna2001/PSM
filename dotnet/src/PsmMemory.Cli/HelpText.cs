@@ -5,7 +5,7 @@ internal static class HelpText
     public const string ModelDirNote =
         "  --model-dir <path>    Directory containing model.onnx and adapters/*.onnx_adapter,\n" +
         "                        produced by psm-model/scripts/convert_adapters_onnx.py.\n" +
-        "                        Defaults to psm-model/prod-memory/onnx-runtime/v1 resolved against\n" +
+        "                        Defaults to psm-model/prod-memory/onnx-runtime/v2 resolved against\n" +
         "                        the repo root (found by walking up from the executable). When this\n" +
         "                        tool is installed elsewhere (e.g. `dotnet tool install --global`),\n" +
         "                        that auto-detection will not find the repo and you MUST pass this\n" +
@@ -15,8 +15,7 @@ internal static class HelpText
         "  --domain <name>       One of coding|conversational (default: coding). Selects which\n" +
         "                        trained adapter set to use for this call. conversational requires\n" +
         "                        conversational_*.onnx_adapter files to exist in --model-dir/adapters/\n" +
-        "                        (not yet trained as of this writing) -- requesting it before those\n" +
-        "                        exist fails with a clear error.";
+        "                        -- requesting it when those are missing fails with a clear error.";
 
     public const string Root = """
         psm-memory - thin CLI wrapper around the PsmMemory.Core SDK (local-first PSM memory store
@@ -29,6 +28,7 @@ internal static class HelpText
           remember    Analyze an assistant response and store durable memory from it.
           recall      Answer a question by retrieving and ranking relevant stored memories.
           context     Retrieve relevant memories to ground a prompt (lower relevance threshold than recall).
+          serve       Load the model once and answer many remember/recall/context requests over NDJSON stdin/stdout.
           show        Print stored memories for a user from one table (episodic/semantic/archival).
           conflicts   Print logged memory conflicts by status.
           init        Create (or update) the SQLite schema at --db. Alias: migrate.
@@ -103,6 +103,37 @@ internal static class HelpText
         {{MODEL_DIR}}
 
         Prints the RecallResult as indented JSON to stdout.
+        """;
+
+    public const string Serve = """
+        psm-memory serve - load the model once, then answer many remember/recall/context requests
+        read as NDJSON lines from stdin, writing one NDJSON response line per request to stdout.
+
+        Built for batch workloads (e.g. running a benchmark's full ingest+recall loop) where paying
+        a fresh model+adapter load per call would dominate total runtime -- the model loads exactly
+        once here, then every request reuses it.
+
+        Usage: psm-memory serve [options]
+
+        Request (one JSON object per stdin line):
+          {"id":"<opaque>","cmd":"remember"|"recall"|"context", ...fields}
+          remember fields: llmResponse (required), userId (required), userMessage, includeExistingMemories
+                           (bool, default true), extraTags (string[]), source ({sourceKind,sourceId,
+                           sourceLabel,sourceTimestamp}), domain ("coding"|"conversational", default "coding").
+          recall fields:   question (required), userId (required), topK, domain.
+          context fields:  prompt (required), userId (required), topK, domain.
+
+        Response (one JSON object per stdout line):
+          {"id":"<echoed>","ok":true,"result":{...RememberResult|RecallResult...}}
+          {"id":"<echoed>","ok":false,"error":"<message>"}     (a bad request does not crash the server)
+
+        Optional:
+          --db <path>           SQLite db path (default: user_memory.db in the current directory).
+        {{MODEL_DIR}}
+
+        Runs until stdin closes (EOF), then exits 0. A "psm-memory serve: model loaded, ready for
+        NDJSON requests on stdin." line is printed to STDERR (not stdout) once startup is complete,
+        so a driver can block on that line before sending its first request.
         """;
 
     public const string Show = """
