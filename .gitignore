@@ -42,6 +42,7 @@ psm-model/prod-memory/checkpoints/*
 psm-model/prod-memory/onnx-runtime/
 psm-model/prod-memory/onnx-spike/
 models/
+!dotnet/**/Models/
 *.pt
 *.onnx
 *.onnx_adapter
