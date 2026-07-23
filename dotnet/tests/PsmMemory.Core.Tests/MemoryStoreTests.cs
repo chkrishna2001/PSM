@@ -22,7 +22,12 @@ public sealed class MemoryStoreFixture : IDisposable
     {
         foreach (var path in _paths)
         {
-            try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort cleanup */ }
+            // WAL mode (see MemoryStore's constructor) creates "-wal"/"-shm" sidecar files alongside
+            // the main db file; clean those up too or repeated test runs leak them into the temp dir.
+            foreach (var candidate in new[] { path, path + "-wal", path + "-shm" })
+            {
+                try { if (File.Exists(candidate)) File.Delete(candidate); } catch { /* best-effort cleanup */ }
+            }
         }
     }
 }

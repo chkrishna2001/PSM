@@ -187,6 +187,33 @@ HF_PROFILES: dict[str, dict[str, str | int]] = {
         "grad_accum": "8",
         "max_length": "2048",
     },
+    "conversational-storage-dpo1": {
+        # DPO contrastive fix for promote_semantic's narrow "X values Y" templated-phrasing
+        # collapse (see project memory project_psm_storage_detail_probe_findings.md, 2026-07-21):
+        # training data itself is diverse (15.6% "values"-pattern rows), but the 0.5B model
+        # produces this phrasing far more often at inference (44.2% on the held-out gate) --
+        # the model over-generalizes toward this "safe" template beyond what the data would
+        # predict. Mined by running the CURRENT production model against its own training-pool
+        # promote_semantic rows (conv-47/48/49/50, never conv-26 held-out) and keeping only cases
+        # where the model's own output used the values-template while the original teacher label
+        # did not -- chosen=original label, rejected=current model's own generic output, both with
+        # an identical neutral reasoning string so the only training signal is content phrasing
+        # (same isolate-the-failure-mode approach as v5n-dpo5's isolated over-store fix).
+        "curriculum": "psm-model/prod-memory/data/hf-prod-conversational-storage-dpo1.jsonl",
+        "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-conversational-storage-dpo1-qwen0.5b",
+        "run_prefix": "hf-prod-conversational-storage-dpo1-qwen0.5b",
+        "curriculum_profile": "hf-prod-conversational-storage-dpo1",
+        "steps": 60,
+        "save_steps": 30,
+        "recall_fraction": "0",
+        "output_format": "json",
+        "learning_rate": "3e-6",
+        "max_length": "2048",
+        "train_mode": "dpo",
+        "dpo_beta": "0.15",
+        "resume_prefix": "hf-prod-conversational-storage-v2-qwen0.5b",
+        "resume_adapter": "psm-model/prod-memory/checkpoints/hf-prod-conversational-storage-v2-qwen0.5b/adapter",
+    },
     "storage-v6": {
         "curriculum": "psm-model/prod-memory/data/hf-prod-storage-v6.jsonl",
         "out_dir": "psm-model/prod-memory/checkpoints/hf-prod-storage-v6-qwen0.5b",

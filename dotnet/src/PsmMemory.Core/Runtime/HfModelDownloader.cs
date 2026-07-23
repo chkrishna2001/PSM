@@ -5,9 +5,9 @@ namespace PsmMemory.Core.Runtime;
 /// <summary>
 /// Downloads a folder from a public HuggingFace model repo via plain HTTP (the HF "tree" API to list
 /// files + the "resolve" URL to fetch each one) -- no Python, no huggingface_hub dependency, so
-/// PsmMemory.Core stays a pure .NET library. Used by <see cref="OnnxPsmRuntime.CreateAsync"/> to let
-/// PSM bootstrap the ONNX model on first run instead of requiring the caller to have already run
-/// psm-model/scripts/convert_adapters_onnx.py.
+/// PsmMemory.Core stays a pure .NET library. Used by <see cref="LlamaSharpPsmRuntime.CreateAsync"/>
+/// to let PSM bootstrap the GGUF model on first run instead of requiring the caller to have already
+/// run psm-model/scripts/convert_adapters_gguf.py.
 /// </summary>
 public static class HfModelDownloader
 {
@@ -21,7 +21,7 @@ public static class HfModelDownloader
     /// default "main" revision) into <paramref name="localDirectory"/>, preserving the relative
     /// directory structure. Each file is streamed to a ".part" temp file and renamed into place only
     /// after a full, successful download, so an interrupted run never leaves a corrupt file behind
-    /// that <see cref="OnnxPsmRuntime"/>'s completeness check would mistake for a real one.
+    /// that <see cref="LlamaSharpPsmRuntime"/>'s completeness check would mistake for a real one.
     /// </summary>
     public static async Task DownloadFolderAsync(
         string repoId,

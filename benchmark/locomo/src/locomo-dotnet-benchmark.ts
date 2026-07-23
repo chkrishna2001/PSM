@@ -40,6 +40,7 @@ interface Options {
   judgeModel: string;
   chatProvider: ChatProviderConfig;
   skipIngest: boolean;
+  skipAnswer: boolean;
 }
 
 function getOption(argv: string[], key: string, fallback: string): string {
@@ -54,7 +55,7 @@ function parseOptions(argv: string[]): Options {
     db: getOption(argv, "db", "benchmark/locomo/results/locomo-dotnet-conversational.db"),
     out: getOption(argv, "out", "benchmark/locomo/results/locomo-dotnet-conversational-answer.json"),
     dotnetDll: getOption(argv, "dotnet-dll", "dotnet/src/PsmMemory.Cli/bin/Release/net10.0/PsmMemory.Cli.dll"),
-    modelDir: getOption(argv, "model-dir", "psm-model/prod-memory/onnx-runtime/v2"),
+    modelDir: getOption(argv, "model-dir", "psm-model/prod-memory/gguf-runtime/v1"),
     domain: getOption(argv, "domain", "conversational"),
     sampleIds: getOption(argv, "sample-ids", DEFAULT_SAMPLE_IDS),
     topK: Number(getOption(argv, "top-k", "5")),
@@ -64,7 +65,8 @@ function parseOptions(argv: string[]): Options {
     answerModel: getOption(argv, "answer-model", defaultAnswerModel(chatProvider)),
     judgeModel: getOption(argv, "judge-model", defaultJudgeModel(chatProvider)),
     chatProvider,
-    skipIngest: argv.includes("--skip-ingest")
+    skipIngest: argv.includes("--skip-ingest"),
+    skipAnswer: argv.includes("--skip-answer")
   };
 }
 
@@ -128,10 +130,12 @@ class DotnetServeClient {
     });
   }
 
-  async remember(fields: Record<string, unknown>): Promise<Record<string, unknown>> {
+  // The CLI's "remember" cmd returns an ARRAY of RememberResult (one per chunk TextSegmenter
+  // split the response into -- one element in the common case, but never a single bare object).
+  async remember(fields: Record<string, unknown>): Promise<unknown[]> {
     const response = await this.call("remember", fields);
     if (!response.ok) throw new Error(response.error ?? "remember failed");
-    return response.result ?? {};
+    return Array.isArray(response.result) ? response.result : [];
   }
 
   async recall(fields: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -171,6 +175,13 @@ async function ingestSample(
     const source = `${sampleId}:${diaId}`;
     stats.seen++;
     try {
+      // Tried prepending a sliding window of preceding turns as context here (2026-07-23) to
+      // address turns that are only meaningful given what came before them. REVERTED: verified
+      // live against the real model that it makes the adapter pick facts from anywhere in the
+      // window and misattribute them to the current turn's sourceId, corrupting evidence
+      // linkage far more than the under-storage it was meant to fix. See
+      // project_psm_locomo_dotnet_runpod_dryrun.md for the full before/after data -- the real
+      // fix needs the storage adapter retrained on context-aware examples, not a harness hack.
       const result = await client.remember({
         llmResponse: `${turn.speaker ?? "Unknown"}: ${turn.text ?? ""}`.trim(),
         userId,
@@ -182,10 +193,15 @@ async function ingestSample(
           sourceTimestamp: locomoSourceTimestamp(sample, turn.session)
         }
       });
-      const action = String(result.action ?? "");
-      if (action === "ignore") stats.ignored++;
-      else if (Array.isArray(result.written) && result.written.length > 0) stats.stored++;
-      else stats.ignored++;
+      // result is an array (one RememberResult per chunk) -- count each chunk's outcome
+      // separately rather than treating the whole array as one outcome.
+      for (const chunk of result) {
+        const chunkRecord = (chunk && typeof chunk === "object" ? chunk : {}) as Record<string, unknown>;
+        const action = String(chunkRecord.action ?? "");
+        const written = chunkRecord.written;
+        if (action !== "ignore" && Array.isArray(written) && written.length > 0) stats.stored++;
+        else stats.ignored++;
+      }
     } catch (error) {
       stats.failed++;
       stats.errors.push({ source, error: error instanceof Error ? error.message : String(error) });
@@ -204,6 +220,8 @@ interface ContextItem {
   content: string;
   score?: number;
   source_ids: string[];
+  resolved_time?: string;
+  source_timestamp?: string;
 }
 
 interface AnswerRecord {
@@ -236,12 +254,16 @@ function extractContextItems(recallResult: Record<string, unknown>): ContextItem
       const id = typeof item.id === "string" ? item.id : "";
       const content = typeof item.content === "string" ? item.content : "";
       const sourceId = typeof memory.sourceId === "string" ? memory.sourceId : undefined;
+      const resolvedTime = typeof memory.resolvedTime === "string" ? memory.resolvedTime : undefined;
+      const sourceTimestamp = typeof memory.sourceTimestamp === "string" ? memory.sourceTimestamp : undefined;
       return {
         memory_id: id,
         table,
         content,
         score: typeof item.score === "number" ? item.score : undefined,
-        source_ids: sourceId ? [sourceId] : []
+        source_ids: sourceId ? [sourceId] : [],
+        resolved_time: resolvedTime,
+        source_timestamp: sourceTimestamp
       };
     })
     .filter((item) => item.memory_id && item.content.trim());
@@ -256,7 +278,20 @@ function renderContextForPrompt(items: ContextItem[]): string {
   return items
     .map((item, index) => {
       const sources = item.source_ids.length > 0 ? ` sources=${item.source_ids.join(",")}` : "";
-      return `[${index + 1}] [${item.table}] id=${item.memory_id}${sources} ${item.content}`;
+      // Surface the resolved absolute date alongside the raw (often relative, e.g. "yesterday")
+      // content -- the answer model has no other way to ground relative expressions, since
+      // TemporalNormalizer resolves them into a separate field rather than rewriting content.
+      const resolved = item.resolved_time ? ` (resolved date: ${item.resolved_time})` : "";
+      // Surface the real wall-clock send time of the source message too -- distinct from
+      // resolved_time above: resolved_time grounds a relative phrase found IN the content
+      // (e.g. "yesterday" -> an absolute date), while source_timestamp is simply when this
+      // memory's source turn was actually sent, and is populated on almost every memory
+      // regardless of whether the content contains any relative-time phrase at all. Most
+      // "when did X happen" questions are answered by this field, not by resolved_time, so
+      // both must be shown -- and labeled distinctly -- without either silently overriding
+      // the other.
+      const sent = item.source_timestamp ? ` (message sent: ${item.source_timestamp})` : "";
+      return `[${index + 1}] [${item.table}] id=${item.memory_id}${sources} ${item.content}${resolved}${sent}`;
     })
     .join("\n");
 }
@@ -384,6 +419,12 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(`ingest complete: ${JSON.stringify(stats)}\n`);
   }
 
+  if (options.skipAnswer) {
+    client.close();
+    process.stdout.write("skip-answer set: ingest-only run complete, no QA/answer phase performed.\n");
+    return 0;
+  }
+
   const records: AnswerRecord[] = [];
   let processed = 0;
   for (const sample of samples) {
@@ -393,7 +434,10 @@ async function main(argv: string[]): Promise<number> {
       const evidence = (qa.evidence ?? []).map(String).filter(Boolean);
       if (evidence.length === 0) continue;
       const question = String(qa.question ?? "");
-      const goldAnswer = String(qa.answer ?? "");
+      // Category 5 (adversarial) questions store their gold answer under adversarial_answer
+      // instead of answer -- without this fallback every category-5 gold_answer is "", which
+      // tanks that whole category's measured accuracy regardless of actual answer quality.
+      const goldAnswer = String(qa.answer ?? qa.adversarial_answer ?? "");
       const category = String(qa.category ?? "unknown");
       if (options.limit > 0 && processed >= options.limit) break;
 

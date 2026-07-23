@@ -111,6 +111,70 @@ public static partial class Ranking
         return result;
     }
 
+    private static readonly HashSet<string> TemporalQuestionWords = new() { "when", "date", "year", "month", "time" };
+
+    /// <summary>A <see cref="MemoryFactRecord"/> scored against a query by <see cref="RankFacts"/>.</summary>
+    public sealed class ScoredFact
+    {
+        public required MemoryFactRecord Fact { get; init; }
+        public required double Score { get; init; }
+
+        public string Id => Fact.Id;
+        public string Subject => Fact.Subject;
+        public string Predicate => Fact.Predicate;
+        public string? Object => Fact.Object;
+        public string ValueText => Fact.ValueText;
+        public string? FactType => Fact.FactType;
+        public double? Confidence => Fact.Confidence;
+        public string? InferenceKind => Fact.InferenceKind;
+        public string? EvidenceText => Fact.EvidenceText;
+        public string? SourceMemoryTable => Fact.SourceMemoryTable;
+        public string? SourceMemoryId => Fact.SourceMemoryId;
+        public string? SourceId => Fact.SourceId;
+        public string? SourceTimestamp => Fact.SourceTimestamp;
+        public string? TemporalExpression => Fact.TemporalExpression;
+        public string? ResolvedTime => Fact.ResolvedTime;
+        public double? ResolvedTimeConfidence => Fact.ResolvedTimeConfidence;
+    }
+
+    /// <summary>
+    /// Ported directly from psm-core/src/service.ts's rankFacts() (a sibling of
+    /// <see cref="HybridRankMemories"/>, not an extension of it -- TS never unified the two: facts
+    /// and memories are scored by entirely separate heuristics). No candidate-pool filtering happens
+    /// here beyond the &gt;=0.2 score threshold; callers select which facts to rank.
+    /// </summary>
+    public static List<ScoredFact> RankFacts(string query, IEnumerable<MemoryFactRecord> facts, int topK)
+    {
+        var qTokens = Tokenize(query);
+        if (qTokens.Count == 0) return new List<ScoredFact>();
+        return facts
+            .Select(fact => new ScoredFact { Fact = fact, Score = FactScore(qTokens, fact) })
+            .Where(scored => scored.Score >= 0.2)
+            .OrderByDescending(scored => scored.Score)
+            .Take(topK)
+            .ToList();
+    }
+
+    /// <summary>Ported directly from psm-core/src/service.ts's factScore().</summary>
+    private static double FactScore(List<string> queryTokens, MemoryFactRecord fact)
+    {
+        var searchable = string.Join(" ", new[]
+        {
+            fact.Subject, fact.Predicate, fact.Object ?? "", fact.ValueText, fact.FactType ?? "",
+            fact.EvidenceText ?? "", fact.TemporalExpression ?? "", fact.ResolvedTime ?? "", fact.SourceId ?? ""
+        });
+        var memoryTokens = new HashSet<string>(Tokenize(searchable));
+        var overlap = queryTokens.Count(t => memoryTokens.Contains(t));
+        var coverage = (double)overlap / queryTokens.Count;
+        var predicateTokens = Tokenize(fact.Predicate);
+        var predicateHit = queryTokens.Any(t => predicateTokens.Contains(t)) ? 0.3 : 0;
+        var subjectTokens = Tokenize(fact.Subject);
+        var subjectHit = queryTokens.Any(t => subjectTokens.Contains(t)) ? 0.25 : 0;
+        var temporalQuestion = queryTokens.Any(t => TemporalQuestionWords.Contains(t));
+        var temporalBoost = temporalQuestion && fact.FactType == "temporal_fact" ? 0.4 : 0;
+        return Math.Round(coverage + predicateHit + subjectHit + 0.1 * (fact.Confidence ?? 0.75) + temporalBoost, 6);
+    }
+
     private static double LexicalScore(List<string> queryTokens, List<string> memoryTokens)
     {
         if (queryTokens.Count == 0 || memoryTokens.Count == 0) return 0;

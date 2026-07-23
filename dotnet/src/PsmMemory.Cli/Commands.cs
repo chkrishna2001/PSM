@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using PsmMemory.Core;
 using PsmMemory.Core.Models;
 using PsmMemory.Core.Runtime;
+using PsmMemory.Core.Runtime.WarmHost;
 using PsmMemory.Core.Store;
 
 namespace PsmMemory.Cli;
@@ -12,12 +13,30 @@ internal static class Commands
     /// <summary>Parses --domain coding|conversational (default coding) into <see cref="PsmDomain"/>.</summary>
     private static PsmDomain ParseDomain(ArgParser parsed) => ParseDomainString(parsed.GetString("domain", "coding"));
 
-    private static PsmDomain ParseDomainString(string? raw) => (raw ?? "coding").Trim().ToLowerInvariant() switch
+    private static PsmDomain ParseDomainString(string? raw)
     {
-        "coding" => PsmDomain.Coding,
-        "conversational" => PsmDomain.Conversational,
-        _ => throw new CliUsageException($"domain must be one of coding|conversational, got '{raw}'."),
-    };
+        try
+        {
+            return PsmDomainParser.Parse(raw ?? "coding", DomainParseMode.Strict);
+        }
+        catch (PsmDomainParseException ex)
+        {
+            throw new CliUsageException(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The one bootstrap path every model-needing command goes through: tries the warm-host daemon
+    /// first when enabled (--daemon / PSM_MEMORY_DAEMON=on), falling back to a direct local model
+    /// load on any failure. Shared with HookCommands' recall handler so CLI and hooks never
+    /// reimplement this decision independently -- see PsmRuntimeAcquisition for the actual logic.
+    /// </summary>
+    internal static Task<AcquiredRuntime> AcquireRuntimeAsync(ArgParser parsed, string modelDir, string dbPath)
+    {
+        var warmHostOptions = Defaults.BuildWarmHostOptions(parsed, modelDir, dbPath);
+        var daemonArgs = warmHostOptions is not null ? Defaults.DaemonProcessArgs(modelDir, warmHostOptions.StateDirectory) : null;
+        return PsmRuntimeAcquisition.AcquireAsync(modelDir, warmHostOptions, daemonArgs);
+    }
 
     public static async Task<int> RunRememberAsync(string[] args)
     {
@@ -65,11 +84,15 @@ internal static class Commands
 
         using var store = new MemoryStore(dbPath);
         store.InitializeSchema();
-        using var runtime = await OnnxPsmRuntime.CreateAsync(modelDir).ConfigureAwait(false);
-        var service = new PsmService(store, runtime);
+        await using var acquired = await AcquireRuntimeAsync(parsed, modelDir, dbPath).ConfigureAwait(false);
+        var service = new PsmService(store, acquired.Runtime, acquired.EmbeddingRuntime);
+        var drainer = new RememberQueueDrainer(store, service);
 
-        var result = await service.RememberAsync(request).ConfigureAwait(false);
-        CliRunner.PrintJson(result);
+        // Same queue every caller (MCP included) uses -- this just also waits for the result instead
+        // of returning immediately. One or more results: more than one only if the response was long
+        // enough for TextSegmenter to split it into multiple independent storage decisions.
+        var results = await drainer.RememberAndWaitAsync(request).ConfigureAwait(false);
+        CliRunner.PrintJson(results);
         return 0;
     }
 
@@ -88,8 +111,8 @@ internal static class Commands
 
         using var store = new MemoryStore(dbPath);
         store.InitializeSchema();
-        using var runtime = await OnnxPsmRuntime.CreateAsync(modelDir).ConfigureAwait(false);
-        var service = new PsmService(store, runtime);
+        await using var acquired = await AcquireRuntimeAsync(parsed, modelDir, dbPath).ConfigureAwait(false);
+        var service = new PsmService(store, acquired.Runtime, acquired.EmbeddingRuntime);
 
         var result = await service.RecallAsync(new RecallRequest { Question = question, UserId = userId, TopK = topK, Domain = domain })
             .ConfigureAwait(false);
@@ -112,8 +135,8 @@ internal static class Commands
 
         using var store = new MemoryStore(dbPath);
         store.InitializeSchema();
-        using var runtime = await OnnxPsmRuntime.CreateAsync(modelDir).ConfigureAwait(false);
-        var service = new PsmService(store, runtime);
+        await using var acquired = await AcquireRuntimeAsync(parsed, modelDir, dbPath).ConfigureAwait(false);
+        var service = new PsmService(store, acquired.Runtime, acquired.EmbeddingRuntime);
 
         var result = await service.ContextAsync(new ContextRequest { Prompt = prompt, UserId = userId, TopK = topK, Domain = domain })
             .ConfigureAwait(false);
@@ -172,6 +195,90 @@ internal static class Commands
         return 0;
     }
 
+    /// <summary>
+    /// Manual test path for the fire-and-forget remember queue (see RememberQueueDrainer) -- lets the
+    /// queue be exercised end-to-end without a real MCP client. Mirrors RunShow/RunConflicts's style:
+    /// no model load needed, this is a pure store write. Builds the exact same RememberRequest a
+    /// synchronous `remember` call would and hands it to RememberQueueDrainer's static Enqueue --
+    /// the same mapping every host (this, MCP's tool) uses, not a separately-maintained one.
+    /// </summary>
+    public static int RunEnqueueRemember(string[] args)
+    {
+        var parsed = ArgParser.Parse(args);
+        if (parsed.HasFlag("help")) { Console.WriteLine(HelpText.For(HelpText.EnqueueRemember)); return 0; }
+
+        var message = parsed.GetRequiredString("message");
+        var userId = parsed.GetRequiredString("user");
+        var dbPath = parsed.GetString("db", Defaults.DbPath);
+        var domain = ParseDomain(parsed);
+
+        var request = new RememberRequest
+        {
+            LlmResponse = message,
+            UserId = userId,
+            UserMessage = parsed.GetString("user-message"),
+            IncludeExistingMemories = !parsed.HasFlag("no-existing"),
+            Domain = domain
+        };
+
+        var extraTagsRaw = parsed.GetString("extra-tags");
+        if (extraTagsRaw is not null)
+        {
+            request.ExtraTags = extraTagsRaw
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+        }
+
+        var sourceKind = parsed.GetString("source-kind");
+        var sourceId = parsed.GetString("source-id");
+        var sourceLabel = parsed.GetString("source-label");
+        var sourceTimestamp = parsed.GetString("source-timestamp");
+        if (sourceKind is not null || sourceId is not null || sourceLabel is not null || sourceTimestamp is not null)
+        {
+            request.Source = new MemorySourceMetadata
+            {
+                SourceKind = sourceKind,
+                SourceId = sourceId,
+                SourceLabel = sourceLabel,
+                SourceTimestamp = sourceTimestamp
+            };
+        }
+
+        using var store = new MemoryStore(dbPath);
+        store.InitializeSchema();
+        var id = RememberQueueDrainer.Enqueue(store, request);
+
+        CliRunner.PrintJson(new { id, status = "pending" });
+        return 0;
+    }
+
+    /// <summary>
+    /// Drains one batch of the fire-and-forget remember queue right now (does not loop -- a caller
+    /// can invoke this repeatedly, e.g. in a test/verification script, to wait for backlog to clear).
+    /// Unlike RunEnqueueRemember, this DOES load the model, since it calls the real RememberAsync
+    /// pipeline per pending row.
+    /// </summary>
+    public static async Task<int> RunDrainQueueAsync(string[] args)
+    {
+        var parsed = ArgParser.Parse(args);
+        if (parsed.HasFlag("help")) { Console.WriteLine(HelpText.For(HelpText.DrainQueue)); return 0; }
+
+        var dbPath = parsed.GetString("db", Defaults.DbPath);
+        var modelDir = parsed.GetString("model-dir", Defaults.ResolveModelDir());
+        Defaults.EnsureModelDir(modelDir);
+        var batchSize = parsed.GetInt("batch-size", 10);
+
+        using var store = new MemoryStore(dbPath);
+        store.InitializeSchema();
+        await using var acquired = await AcquireRuntimeAsync(parsed, modelDir, dbPath).ConfigureAwait(false);
+        var service = new PsmService(store, acquired.Runtime, acquired.EmbeddingRuntime);
+        var drainer = new RememberQueueDrainer(store, service);
+
+        var processed = await drainer.DrainOnceAsync(batchSize).ConfigureAwait(false);
+        CliRunner.PrintJson(new { processed });
+        return 0;
+    }
+
     private static readonly JsonSerializerOptions ServeJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -198,8 +305,9 @@ internal static class Commands
 
         using var store = new MemoryStore(dbPath);
         store.InitializeSchema();
-        using var runtime = await OnnxPsmRuntime.CreateAsync(modelDir).ConfigureAwait(false);
-        var service = new PsmService(store, runtime);
+        await using var acquired = await AcquireRuntimeAsync(parsed, modelDir, dbPath).ConfigureAwait(false);
+        var service = new PsmService(store, acquired.Runtime, acquired.EmbeddingRuntime);
+        var drainer = new RememberQueueDrainer(store, service);
 
         await Console.Error.WriteLineAsync("psm-memory serve: model loaded, ready for NDJSON requests on stdin.").ConfigureAwait(false);
 
@@ -216,7 +324,10 @@ internal static class Commands
                 var cmd = root.TryGetProperty("cmd", out var cmdEl) ? cmdEl.GetString() : null;
                 object result = cmd switch
                 {
-                    "remember" => await service.RememberAsync(ToRememberRequest(root)).ConfigureAwait(false),
+                    // Same queue every caller uses (see RememberQueueDrainer) -- this just also waits
+                    // for the result instead of returning immediately, since serve's whole point is
+                    // giving a batch driver (e.g. a benchmark harness) the real decision back.
+                    "remember" => await drainer.RememberAndWaitAsync(ToRememberRequest(root)).ConfigureAwait(false),
                     "recall" => await service.RecallAsync(ToRecallRequest(root)).ConfigureAwait(false),
                     "context" => await service.ContextAsync(ToContextRequest(root)).ConfigureAwait(false),
                     _ => throw new CliUsageException($"serve: unknown cmd '{cmd}' (expected remember|recall|context)."),
@@ -280,4 +391,31 @@ internal static class Commands
         TopK = GetIntOpt(root, "topK"),
         Domain = ParseDomainString(GetStr(root, "domain")),
     };
+
+    /// <summary>
+    /// Internal command -- not meant to be typed by hand. Spawned via WarmHostClient.SpawnDetached
+    /// (see Defaults.DaemonProcessArgs) when another command's --daemon path finds no warm host
+    /// already running. Loads the model once, serves requests over loopback HTTP until idle for
+    /// WarmHostOptions.IdleTimeout, then exits on its own.
+    /// </summary>
+    public static async Task<int> RunDaemonRunAsync(string[] args)
+    {
+        var parsed = ArgParser.Parse(args);
+        if (parsed.HasFlag("help")) { Console.WriteLine(HelpText.For(HelpText.DaemonRun)); return 0; }
+
+        var modelDir = parsed.GetRequiredString("model-dir");
+        var stateDir = parsed.GetRequiredString("state-dir");
+        Defaults.EnsureModelDir(modelDir);
+
+        var options = new WarmHostOptions
+        {
+            ModelDir = modelDir,
+            StateDirectory = stateDir,
+        };
+
+        using var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; cts.Cancel(); };
+        await WarmHostServer.RunAsync(options, cts.Token).ConfigureAwait(false);
+        return 0;
+    }
 }

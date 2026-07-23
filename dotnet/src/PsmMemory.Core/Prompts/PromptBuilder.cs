@@ -36,11 +36,24 @@ public static class PromptBuilder
         "Do not include markdown, prose, comments, or fallback text outside JSON.\n" +
         "Facts must be explicit and supported by evidence_text from the current input.";
 
-    private const string StorageUserPrefix =
+    private const string StorageUserInstruction =
         "Extract durable memory from the assistant response below.\n" +
         "Choose ignore, store_episodic, or promote_semantic.\n" +
-        "When storing, emit grounded memory.content, facts[], and indexables[] from the text.\n\n" +
-        "Assistant response:\n";
+        "When storing, emit grounded memory.content, facts[], and indexables[] from the text.\n\n";
+
+    /// <summary>
+    /// 2026-07-23: label for the optional context block in <see cref="BuildStoragePrompt"/>. Wording
+    /// is deliberate, not decorative -- a naive "just prepend prior turns" experiment (LoCoMo
+    /// benchmark harness, same date) was verified live against the real model to cause the adapter to
+    /// extract facts from ANYWHERE in the window and misattribute them to the current turn's source
+    /// id. This label exists specifically to train the discipline that experiment lacked: use context
+    /// to understand the current turn, never extract FROM the context itself.
+    /// </summary>
+    private const string StorageContextLabel =
+        "Recent context, oldest first (for understanding only -- do NOT extract a memory from this " +
+        "section; base your decision only on the assistant response below):\n";
+
+    private const string StorageResponseLabel = "Assistant response:\n";
 
     /// <summary>
     /// Builds the storage-decision prompt. Ported from prod_memory.hf_prompts.storage_inference_messages
@@ -50,9 +63,23 @@ public static class PromptBuilder
     /// sees the assistant response text. Existing-memory awareness happens later, via the separate
     /// consolidation adapter (see BuildConsolidationPrompt) — that's a deliberate two-step design,
     /// not an omission.
+    ///
+    /// <paramref name="contextTurns"/> is new (2026-07-23, not yet trained on): when null/empty, this
+    /// produces a BYTE-IDENTICAL prompt to the original single-argument form -- the currently-running
+    /// production adapters (which have never seen a context block) are completely unaffected. Only
+    /// once a context-aware adapter is trained on this exact format should callers start passing a
+    /// non-empty context.
     /// </summary>
-    public static string BuildStoragePrompt(string llmResponse) =>
-        ChatMl(StorageSystemInstruction, StorageUserPrefix + llmResponse.Trim());
+    public static string BuildStoragePrompt(string llmResponse, IReadOnlyList<string>? contextTurns = null)
+    {
+        var user = StorageUserInstruction;
+        if (contextTurns is { Count: > 0 })
+        {
+            user += StorageContextLabel + string.Join("\n", contextTurns) + "\n\n";
+        }
+        user += StorageResponseLabel + llmResponse.Trim();
+        return ChatMl(StorageSystemInstruction, user);
+    }
 
     /// <summary>
     /// Repair-retry prompt for when the storage adapter's first output fails to parse. No dedicated
@@ -65,7 +92,7 @@ public static class PromptBuilder
     public static string BuildStorageRepairPrompt(string llmResponse, string invalidOutput)
     {
         var user =
-            StorageUserPrefix + llmResponse.Trim() + "\n\n" +
+            StorageUserInstruction + StorageResponseLabel + llmResponse.Trim() + "\n\n" +
             "Your previous answer was not valid JSON and could not be parsed:\n" +
             invalidOutput + "\n\n" +
             "Re-answer now. Return exactly one valid JSON object and nothing else.";

@@ -11,18 +11,28 @@ namespace PsmMemory.Core;
 /// adapted to the 3-adapter in-process ONNX runtime. See class-level remarks on each method for
 /// what was ported faithfully vs. simplified/adapted for this port.
 ///
-/// Simplifications vs. service.ts (documented once here, not per-method): no embedding-based
-/// vector recall (psm-core's optional EmbeddingRuntime path), no LLM context-render step (no
-/// adapter for it exists in the 3-adapter ONNX runtime — service.ts's renderContext/buildContextRenderPrompt/
-/// parseContextRender have no port), no memory_facts/indexables ranking in recall results, and no
-/// automatic indexable synthesis from stored content (indexables.ts's buildIndexablesForRemember).
-/// Facts/indexables the model itself emits in a storage decision are still parsed, guarded, and
-/// persisted via MemoryStore.ApplyDecision.
+/// Embedding-based vector recall (service.ts's optional EmbeddingRuntime path -- embedWrittenMemories
+/// on remember, contextCandidates on recall/context) IS ported: see <see cref="EmbedWrittenMemoriesAsync"/>
+/// and <see cref="ContextCandidatesAsync"/>. It activates automatically whenever an
+/// <see cref="IEmbeddingRuntime"/> is supplied to the constructor, and is entirely independent of
+/// <see cref="PsmDomain"/> -- the same embedding model backs vector recall for both Coding and
+/// Conversational callers, since embeddings are computed from raw memory content, never from a
+/// domain-specific adapter.
+///
+/// Remaining simplification vs. service.ts (documented once here): no LLM context-render step (no
+/// adapter for it exists in the 3-adapter runtime — service.ts's renderContext/
+/// buildContextRenderPrompt/parseContextRender have no port). memory_facts/indexables ranking IS
+/// ported (see <see cref="PlanAndRankAsync"/> / <see cref="Ranking.RankFacts"/> /
+/// <see cref="Indexables.RankIndexables"/>), and automatic indexable synthesis from stored content
+/// IS ported (<see cref="Indexables.BuildIndexablesForRemember"/>, invoked from
+/// <see cref="RememberAsync"/> exactly where service.ts's remember() calls it).
 /// </summary>
 public sealed class PsmService
 {
     private readonly MemoryStore _store;
     private readonly IPsmRuntime _runtime;
+    private readonly IEmbeddingRuntime? _embeddingRuntime;
+    private readonly string _embeddingModel;
 
     /// <summary>
     /// Minimum hybrid-ranking score for an existing memory to be considered "close enough" to the
@@ -34,6 +44,35 @@ public sealed class PsmService
     public double ConsolidationCandidateMinScore { get; init; } = 0.3;
 
     /// <summary>
+    /// Minimum fraction of the NEW decision content's own significant tokens that must survive
+    /// into a consolidation adapter's "update_existing" merge for the merge to be accepted. Found
+    /// via a real probe (2026-07-20, coding-agent-cx-store-10): the consolidation adapter matched a
+    /// new, distinct finding against an unrelated existing memory that merely shared boilerplate
+    /// experiment-log phrasing ("documenting that... not a new mechanism"), then merged toward the
+    /// OLD memory's content, silently discarding the new one's actual substance (specific ratios/
+    /// numbers). GroundingGuards.IsGroundedInSource's ~10% threshold (tuned to catch pure
+    /// hallucination) does NOT catch this — the shared boilerplate alone clears it. 0.5 requires the
+    /// merge to retain most of the new content's own vocabulary, not just its connective phrasing.
+    /// </summary>
+    public double ConsolidationMergeRetentionMinRatio { get; init; } = 0.5;
+
+    /// <summary>
+    /// Minimum cosine similarity (embedding space) required between the new decision's content and
+    /// the nearest lexical-match candidate before <see cref="ConsolidateAsync"/> will even call the
+    /// consolidation adapter -- only enforced when an <see cref="IEmbeddingRuntime"/> is available
+    /// (no-op in pure-lexical mode). Found via a real probe (2026-07-21): two completely unrelated
+    /// facts about the same person ("Melanie got a cat" / "Melanie ran a charity race") scored 0.60
+    /// on Ranking.HybridRankMemories -- past the 0.3 candidate threshold -- almost entirely from the
+    /// shared-entity boost (Ranking.cs's entity term is tuned for query-vs-memory RETRIEVAL
+    /// relevance, where "same person" is a legitimate positive signal; it is not evidence these are
+    /// "the same fact" for consolidation purposes). Measured cosine similarity for that same
+    /// unrelated pair was 0.35, vs. 0.81 for a genuine same-fact update ("favorite language is
+    /// Python" -> "...now Rust") -- a clean separation. 0.5 sits between the two with margin on
+    /// both sides.
+    /// </summary>
+    public double ConsolidationSemanticMinScore { get; init; } = 0.5;
+
+    /// <summary>
     /// A final "ignore" outcome is logged to ignored_decisions for later reprocessing when its
     /// confidence is below this threshold (or has no confidence at all, e.g. parse fail-safe /
     /// guard rejection). No TS equivalent — new side table, see MemoryStore remarks.
@@ -43,10 +82,16 @@ public sealed class PsmService
     private const double ContextMinScore = 0.15;
     private const double RecallMinScore = 0.35;
 
-    public PsmService(MemoryStore store, IPsmRuntime runtime)
+    public PsmService(
+        MemoryStore store,
+        IPsmRuntime runtime,
+        IEmbeddingRuntime? embeddingRuntime = null,
+        string embeddingModel = LlamaSharpEmbeddingRuntime.ModelName)
     {
         _store = store;
         _runtime = runtime;
+        _embeddingRuntime = embeddingRuntime;
+        _embeddingModel = embeddingModel;
     }
 
     /// <summary>
@@ -97,6 +142,19 @@ public sealed class PsmService
 
         ApplySourceOverrides(decision, request.Source);
 
+        // Ported from service.ts's remember() call site: normalize relative-time expressions
+        // ("yesterday", "last month", ...) detected in the stored content/facts into resolved,
+        // rankable date strings before the grounding guards / consolidation / persistence steps.
+        var temporalAnchor = decision.Memory?.SourceTimestamp ?? request.Source?.SourceTimestamp;
+        if (decision.Memory is not null)
+        {
+            TemporalNormalizer.NormalizeMemoryTemporalFields(decision.Memory, temporalAnchor);
+        }
+        foreach (var fact in decision.Facts)
+        {
+            TemporalNormalizer.NormalizeFactTemporalFields(fact, temporalAnchor);
+        }
+
         var guarded = GroundingGuards.ApplyStorageGuards(request.LlmResponse, decision);
         if (guarded.Rejected)
         {
@@ -122,8 +180,27 @@ public sealed class PsmService
             (decision, conflictAgainst) = await ConsolidateAsync(decision, existing, request.Domain, ct).ConfigureAwait(false);
         }
 
+        // Ported from service.ts's remember() call site (service.ts:176-186): synthesize
+        // indexables deterministically (no LLM call) when this decision will actually write a
+        // memory and the model didn't already emit its own indexables.
+        if (WouldStoreDecision(decision) && decision.Indexables.Count == 0)
+        {
+            var indexableTags = new List<string>();
+            if (decision.Memory?.Tags is not null) indexableTags.AddRange(decision.Memory.Tags);
+            if (request.ExtraTags is not null) indexableTags.AddRange(request.ExtraTags);
+
+            decision.Indexables = Indexables.BuildIndexablesForRemember(new Indexables.BuildIndexablesInput
+            {
+                LlmResponse = request.LlmResponse,
+                MemoryContent = decision.Memory?.Content?.Trim() ?? request.LlmResponse,
+                Tags = indexableTags,
+                Facts = decision.Facts
+            });
+        }
+
         var source = request.Source?.SourceId ?? "llm-response";
         var result = _store.ApplyDecision(request.UserId, source, decision, request.ExtraTags, conflictAgainst);
+        await EmbedWrittenMemoriesAsync(request.UserId, result.MemoryRefs, ct).ConfigureAwait(false);
 
         LogIfLowConfidenceIgnore(request, result.Route, decision, null, result);
 
@@ -175,14 +252,29 @@ public sealed class PsmService
             plan = DeterministicPlanFallback.BuildPlan(query, topK);
         }
 
-        var candidates = _store.SelectMemories(userId, MemoryTables.All, Math.Max(100, plan.TopK * 10));
+        var limit = Math.Max(100, plan.TopK * 10);
+        var (candidates, vectorScores) = await ContextCandidatesAsync(userId, query, limit, ct).ConfigureAwait(false);
         var ranked = Ranking.HybridRankMemories(query, candidates, new Ranking.HybridRankOptions
         {
             TopK = plan.TopK,
+            VectorScores = vectorScores,
             PreferredTables = plan.TargetTables,
             MinScore = isContext ? ContextMinScore : RecallMinScore
         });
         _store.UpdateAccess(ranked);
+
+        // Ported from service.ts's recall()/context(): both rank memory_facts (rankFacts), but
+        // only recall() ranks indexables/workflows (rankIndexables) -- context() never surfaces
+        // them in the original TS source.
+        var facts = _store.SelectMemoryFacts(userId, limit);
+        var rankedFacts = Ranking.RankFacts(query, facts, plan.TopK);
+
+        var rankedIndexables = new List<Indexables.ScoredIndexable>();
+        if (!isContext)
+        {
+            var indexableRows = _store.SelectIndexables(userId, 100);
+            rankedIndexables = Indexables.RankIndexables(query, indexableRows, plan.TopK);
+        }
 
         return new RecallResult
         {
@@ -190,8 +282,95 @@ public sealed class PsmService
             Query = query,
             Plan = plan,
             PlanFallback = plan.PlanFallback,
-            Memories = ranked
+            Memories = ranked,
+            Facts = rankedFacts,
+            Indexables = rankedIndexables,
+            Workflows = rankedIndexables.Where(row => row.Kind == IndexableKinds.Workflow).ToList()
         };
+    }
+
+    /// <summary>
+    /// Ported from service.ts's <c>embedWrittenMemories</c>: embeds and stores one embedding per
+    /// memory actually written by this remember() call. No-op when no <see cref="IEmbeddingRuntime"/>
+    /// was supplied (pure-lexical mode, the pre-fix default). Runs for every <see cref="PsmDomain"/>
+    /// identically -- embedding a memory's content never depends on which domain's adapter produced
+    /// the storage decision.
+    /// </summary>
+    private async Task EmbedWrittenMemoriesAsync(string userId, List<WrittenMemoryRef> refs, CancellationToken ct)
+    {
+        if (_embeddingRuntime is null) return;
+        foreach (var reference in refs)
+        {
+            var embedding = await _embeddingRuntime.EmbedAsync(reference.Content, ct).ConfigureAwait(false);
+            _store.UpsertMemoryEmbedding(reference, userId, _embeddingModel, embedding);
+        }
+    }
+
+    /// <summary>
+    /// Ported from service.ts's <c>contextCandidates</c>: without an <see cref="IEmbeddingRuntime"/>,
+    /// falls back to the pre-fix pure-lexical behavior but widens the candidate pool to at least
+    /// 10,000 rows (psm-core's "ponytail" comment: a 200-row cap silently misses LoCoMo-scale
+    /// evidence when there's no vector search to fall back on). With an embedding runtime, embeds
+    /// the query, scores every stored embedding for this user via cosine similarity, fetches the
+    /// top-<paramref name="limit"/> memories by vector score, and merges them with the lexical
+    /// candidate set (lexical-first, deduped by table:id) so <see cref="Ranking.HybridRankMemories"/>
+    /// can blend both signals. Identical behavior regardless of <see cref="PsmDomain"/>.
+    /// </summary>
+    private async Task<(List<MemoryRecord> Candidates, Dictionary<string, double>? VectorScores)> ContextCandidatesAsync(
+        string userId, string query, int limit, CancellationToken ct)
+    {
+        var lexicalLimit = _embeddingRuntime is not null ? limit : Math.Max(limit, 10_000);
+        var lexicalCandidates = _store.SelectMemories(userId, MemoryTables.All, lexicalLimit);
+        if (_embeddingRuntime is null) return (lexicalCandidates, null);
+
+        var queryEmbedding = await _embeddingRuntime.EmbedAsync(query, ct).ConfigureAwait(false);
+        var scored = _store.SelectEmbeddingRows(userId, _embeddingModel)
+            .Select(row => (row.MemoryTable, row.MemoryId, Score: CosineSimilarity(queryEmbedding, row.Embedding)))
+            .OrderByDescending(row => row.Score)
+            .Take(limit)
+            .ToList();
+
+        var vectorScores = new Dictionary<string, double>();
+        var vectorMemories = new List<MemoryRecord>();
+        foreach (var row in scored)
+        {
+            vectorScores[$"{row.MemoryTable}:{row.MemoryId}"] = row.Score;
+            var memory = _store.GetMemory(row.MemoryTable, row.MemoryId);
+            if (memory is not null) vectorMemories.Add(memory);
+        }
+
+        return (MergeMemories(lexicalCandidates, vectorMemories), vectorScores);
+    }
+
+    private static List<MemoryRecord> MergeMemories(params IEnumerable<MemoryRecord>[] groups)
+    {
+        var seen = new HashSet<string>();
+        var result = new List<MemoryRecord>();
+        foreach (var group in groups)
+        {
+            foreach (var memory in group)
+            {
+                var key = $"{memory.Table}:{memory.Id}";
+                if (!seen.Add(key)) continue;
+                result.Add(memory);
+            }
+        }
+        return result;
+    }
+
+    private static double CosineSimilarity(float[] a, float[] b)
+    {
+        var length = Math.Min(a.Length, b.Length);
+        if (length == 0) return 0;
+        double dot = 0, aNorm = 0, bNorm = 0;
+        for (var i = 0; i < length; i++)
+        {
+            dot += (double)a[i] * b[i];
+            aNorm += (double)a[i] * a[i];
+            bNorm += (double)b[i] * b[i];
+        }
+        if (aNorm == 0 || bNorm == 0) return 0;
+        return dot / (Math.Sqrt(aNorm) * Math.Sqrt(bNorm));
     }
 
     /// <summary>
@@ -211,12 +390,36 @@ public sealed class PsmService
         var nearest = Ranking.HybridRankMemories(content, existing, new Ranking.HybridRankOptions { TopK = 1 }).FirstOrDefault();
         if (nearest is null || nearest.Score < ConsolidationCandidateMinScore) return (decision, null);
 
+        if (_embeddingRuntime is not null)
+        {
+            var newEmbedding = await _embeddingRuntime.EmbedAsync(content, ct).ConfigureAwait(false);
+            var nearestEmbedding = await _embeddingRuntime.EmbedAsync(nearest.Content, ct).ConfigureAwait(false);
+            if (CosineSimilarity(newEmbedding, nearestEmbedding) < ConsolidationSemanticMinScore)
+            {
+                // Lexically similar (shared entity/table/confidence terms) but not semantically --
+                // not a genuine consolidation candidate, just two unrelated facts about the same
+                // subject. See ConsolidationSemanticMinScore remarks for the measured evidence.
+                return (decision, null);
+            }
+        }
+
         try
         {
             var prompt = PromptBuilder.BuildConsolidationPrompt(content, nearest.Id, nearest.Content);
             var raw = await _runtime.GenerateConsolidationDecisionAsync(prompt, domain, ct).ConfigureAwait(false);
             var consolidation = StorageDecisionParser.ParseConsolidationDecision(raw);
             if (consolidation.ParseError is not null) return (decision, null);
+
+            if (consolidation.Action == Actions.Kinds.UpdateExisting
+                && !string.IsNullOrWhiteSpace(consolidation.MergedContent)
+                && !MergeRetainsNewContent(content, consolidation.MergedContent))
+            {
+                // The merge would discard the new content's own substance (see
+                // ConsolidationMergeRetentionMinRatio remarks) -- treat this exactly like "no
+                // consolidation candidate was close enough" rather than silently losing the new
+                // information, instead of applying an untrustworthy merge.
+                return (decision, null);
+            }
 
             var updated = decision.Clone();
             updated.Action = consolidation.Action;
@@ -238,6 +441,24 @@ public sealed class PsmService
         {
             return (decision, null);
         }
+    }
+
+    /// <summary>
+    /// True if <paramref name="mergedContent"/> retains at least <see cref="ConsolidationMergeRetentionMinRatio"/>
+    /// of <paramref name="newContent"/>'s own significant tokens. Deliberately stricter than
+    /// <see cref="GroundingGuards.IsGroundedInSource"/> (which only requires ~10% overlap, or 1-2
+    /// tokens) -- that threshold is tuned to catch pure hallucination, and passes right through a
+    /// merge that keeps only boilerplate connective phrasing shared between two topically-unrelated
+    /// memories while discarding the new content's actual specifics (see
+    /// ConsolidationMergeRetentionMinRatio remarks for the concrete case this was found from).
+    /// </summary>
+    private bool MergeRetainsNewContent(string newContent, string mergedContent)
+    {
+        var newTokens = GroundingGuards.SignificantTokens(newContent);
+        if (newTokens.Count == 0) return true;
+        var mergedSet = new HashSet<string>(GroundingGuards.SignificantTokens(mergedContent));
+        var overlap = newTokens.Count(t => mergedSet.Contains(t));
+        return overlap >= Math.Ceiling(newTokens.Count * ConsolidationMergeRetentionMinRatio);
     }
 
     private static void ApplySourceOverrides(StorageDecision decision, MemorySourceMetadata? source)

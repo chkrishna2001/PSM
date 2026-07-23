@@ -1,0 +1,901 @@
+{
+  "cases": [
+    {
+      "id": "coding-agent-adapter-verified-hf",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Confirmed - commits from 2026-07-05 09:54 UTC (today, minutes ago), matching this exact retrain run. The adapter is safely verified on HF hub. Now let's pull it locally and re-run the eval.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-parse-failure-finding",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is the real finding - most \"ignore\" decisions aren't the model choosing to ignore, they're parse failures being fail-safed into ignore. Let me quantify how widespread this is.",
+      "keyTokens": [
+        "parse failures",
+        "fail-safed",
+        "ignore"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-run-complete-hf",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good news - checking before I touch anything else: the full 80-step run completed and the adapter and metrics are already safely on HF (checkpoint-40, checkpoint-80, final adapter with adapter_model.safetensors).",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-hallucination-not-truncation",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Found it - this is not a truncation bug at all. The model appears to be hallucinating malformed structure in the tags/product/range fields, not running out of tokens.",
+      "keyTokens": [
+        "hallucinating",
+        "malformed structure",
+        "not a truncation bug"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-ingestion-numbers",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Ingestion itself finished - seen: 1032, stored: 104, ignored: 928, failed: 0, matching the full LoCoMo turn count and confirming an apples-to-apples comparison with v5n-dpo's known 797/1032.",
+      "keyTokens": [
+        "1032",
+        "stored: 104",
+        "apples-to-apples"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-commit-experiment-2",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Implemented and committed the next experiment. Commit: f07fc82 Experiment 2: similarity matching. Trace.cs now keeps a tiny evolving prototype to compare against instead of raw history.",
+      "keyTokens": [
+        "f07fc82",
+        "experiment 2",
+        "trace.cs"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-measurement-admission-rule",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The Measurement Admission Rule is now written down as the Phase 1A gate. I'll mirror it in the ledger and then implement Experiment 16.",
+      "keyTokens": [
+        "measurement admission rule",
+        "phase 1a gate"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-contradiction-rejected",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The ledger now records the contradiction as rejected, not as a vague future concern. I'm building once and checking the diff, then I'll commit this as the contradiction experiment.",
+      "keyTokens": [
+        "contradiction as rejected",
+        "ledger"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-azure-secrets-writeonly",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Azure Pipelines does not allow direct retrieval of secret values once stored. This is intentional - secrets are write-only to prevent leakage. You cannot print them, fetch them via API, or export them after creation.",
+      "keyTokens": [
+        "write-only",
+        "azure pipelines",
+        "secret values"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-powershell-path-resolution",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "There is nothing wrong with the script itself. The error is entirely about path resolution, not Base64 or the clipboard.",
+      "keyTokens": [
+        "path resolution",
+        "nothing wrong with the script"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-experiment-19-wired",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Experiment 19 is wired into the harness. I reused the same measured-comparison path by factoring the stream runner, so flat vs separated is still the only comparison variable.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-ssh-timeout-check",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The local orchestrating script crashed on the final results-pull step (SSH timeout), but that doesn't necessarily mean the actual job on the pod failed - let me check live state directly.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-tests-pass-nextstep",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good, storage_rewards tests pass. Now let's syntax-check the edited files compile cleanly and check for any test file covering eval_grounding.py aggregate functions.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-checking-final-status",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Commit created. I'm checking the final status and recent history so I can close this out with the exact state and the new contradiction we found.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-checking-overclaims",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I'm checking for remaining solution-shaped wording and overclaims now. If anything still says the matcher is the bottleneck or names mechanisms as likely answers, I'll trim it.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-staged-gitignore-warning",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Staged. The global Git ignore warning is outside the repo and didn't block anything.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-docs-agree-sanity-check",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now the README, roadmap, and observation note agree with the actual result. I'm doing the final status plus one build/run sanity check on the implemented experiment path.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-threshold-two-bits-contradiction",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good, we found the first contradiction immediately: my first threshold made `00010010` split off, because it is two bits away from `00010001`, not one. For this dataset to test \"cat-like family resemblance,\" the threshold has to admit 6/8 similarity, so I'm lowering only that constant and rerunning.",
+      "keyTokens": [
+        "threshold",
+        "similarity",
+        "contradiction"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-invariant-alone-not-solve",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Nice: invariant representation alone did not solve assimilation. The first red/blue object still looked only 4/6 similar, so it split before invariants had a chance to emerge. I'm lowering the same threshold, not adding a new mechanism, to see whether this is just calibration or a deeper failure.",
+      "keyTokens": [
+        "invariant",
+        "assimilation",
+        "threshold"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-useful-negative-sparse-grids",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Build is clean. The result is a useful negative: the ontology can host the test, but the current explanation mechanism does not survive sparse perceptual grids. I'm committing this as Experiment 11.",
+      "keyTokens": [
+        "negative",
+        "mechanism",
+        "sparse"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-falsified-hidden-assumption",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is a roadmap/ontology correction, not a code change. I'll record the stronger conclusion: Experiment 11 did not just break similarity; it falsified the hidden assumption that raw sensor values are already observations.",
+      "keyTokens": [
+        "falsified",
+        "assumption",
+        "observations"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-pairing-removed-collapses",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The result is quite good and not too good, which is the sweet spot. Pairing the measurements removed both previous collapses, but it still cannot distinguish the two phase-inverted checkerboards, so the next missing information is arrangement/phase rather than \"more perception\" in general.",
+      "keyTokens": [
+        "pairing",
+        "arrangement",
+        "phase"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-preserved-weaker-than-steer",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I'm recording this as a failed search with a new contradiction, not as a reason to add weights. The important result is that \"preserved in the observation string\" is weaker than \"can steer hypothesis formation.\"",
+      "keyTokens": [
+        "preserved",
+        "weaker",
+        "hypothesis"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-prototype-tests-local-association",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The generated folders are gone and ignored. One thing I'm noticing: this first prototype actually tests \"local association prediction from unlabeled binary frames,\" not pure \"Trace only\"; I'll keep the final notes honest about that so the experimental ladder stays clean.",
+      "keyTokens": [
+        "prototype",
+        "local association",
+        "trace"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-familyb-stronger-invariant-contaminated",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "One thing the output caught: the proposed Family B values actually had a stronger invariant (`1111??`), so the \"same invariants\" test was a little contaminated. I'm correcting the B family to `111011`, `111101`, `111110`, which truly shares `111???` with Family A.",
+      "keyTokens": [
+        "invariant",
+        "contaminated",
+        "family"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-trace-no-inspectable-pattern",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The current code can't even ask \"similar enough?\" because a trace has no inspectable pattern, only its hash identity. I'm making the smallest structural change I can: a trace keeps a prototype built from observed bit counts, and matching scans existing traces by Hamming similarity.",
+      "keyTokens": [
+        "trace",
+        "prototype",
+        "hamming"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-found-exact-overclaims",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I found the exact overclaims: \"bottleneck moved to matcher,\" \"matcher ignored it,\" and some Case A/Case B wording that still hints at representation. I'm going to replace those with the narrower interaction claim and add the prediction without specifying a mechanism.",
+      "keyTokens": [
+        "overclaims",
+        "matcher",
+        "interaction"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-explore-agents-running-wait",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Both explore agents are running - I'll wait for their findings before drafting the fix plan.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-retrain-deploying-background",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The retrain job is deploying a RunPod GPU pod and training in the background - I'll be notified when it completes (historically finishes in well under 10 minutes once the pod is up).",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-watch-polling-loop",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Let me watch this more carefully with a tight polling loop to see if it's actually respawning per-turn or just showing brief GPU bursts between quick calls.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-streams-progressing-checkback",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Both streams are now progressing independently - I'll check back on both shortly.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-started-background-will-report",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Right - I started this with `run_in_background`, so I'll get notified automatically when it finishes rather than polling. I'll report back once the deploy/train launch completes (or errors out).",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-wait-verifypod-call",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I'll wait for the background verify-pod call to complete rather than poll further.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-polling-pod-background",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I'm polling the pod in the background until SSH is reachable, then it'll dump the tmux session and training log in one shot. I'll report back when that resolves.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-commits-landed-pull-delete",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "New commits landed at 10:54-10:55 UTC - training attempt 2 finished and synced. Let's pull the adapter and delete the pod.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-didnt-execute-redo-stdin",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "That didn't execute - same RunPod proxy argv-ignoring issue as before. Let me redo it via stdin piping like the successful pattern earlier.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-pythonpath-adhoc-nonissue",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "That's just a PYTHONPATH issue in my ad-hoc check, not a real problem. Let me verify properly with the correct path.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-store-0",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The prediction held: it collapsed both families into one `111???` trace, then attached both futures equally. That is a clean falsification of \"invariants alone are enough,\" so I'm updating the ledger before committing.",
+      "keyTokens": [
+        "prediction",
+        "collapsed",
+        "families"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-1",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The result is useful in a very specific way: interaction history did not split the trace; it only biased the single trace toward the more frequent future. That means history is evidence, but not yet a resolving mechanism.",
+      "keyTokens": [
+        "useful",
+        "specific",
+        "interaction"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-2",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Verified. The key Experiment 13 numbers are: mixed sparse/alternating = 0, mixed V/H = 1. That's the clean result: alternation preserved, orientation not preserved. I'll commit the experiment and ledger updates.",
+      "keyTokens": [
+        "verified",
+        "numbers",
+        "mixed"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-3",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Experiment 18 broke in the useful direction: flat comparison reproduced Experiment 17's A/B mixing, while identity-preserving comparison got mixed A/B source hypotheses down to 0 and correct predictions up to 7/7. I'm doing the promised small ledger update now, not a design-doc detour.",
+      "keyTokens": [
+        "broke",
+        "useful",
+        "direction"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-4",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Exactly. Experiment 20 is better as a failure because it gives us the paired contradiction: flattening erases decisive evidence, separated comparison over-elevates task-irrelevant evidence. I'll record the deeper assumption and reframe Experiment 21 around relevance, without adding a relevance mechanism.",
+      "keyTokens": [
+        "exactly",
+        "better",
+        "failure"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-5",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The run is clean, and the interesting bit held: inferred comparison gets `7/7` in both transfers, equal separated comparison collapses to `0/3`, and the deletion test drops to `2/7`. I'm going to write that into the research docs so the result is reproducible as an experiment, not just console output.",
+      "keyTokens": [
+        "clean",
+        "interesting",
+        "inferred"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-6",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The run gives the expected partial failure: the old selected identity cannot transfer into a renamed independent set, while target-local prior success still produces `7/7`. I'm recording that as a failure of name-bound transfer, not a failure of Experiment 22.",
+      "keyTokens": [
+        "gives",
+        "expected",
+        "partial"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-7",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "That's the result we wanted to test: reuse fails at `2/7`, re-derivation gets `7/7`. I'm going to update the docs to make 23/24 say \"re-derived relationship\" instead of \"transferable quantity.\"",
+      "keyTokens": [
+        "wanted",
+        "reuse",
+        "fails"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-8",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Experiment 25 did break the structural analogy: source/position reuse is `1/15`, single-channel local reconstruction is `1/15` and `3/17`, while full interaction comparison is the only improved condition at `6/15`. I'm documenting that as a partial failure, not a new mechanism.",
+      "keyTokens": [
+        "break",
+        "structural",
+        "analogy"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-9",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is a useful outside-family result: single locations mix A/B and get `3/11`, paired spatial relation gets `5/9` with no A/B mixing. It is not spectacular; it is a first cross-family survival signal, not an architectural promotion.",
+      "keyTokens": [
+        "useful",
+        "outside",
+        "family"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-store-10",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Great, the cleaned temporal benchmark has the shape we wanted: each component is `7/7` alone on its own task, but each fails when the task is composed, while the paired temporal relation gets `5/9`. I'm documenting that as non-decomposability under composition, not as a new mechanism.",
+      "keyTokens": [
+        "great",
+        "cleaned",
+        "temporal"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-ignore-0",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Let me pull the full untruncated text for the specific turns I've selected before finalizing the fixture file.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-1",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now let's replace the \"Next action\" section with a comprehensive summary of today's session and updated priorities.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-2",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Let's add the new eval set and instrumentation to the \"Key scripts\" reference list for discoverability.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-3",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "I'll start by exploring the existing DPO curriculum setup so the new phase 3 build follows the same conventions as v5n-dpo.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-4",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now let me update the current-best-state table and add the real Phase 3 result, replacing the earlier \"built, not yet trained\" placeholder.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-5",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Staged; again Git can't read the global ignore file, but the repo staging is fine. Committing now.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-7",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Build is clean. I'm running the full console experiment now to make sure the move didn't silently change the research result.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-8",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Build is clean. I'm running the harness now; the key thing to inspect is whether Experiment 15 finds a same-basis/different-arrangement collision.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-9",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now I'm compiling and running the experiment output. If the prediction holds, we should see flat comparison still mix A/B sources and identity-preserving comparison reduce that mix using the exact same measurement information.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-11",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now I'm compiling and running the experiment output. If Experiment 22 passes only because the benchmark is too easy, the numbers will usually give it away here.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-12",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now I'm renaming the Experiment 23 document and updating links. This is the sort of small naming thing that prevents the old assumption from sneaking back in through the side door.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-14",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now I'm running the temporal composition benchmark. I expect the individual tasks to work with one temporal relation, then the composed task to defeat each relation alone.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-15",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now I'm running the final checks for Experiments 26 and 27, plus build. If those pass, I'll commit the reframing and temporal composition benchmark.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-16",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now the repo points to the actual next attack: less-structured observations. I'll review the diff and commit this correction so the history reflects the pivot cleanly.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ignore-17",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Staged. I'll do one staged-stat check so the commit has the shape we intend: moved runtime, tiny entrypoint, harness preserved.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-bulkhead-fault-isolation",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The Bulkhead pattern is a fault-isolation strategy: it partitions resources so a failure in one pool cannot exhaust the others and take down the whole system.",
+      "keyTokens": [
+        "bulkhead",
+        "fault-isolation",
+        "pattern"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-duckdb-no-recursive-json",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "DuckDB does not currently do recursive JSON traversal automatically - you manually UNNEST each level for a nested tree.",
+      "keyTokens": [
+        "duckdb",
+        "recursive",
+        "unnest"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-duckdb-no-xml",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "DuckDB cannot query XML directly the way it can query JSON - there is no built-in XML parser, XPath support, or automatic schema extraction.",
+      "keyTokens": [
+        "duckdb",
+        "xml",
+        "parser"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-dotnet-no-training-stack",
+      "suite": "coding_agent_realistic",
+      "llmResponse": ".NET has no serious fine-tuning training stack - PyTorch, CUDA, Triton, and PEFT/LoRA are Python-first and that ecosystem does not exist in .NET.",
+      "keyTokens": [
+        "training",
+        "pytorch",
+        "dotnet"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-kubectl-watch-json-trap",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "When you use kubectl -w (watch) with -o json, kubectl does not emit a single stable JSON document, so piping it into jq for one value fails.",
+      "keyTokens": [
+        "kubectl",
+        "watch",
+        "json"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-ios-sandbox-db-inaccessible",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "For an App Store-installed iOS app you generally cannot access its SQLite database directly because of iOS sandbox security.",
+      "keyTokens": [
+        "ios",
+        "sandbox",
+        "sqlite"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-strangler-fig-no-big-rewrite",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The Strangler Fig pattern: you do not rewrite a legacy system in one heroic attempt - you incrementally replace pieces while the old system keeps running.",
+      "keyTokens": [
+        "strangler",
+        "legacy",
+        "rewrite"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-yarp-embedded-library",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Unlike a standalone proxy like NGINX or HAProxy, YARP is a .NET library you embed inside an ASP.NET Core application to build your own programmable reverse proxy.",
+      "keyTokens": [
+        "yarp",
+        "proxy",
+        "dotnet"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-blazor-server-stateful-circuit",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Blazor Server uses a live stateful circuit model over SignalR, while Angular falls back to pure browser-side execution.",
+      "keyTokens": [
+        "blazor",
+        "circuit",
+        "angular"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-postgres-operator-features",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "A Postgres Kubernetes operator provides automatic failover, replica management, backups via pgBackRest, and custom tuning via CRDs.",
+      "keyTokens": [
+        "postgres",
+        "operator",
+        "failover"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-powershell-no-tobase64",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "PowerShell has no ToBase64String cmdlet by design - its philosophy is that cmdlets orchestrate data while .NET methods handle low-level conversions.",
+      "keyTokens": [
+        "powershell",
+        "base64",
+        "cmdlet"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-aws-free-tier-limits",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "AWS Free Tier gives a t2/t3.micro EC2 instance (1 vCPU, 1 GB RAM, 750 hours/month) for 12 months only, after which it bills at standard rates.",
+      "keyTokens": [
+        "aws",
+        "free tier",
+        "ec2"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-cx-ig2-0",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Staged. The global Git ignore warning persists but doesn't affect the repository.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-1",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now the cat dataset compresses 5 experiences into 1 trace while the sudden shift still forms 2 traces, which is exactly the pressure test we wanted. I'm going to build once, check the final diff, and commit this as the similarity-matching experiment.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-6",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now I'm rerunning Experiment 27. This version should make the individual tasks genuinely explainable before testing whether their composition remains decomposable.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-7",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now the future observations survive the spatial measurement. I'm rerunning Experiment 26 and checking whether the interaction condition improves both separation and prediction.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-10",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is a good moment to clean the science bench before adding another rule. I'll split the experiment harness from the tiny runtime so the survived mechanisms stay inspectable, then record the Phase 1A lesson: observation formation is transient compression, and the next question is what it may safely discard.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-11",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The relocation built and produced the same experiment output. To match the intended shape more closely, I'm also moving the core survived mechanism files into `Runtime/` so the repo visibly separates runtime from experiment history.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-12",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The working tree contains the experiment harness changes plus the research docs from the post-17 sequence, including untracked Experiment 19/21/22/23/24 notes. I'm going to run the build once more, then stage and commit all current repo changes.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-14",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "One console label still says \"Transfer succeeded\" because it reused the Experiment 22 printer. I'm making that generic so the output doesn't fight the new interpretation.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-cx-ig2-15",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "That removes the last hard bottleneck claim. I'm checking status and the key phrases once more so the final summary is honest about exactly what changed.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-overturns-hypothesis-222-tokens",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This overturns the original hypothesis - `workflow-runpod` only generated 222 tokens (not anywhere near the 768 ceiling) and technical-eslint only 286. Let me inspect the actual raw JSON text to find the real defect.",
+      "keyTokens": [
+        "overturns",
+        "hypothesis",
+        "tokens"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-ingest-finished-but-hung",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The ingest process finished its work (summary printed, 1032/1032 processed) but the process itself appears hung and never exited - blocking the pipeline from advancing to retrieval/answer eval. Since the DB is complete and the ingest summary file exists, I can skip re-running ingestion and resume directly at the retrieval step.",
+      "keyTokens": [
+        "ingest",
+        "processed",
+        "hung"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-object-experiment-six-bits",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Now the object experiment is encoded as six raw bits: three stable structure bits plus three mutually varying color bits. The trace is allowed to say \"I know these positions\" and \"these positions vary,\" which is the smallest escape from averaging.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-staged-committing-exp13",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Staged. Committing this as Experiment 13, with the measurement named rather than implying a complete perceptual fix.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-regression-6to3-fixtures",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is a clear regression - `effective_stored` dropped from 6/10 to **3/10**, and previously-passing fixtures (`plan-01-handoff`, `cursor-01-summary`, `workflow-review-pr`) now fail with *new* errors. Let me dig into why before deciding anything.",
+      "keyTokens": [
+        "regression",
+        "stored",
+        "fixtures"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-phase1a-specimen-alternation",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "This is now a nice Phase 1A specimen: one measurement survived a deletion-test style question because it preserved alternation, while failing as a complete former. I'm updating the roadmap so Experiment 14 follows from the new contradiction: same transition counts, different arrangement.",
+      "keyTokens": [
+        "specimen",
+        "alternation",
+        "measurement"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-exp22-falsifies-preassignment",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The key caution is going into the docs too: Experiment 22 falsifies manual preassignment in this diagnostic, but it does not admit a runtime relevance mechanism yet. That keeps the result from accidentally growing legs it did not earn.",
+      "keyTokens": [
+        "falsifies",
+        "preassignment",
+        "runtime"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-exp16-proves-necessity",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The diff keeps the distinction sharp: Experiment 16 proves necessity, not the specific arrangement solution. I'll commit it now.",
+      "keyTokens": [
+        "proves",
+        "necessity",
+        "arrangement"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-storage-rewards-tests-pass",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good, storage_rewards tests pass. Now let's syntax-check the edited files compile cleanly and check for any test file covering `eval_grounding.py` aggregate functions or `_print_case_table.py`.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-guessed-proxy-matches-wait",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good, my guessed proxy user (`udk4kfi83tx5st-64411220`) matches. I'll wait for that verify-pod call to finish rather than launching a duplicate.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-curriculum-regenerated-1248",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Curriculum regenerated (900 -> 1248 rows), manifest confirms both new variants and `workflow-runpod` now included in the failure-fixture boost list. This is the cost checkpoint from the plan - retraining requires spinning up a RunPod GPU pod.",
+      "keyTokens": [
+        "curriculum",
+        "regenerated",
+        "rows"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-pod-created-json-parse-failed",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "A pod actually got created (`k0ik4lvjbu0tqp`, billing started) but the script's own JSON-parsing logic failed to extract the pod ID/proxy user from the deploy response. Let me get the full details so I can either reuse it or clean it up.",
+      "keyTokens": [
+        "pod",
+        "parsing",
+        "failed"
+      ],
+      "expectAction": "store"
+    },
+    {
+      "id": "coding-agent-good-catch-skeptical-check",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Good catch, and worth being skeptical about. Let me check this against what we know about v5n-dpo's ingest behavior for context.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-placement-correct-add-v5qdpo",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Placement is correct. Now let's add `v5q-dpo` to the GPU-preferences profile list and the `--sync-code` file list.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-adapter-downloaded-now-running",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "Adapter downloaded locally. Now running the same prod fixture eval used for v5n-dpo/v5q, on CPU, at 768 tokens.",
+      "keyTokens": [],
+      "expectAction": "ignore"
+    },
+    {
+      "id": "coding-agent-killed-process-autorestarted",
+      "suite": "coding_agent_realistic",
+      "llmResponse": "The killed process auto-restarted via the shell script's own retry wrapper - and since I deleted the DB right before, it's now starting fresh with the working code. Let me confirm the new run is actually succeeding.",
+      "keyTokens": [
+        "restarted",
+        "retry",
+        "wrapper"
+      ],
+      "expectAction": "store"
+    }
+  ]
+}

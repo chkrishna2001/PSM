@@ -1,9 +1,35 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using PsmMemory.Core.Models;
 
 namespace PsmMemory.Core.Store;
+
+/// <summary>A stored embedding row, ported from psm-core's store.ts `selectEmbeddingRows` return shape.</summary>
+public sealed record EmbeddingRow(string MemoryTable, string MemoryId, float[] Embedding);
+
+/// <summary>
+/// A queued remember() request awaiting background processing. No TS equivalent -- new fire-and-
+/// forget path so a calling agent/hook doesn't block on the full storage-decision pipeline (the
+/// caller doesn't need the result; the memory being stored is for future turns, not the current
+/// one). <see cref="Domain"/> is stored/round-tripped as a plain string (matching
+/// <c>PsmDomain.ToString()</c>) so MemoryStore stays independent of the Runtime namespace --
+/// PsmService owns the PsmDomain&lt;-&gt;string conversion.
+/// </summary>
+public sealed record PendingRememberRequest(
+    string Id,
+    string UserId,
+    string LlmResponse,
+    string? UserMessage,
+    bool IncludeExistingMemories,
+    List<string>? ExtraTags,
+    string? SourceKind,
+    string? SourceId,
+    string? SourceTimestamp,
+    string? SourceLabel,
+    string Domain);
 
 /// <summary>Result of <see cref="MemoryStore.ApplyDecision"/>. Ported from store.ts's applyDecision return shape.</summary>
 public sealed class ApplyDecisionResult
@@ -33,6 +59,15 @@ public sealed partial class MemoryStore : IDisposable
         _db = new SqliteConnection($"Data Source={dbPath}");
         _db.Open();
         Exec("PRAGMA foreign_keys = ON;");
+        // WAL + busy_timeout: the fire-and-forget remember queue gives the background worker its
+        // own second connection to this same file (see RememberQueueDrainer) so it can drain
+        // pending_remember_requests without contending with whatever else is using this instance.
+        // Rollback-journal (the sqlite default) takes an exclusive file lock per write, which would
+        // throw SQLITE_BUSY immediately under any real overlap between the two connections; WAL lets
+        // readers proceed without blocking writers, and busy_timeout makes a blocked writer retry for
+        // up to 5s instead of failing outright.
+        Exec("PRAGMA journal_mode=WAL;");
+        Exec("PRAGMA busy_timeout=5000;");
     }
 
     public void InitializeSchema()
@@ -191,6 +226,24 @@ public sealed partial class MemoryStore : IDisposable
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_ignored_decisions_user_created ON ignored_decisions(user_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS pending_remember_requests (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          llm_response TEXT NOT NULL,
+          user_message TEXT,
+          include_existing_memories INTEGER NOT NULL DEFAULT 1,
+          extra_tags TEXT,
+          source_kind TEXT,
+          source_id TEXT,
+          source_timestamp TEXT,
+          source_label TEXT,
+          domain TEXT NOT NULL DEFAULT 'coding',
+          status TEXT NOT NULL DEFAULT 'pending',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          processed_at TEXT,
+          error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_remember_status_created ON pending_remember_requests(status, created_at);
         """;
 
     public ApplyDecisionResult ApplyDecision(
@@ -293,6 +346,115 @@ public sealed partial class MemoryStore : IDisposable
         cmd.Parameters.AddWithValue("$rawJson", rawJson);
         cmd.ExecuteNonQuery();
         return id;
+    }
+
+    public string InsertPendingRememberRequest(
+        string userId,
+        string llmResponse,
+        string? userMessage,
+        bool includeExistingMemories,
+        IReadOnlyList<string>? extraTags,
+        string? sourceKind,
+        string? sourceId,
+        string? sourceTimestamp,
+        string? sourceLabel,
+        string domain)
+    {
+        var id = Guid.NewGuid().ToString();
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO pending_remember_requests
+                (id, user_id, llm_response, user_message, include_existing_memories, extra_tags,
+                 source_kind, source_id, source_timestamp, source_label, domain)
+            VALUES
+                ($id, $userId, $llmResponse, $userMessage, $includeExisting, $extraTags,
+                 $sourceKind, $sourceId, $sourceTimestamp, $sourceLabel, $domain)
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$llmResponse", llmResponse);
+        cmd.Parameters.AddWithValue("$userMessage", (object?)userMessage ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$includeExisting", includeExistingMemories ? 1 : 0);
+        cmd.Parameters.AddWithValue("$extraTags", extraTags is null ? (object)DBNull.Value : JsonSerializer.Serialize(extraTags));
+        cmd.Parameters.AddWithValue("$sourceKind", (object?)sourceKind ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$sourceId", (object?)sourceId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$sourceTimestamp", (object?)sourceTimestamp ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$sourceLabel", (object?)sourceLabel ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$domain", domain);
+        cmd.ExecuteNonQuery();
+        return id;
+    }
+
+    public List<PendingRememberRequest> SelectPendingRememberRequests(int limit = 20) =>
+        SelectPendingRememberRequestsByStatus("pending", limit);
+
+    public List<PendingRememberRequest> SelectPendingRememberRequestsByStatus(string status, int limit = 20)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = """
+            SELECT * FROM pending_remember_requests WHERE status = $status ORDER BY created_at ASC LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$status", status);
+        cmd.Parameters.AddWithValue("$limit", limit);
+        using var reader = cmd.ExecuteReader();
+        var results = new List<PendingRememberRequest>();
+        while (reader.Read())
+        {
+            results.Add(ReadPendingRememberRequestRecord(reader));
+        }
+        return results;
+    }
+
+    public void MarkPendingRememberRequestProcessed(string id)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = """
+            UPDATE pending_remember_requests SET status = 'done', processed_at = CURRENT_TIMESTAMP WHERE id = $id
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void MarkPendingRememberRequestFailed(string id, string error)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = """
+            UPDATE pending_remember_requests
+            SET status = 'failed', processed_at = CURRENT_TIMESTAMP, error = $error
+            WHERE id = $id
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$error", error);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static PendingRememberRequest ReadPendingRememberRequestRecord(SqliteDataReader reader)
+    {
+        string? GetStr(string name)
+        {
+            var ordinal = SafeOrdinal(reader, name);
+            return ordinal < 0 || reader.IsDBNull(ordinal) ? null : reader.GetValue(ordinal).ToString();
+        }
+        List<string>? ParseArray(string? json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            try { return JsonSerializer.Deserialize<List<string>>(json); }
+            catch { return null; }
+        }
+        var includeOrdinal = SafeOrdinal(reader, "include_existing_memories");
+        var includeExisting = includeOrdinal < 0 || reader.IsDBNull(includeOrdinal) || Convert.ToInt64(reader.GetValue(includeOrdinal)) != 0;
+        return new PendingRememberRequest(
+            Id: GetStr("id") ?? "",
+            UserId: GetStr("user_id") ?? "",
+            LlmResponse: GetStr("llm_response") ?? "",
+            UserMessage: GetStr("user_message"),
+            IncludeExistingMemories: includeExisting,
+            ExtraTags: ParseArray(GetStr("extra_tags")),
+            SourceKind: GetStr("source_kind"),
+            SourceId: GetStr("source_id"),
+            SourceTimestamp: GetStr("source_timestamp"),
+            SourceLabel: GetStr("source_label"),
+            Domain: GetStr("domain") ?? "coding");
     }
 
     public string InsertEpisodic(string userId, string content, MemoryPayload? memory = null)
@@ -571,6 +733,61 @@ public sealed partial class MemoryStore : IDisposable
         while (reader.Read()) results.Add(ReadMemoryFactRecord(reader));
         return results;
     }
+
+    /// <summary>
+    /// Ported from store.ts's `upsertMemoryEmbedding`: writes (or replaces) the embedding for one
+    /// written memory, keyed by (memory_table, memory_id, model) -- the same PRIMARY KEY the
+    /// memory_embeddings table already declares. Content-hashed so a caller could later detect a
+    /// stale embedding if memory content were ever mutated in place (no mutation path exists today,
+    /// but the column and hash come from the original ported schema).
+    /// </summary>
+    public void UpsertMemoryEmbedding(WrittenMemoryRef reference, string userId, string model, float[] embedding)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO memory_embeddings (memory_table, memory_id, user_id, model, dimensions, embedding_json, content_hash, updated_at)
+            VALUES ($table, $id, $userId, $model, $dimensions, $embeddingJson, $contentHash, CURRENT_TIMESTAMP)
+            ON CONFLICT(memory_table, memory_id, model) DO UPDATE SET
+              dimensions = excluded.dimensions,
+              embedding_json = excluded.embedding_json,
+              content_hash = excluded.content_hash,
+              updated_at = CURRENT_TIMESTAMP
+            """;
+        cmd.Parameters.AddWithValue("$table", reference.Table);
+        cmd.Parameters.AddWithValue("$id", reference.Id);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$model", model);
+        cmd.Parameters.AddWithValue("$dimensions", embedding.Length);
+        cmd.Parameters.AddWithValue("$embeddingJson", JsonSerializer.Serialize(embedding));
+        cmd.Parameters.AddWithValue("$contentHash", ContentHash(reference.Content));
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Ported from store.ts's `selectEmbeddingRows`: every stored embedding for this user under the
+    /// given model name, across all memory tables. PsmService.ContextCandidatesAsync scores these
+    /// against a query embedding via cosine similarity to populate Ranking.HybridRankOptions.VectorScores.
+    /// </summary>
+    public List<EmbeddingRow> SelectEmbeddingRows(string userId, string model)
+    {
+        using var cmd = _db.CreateCommand();
+        cmd.CommandText = "SELECT memory_table, memory_id, embedding_json FROM memory_embeddings WHERE user_id = $userId AND model = $model";
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$model", model);
+        using var reader = cmd.ExecuteReader();
+        var results = new List<EmbeddingRow>();
+        while (reader.Read())
+        {
+            float[]? embedding;
+            try { embedding = JsonSerializer.Deserialize<float[]>(reader.GetString(2)); }
+            catch (JsonException) { embedding = null; }
+            if (embedding is not null) results.Add(new EmbeddingRow(reader.GetString(0), reader.GetString(1), embedding));
+        }
+        return results;
+    }
+
+    private static string ContentHash(string content) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
 
     public void UpdateAccess(IEnumerable<RankedMemory> memories)
     {

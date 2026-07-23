@@ -24,6 +24,7 @@ pnpm-debug.log*
 *.db-wal
 *.jsonl
 !psm-model/data/probes/*.jsonl
+!psm-model/prod-memory/fixtures/context-aware-storage-seed.jsonl
 results/
 benchmark/**/results/
 nano-psm/data-pipeline/reports/
@@ -83,3 +84,4 @@ Thumbs.db
 .vscode/
 .idea/
 .vs/
+linux-x64

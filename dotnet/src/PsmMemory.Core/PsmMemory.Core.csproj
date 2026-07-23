@@ -4,8 +4,8 @@
     <PackageId>PsmMemory.Core</PackageId>
     <Version>0.1.0</Version>
     <Authors>chkrishna2001</Authors>
-    <Description>Local-first SDK for PSM Memory storage, grounded recall, consolidation, and model-backed memory decisions, backed by an in-process ONNX Runtime GenAI model with swappable LoRA adapters.</Description>
-    <PackageTags>ai-memory;agent-memory;local-first;sqlite;onnxruntime-genai;llm</PackageTags>
+    <Description>Local-first SDK for PSM Memory storage, grounded recall, consolidation, and model-backed memory decisions, backed by an in-process llama.cpp (GGUF) model with swappable LoRA adapters.</Description>
+    <PackageTags>ai-memory;agent-memory;local-first;sqlite;llama.cpp;llm</PackageTags>
     <RepositoryUrl>https://github.com/chkrishna2001/PSM</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -18,21 +18,26 @@
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
 
-  <!-- Hardware-accelerated onnxruntime-genai package, picked per target RID at publish time.
-       OnnxPsmRuntime.BuildAcceleratedModel() then tries the matching provider at runtime (falling
-       back to plain CPU on any failure, e.g. a missing CUDA Toolkit). "dml" (DirectML) is a single
-       vendor-agnostic package covering NVIDIA/AMD/Intel GPUs and NPUs on Windows with no separate
-       toolkit install; "cuda" needs the NVIDIA CUDA Toolkit already present (true on RunPod's
-       training/benchmark images). No RID (plain dotnet build/test, or macOS) gets the base CPU-only
-       package; CoreML can replace the osx branch once verified mature enough to rely on. -->
-  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('win'))">
-    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI.DirectML" Version="0.14.1" />
+  <!-- LLamaSharp (llama.cpp binding): unlike onnxruntime-genai's single-RID-locks-one-backend
+       model, LLamaSharp lets multiple native backends ship side by side in one build and
+       self-selects the right one for the machine it actually runs on. LlamaSharpPsmRuntime just
+       requests GpuLayerCount = -1 (try to offload everything) and llama.cpp itself falls back to
+       partial/full CPU automatically if no compatible GPU backend loaded or VRAM is insufficient.
+       Cpu is the universal baseline (bundles Metal support on macOS); Vulkan gives broad GPU
+       coverage (NVIDIA/AMD/Intel) on Windows/Linux without requiring a separate CUDA Toolkit
+       install. Cuda12 is bundled too for linux: verified on a RunPod GPU pod that its base image
+       ships the CUDA toolkit/driver but NOT the Vulkan userspace (loader + ICD), so Vulkan alone
+       would silently fall back to CPU there. Both native libs ship side by side; whichever one
+       actually loads on a given machine wins, so this doesn't regress machines that do have Vulkan. -->
+  <ItemGroup>
+    <PackageReference Include="LLamaSharp" Version="0.27.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
+  </ItemGroup>
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('win')) Or $(RuntimeIdentifier.StartsWith('linux'))">
+    <PackageReference Include="LLamaSharp.Backend.Vulkan" Version="0.27.0" />
   </ItemGroup>
   <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('linux'))">
-    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI.Cuda" Version="0.14.1" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('osx'))">
-    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI" Version="0.14.1" />
+    <PackageReference Include="LLamaSharp.Backend.Cuda12" Version="0.27.0" />
   </ItemGroup>
 
 </Project>

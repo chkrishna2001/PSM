@@ -35,10 +35,22 @@ DEFAULT_HF_DATASET_REPO = "chkrishna2001/psm-50m-action-mixed-v1"
 # Custom image chkrishna2001/psm-50m-train:latest is NOT on Docker Hub — use stock PyTorch only.
 STOCK_PYTORCH_IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
 
+# Pre-baked pod image (docker/psm-pod-base.Dockerfile): STOCK_PYTORCH_IMAGE + Node.js 20, the
+# `dotnet` shim for self-contained PsmMemory.Cli publishes, pinned transformers/peft/accelerate
+# (matches runpod_hf_lora_train.sh), and tmux/git. Public on GHCR (no proprietary content — the
+# GGUF model/adapters are downloaded from HF at container start, not baked in), so no registry
+# auth is needed to deploy from it. Use this instead of STOCK_PYTORCH_IMAGE for new pod work to
+# skip the ~20min stock-pod setup cost (Node.js install, dotnet shim, etc.) each session.
+PSM_POD_BASE_IMAGE = "ghcr.io/chkrishna2001/psm-pod-base:latest"
+
 # 50M trains at batch-size 1 (~3–6 GiB VRAM). 3090 + modest volume is enough; 4090 is overkill.
 DEFAULT_GPU = "NVIDIA RTX A5000"
 DEFAULT_VOLUME_GB = 20
-DEFAULT_CONTAINER_DISK_GB = 10
+# PSM_POD_BASE_IMAGE is ~17GB (CUDA/PyTorch base + Node.js + pinned training deps) -- 10GB left the
+# container disk too small to even hold the image, causing RunPod to create-then-immediately-exit
+# the pod (confirmed 2026-07-21: pod exited 2s after creation, "Exited by Runpod", zero training
+# ever ran). 30GB gives headroom above the image for venv/pip activity, checkpoint downloads, etc.
+DEFAULT_CONTAINER_DISK_GB = 30
 DEFAULT_MIN_VRAM_GB = 12
 
 # Cheapest-first preference order for --auto-gpu (GraphQL stockStatus must not be None).
@@ -67,7 +79,7 @@ query {
 
 DEFAULT_TEMPLATE = {
     "name": "psm-50m-train",
-    "imageName": STOCK_PYTORCH_IMAGE,
+    "imageName": PSM_POD_BASE_IMAGE,
     "containerDiskInGb": DEFAULT_CONTAINER_DISK_GB,
     "volumeInGb": DEFAULT_VOLUME_GB,  # 20GB OK with HF sync + keep-local=2
     "volumeMountPath": "/workspace",
@@ -710,7 +722,7 @@ def _create_pod_with_fallback(args: argparse.Namespace) -> dict:
         for gpu in candidates:
             deploy_args = argparse.Namespace(
                 name=args.name,
-                image=getattr(args, "image", STOCK_PYTORCH_IMAGE),
+                image=getattr(args, "image", PSM_POD_BASE_IMAGE),
                 template=getattr(args, "template", ""),
                 gpu=gpu,
                 volume_gb=getattr(args, "volume_gb", DEFAULT_VOLUME_GB),
@@ -2603,8 +2615,9 @@ def main() -> int:
     deploy.add_argument("--name", default="psm-train")
     deploy.add_argument(
         "--image",
-        default=STOCK_PYTORCH_IMAGE,
-        help="Default: stock RunPod PyTorch. Do not use chkrishna2001/psm-50m-train until pushed to Docker Hub.",
+        default=PSM_POD_BASE_IMAGE,
+        help="Default: the pre-baked psm-pod-base image (Node.js/dotnet-shim/pinned training deps "
+        "on top of stock RunPod PyTorch). Pass --image " + STOCK_PYTORCH_IMAGE + " for plain stock.",
     )
     deploy.add_argument(
         "--template",
@@ -2684,7 +2697,7 @@ def main() -> int:
     eval_gates.add_argument("--deploy", action="store_true", help="Deploy a new eval-only pod before running.")
     eval_gates.add_argument("--pod-id", default="", help="Pod id (for delete-after); filled automatically when --deploy is set.")
     eval_gates.add_argument("--name", default="psm-eval", help="Pod name when --deploy is set.")
-    eval_gates.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    eval_gates.add_argument("--image", default=PSM_POD_BASE_IMAGE)
     eval_gates.add_argument("--template", default="", help="RunPod template id (optional).")
     eval_gates.add_argument("--gpu", default=DEFAULT_GPU)
     eval_gates.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
@@ -2739,7 +2752,7 @@ def main() -> int:
     train_gate4.add_argument("--deploy", action="store_true", help="Deploy a new training pod before running.")
     train_gate4.add_argument("--pod-id", default="", help="Existing pod id (skip deploy).")
     train_gate4.add_argument("--name", default="psm-train-gate4", help="Pod name when --deploy is set.")
-    train_gate4.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    train_gate4.add_argument("--image", default=PSM_POD_BASE_IMAGE)
     train_gate4.add_argument("--template", default="", help="RunPod template id (optional).")
     train_gate4.add_argument("--gpu", default=DEFAULT_GPU)
     train_gate4.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
@@ -2882,7 +2895,7 @@ def main() -> int:
     train_prod_memory.add_argument("--deploy", action="store_true")
     train_prod_memory.add_argument("--pod-id", default="")
     train_prod_memory.add_argument("--name", default="psm-train-prod-memory")
-    train_prod_memory.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    train_prod_memory.add_argument("--image", default=PSM_POD_BASE_IMAGE)
     train_prod_memory.add_argument("--gpu", default=DEFAULT_GPU)
     train_prod_memory.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
     train_prod_memory.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
@@ -2952,7 +2965,7 @@ def main() -> int:
     train_gate5.add_argument("--deploy", action="store_true")
     train_gate5.add_argument("--pod-id", default="")
     train_gate5.add_argument("--name", default="psm-train-gate5")
-    train_gate5.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    train_gate5.add_argument("--image", default=PSM_POD_BASE_IMAGE)
     train_gate5.add_argument("--template", default="")
     train_gate5.add_argument("--gpu", default=DEFAULT_GPU)
     train_gate5.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
@@ -3022,7 +3035,7 @@ def main() -> int:
     eval_gate5.add_argument("--deploy", action="store_true")
     eval_gate5.add_argument("--pod-id", default="")
     eval_gate5.add_argument("--name", default="psm-eval-gate5")
-    eval_gate5.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    eval_gate5.add_argument("--image", default=PSM_POD_BASE_IMAGE)
     eval_gate5.add_argument("--gpu", default=DEFAULT_GPU)
     eval_gate5.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)
     eval_gate5.add_argument("--container-disk-gb", type=int, default=DEFAULT_CONTAINER_DISK_GB)
@@ -3061,7 +3074,7 @@ def main() -> int:
     upload_gate4.add_argument("--pod-id", default="", help="Existing pod id.")
     upload_gate4.add_argument("--deploy", action="store_true")
     upload_gate4.add_argument("--name", default="psm-train-gate4")
-    upload_gate4.add_argument("--image", default=STOCK_PYTORCH_IMAGE)
+    upload_gate4.add_argument("--image", default=PSM_POD_BASE_IMAGE)
     upload_gate4.add_argument("--template", default="")
     upload_gate4.add_argument("--gpu", default=DEFAULT_GPU)
     upload_gate4.add_argument("--volume-gb", type=int, default=DEFAULT_VOLUME_GB)

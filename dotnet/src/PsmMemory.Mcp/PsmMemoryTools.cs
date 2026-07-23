@@ -22,26 +22,33 @@ public sealed class PsmMemoryTools
         "with a clear error.";
 
     private readonly PsmService _psm;
+    private readonly RememberQueueDrainer _drainer;
 
-    public PsmMemoryTools(PsmService psm)
+    public PsmMemoryTools(PsmService psm, RememberQueueDrainer drainer)
     {
         _psm = psm;
+        _drainer = drainer;
     }
 
-    private static PsmDomain ParseDomain(string domain) => domain.Trim().ToLowerInvariant() switch
+    private static PsmDomain ParseDomain(string domain)
     {
-        "coding" => PsmDomain.Coding,
-        "conversational" => PsmDomain.Conversational,
-        _ => throw new ArgumentException($"domain must be one of coding|conversational, got '{domain}'.", nameof(domain)),
-    };
+        try
+        {
+            return PsmDomainParser.Parse(domain, DomainParseMode.Strict);
+        }
+        catch (PsmDomainParseException ex)
+        {
+            throw new ArgumentException(ex.Message, nameof(domain));
+        }
+    }
 
     [McpServerTool(Name = "remember")]
     [Description(
-        "Extract and store durable memory from an assistant/LLM response. The PSM storage model " +
-        "decides whether to ignore it, store it as an episodic memory, or promote it to semantic " +
-        "memory, and may merge it with an existing related memory. Returns the storage decision " +
-        "(action, route, what was written, and the resulting memory payload).")]
-    public async Task<RememberResult> Remember(
+        "Queue durable-memory extraction from an assistant/LLM response for background processing. " +
+        "Returns immediately with a pending id -- the caller does not need to wait for or use the " +
+        "result, and the actual storage decision (ignore/store/promote, possibly merged with an " +
+        "existing memory) happens asynchronously afterward. Call this and move on.")]
+    public Task<RememberEnqueuedResult> Remember(
         [Description("The assistant/LLM response text to extract durable memory from -- this is the content that gets remembered.")]
         string llmResponse,
         [Description("The user id memories are scoped to.")]
@@ -52,15 +59,15 @@ public sealed class PsmMemoryTools
         string domain = "coding",
         CancellationToken ct = default)
     {
-        var result = await _psm.RememberAsync(new RememberRequest
+        var id = _drainer.Enqueue(new RememberRequest
         {
             LlmResponse = llmResponse,
             UserMessage = userMessage,
             UserId = userId,
             Domain = ParseDomain(domain)
-        }, ct).ConfigureAwait(false);
+        });
 
-        return result;
+        return Task.FromResult(new RememberEnqueuedResult { Id = id, Status = "pending" });
     }
 
     [McpServerTool(Name = "recall")]

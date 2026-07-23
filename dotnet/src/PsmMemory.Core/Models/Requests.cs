@@ -1,3 +1,4 @@
+using PsmMemory.Core;
 using PsmMemory.Core.Runtime;
 
 namespace PsmMemory.Core.Models;
@@ -73,10 +74,26 @@ public sealed class RememberResult
 }
 
 /// <summary>
+/// Result of enqueuing a fire-and-forget remember() request (see
+/// <see cref="PsmMemory.Core.Store.MemoryStore.InsertPendingRememberRequest"/> /
+/// <see cref="PsmMemory.Core.RememberQueueDrainer"/>). No storage decision is available yet -- the
+/// request is processed later by the background queue drainer, which calls the same
+/// <see cref="PsmMemory.Core.PsmService.RememberAsync"/> pipeline a synchronous caller would get.
+/// </summary>
+public sealed class RememberEnqueuedResult
+{
+    public required string Id { get; set; }
+    public required string Status { get; set; }
+}
+
+/// <summary>
 /// Result of <see cref="PsmMemory.Core.PsmService.RecallAsync"/> / ContextAsync. Mirrors the
-/// shape of service.ts's recall()/context() plain-object return values, minus the embedding-based
-/// vector recall and LLM context-render step (no adapter exists for context-render in the ONNX
-/// 3-adapter runtime — see PsmService remarks).
+/// shape of service.ts's recall()/context() plain-object return values, minus the LLM context-render
+/// step (no adapter exists for context-render in the 3-adapter runtime — see PsmService remarks).
+/// <see cref="Facts"/> is populated on both RecallAsync and ContextAsync (service.ts's rankFacts()
+/// runs in both recall() and context()). <see cref="Indexables"/>/<see cref="Workflows"/> are
+/// populated ONLY by RecallAsync, matching service.ts's recall() -- context() never ranks
+/// indexables in the original TS source.
 /// </summary>
 public sealed class RecallResult
 {
@@ -85,4 +102,7 @@ public sealed class RecallResult
     public required RecallPlan Plan { get; set; }
     public bool PlanFallback { get; set; }
     public List<RankedMemory> Memories { get; set; } = new();
+    public List<Ranking.ScoredFact> Facts { get; set; } = new();
+    public List<Indexables.ScoredIndexable> Indexables { get; set; } = new();
+    public List<Indexables.ScoredIndexable> Workflows { get; set; } = new();
 }

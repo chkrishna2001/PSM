@@ -12,6 +12,9 @@ export interface LocomoQa {
   category?: string;
   question?: string;
   answer?: string;
+  // Category 5 (adversarial) questions store their gold answer under this key instead of
+  // `answer` -- the dataset's own schema, not a typo. Missing on every other category.
+  adversarial_answer?: string;
   evidence?: string[];
 }
 
