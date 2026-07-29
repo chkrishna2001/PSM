@@ -1,0 +1,165 @@
+{
+  "conversation_id": "psm-project-v1",
+  "description": "Real multi-agent (Claude Code, Codex, pi) coding-session history for the PSM project, 2026-07-04 through 2026-07-29. Ground truth cross-referenced against real git history and this project's own memory files, not just transcript text alone. First version of a coding-domain analog to LoCoMo.",
+  "source_window": {"start": "2026-07-04", "end": "2026-07-29"},
+  "source_turn_pool": "scripts-scratch/extract_psm_sessions.py output, filtered to this window (3558 turns, 43 sessions, 3 agents)",
+  "qa": [
+    {
+      "id": "q1",
+      "category": "single-hop",
+      "question": "What was the pod ID for the Phase 3 v5q-dpo training run?",
+      "answer": "udk4kfi83tx5st",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-04T15:45:28.362Z", "quote": "Found it — pod `udk4kfi83tx5st` (\"psm-hf-lora\"), RUNNING, $0.39/hr."}]
+    },
+    {
+      "id": "q2",
+      "category": "single-hop",
+      "question": "How many DPO pairs did the Phase 3 curriculum builder produce?",
+      "answer": "900",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-04T15:38:25.594Z", "quote": "It works and produced 900 DPO pairs."}]
+    },
+    {
+      "id": "q3",
+      "category": "single-hop",
+      "question": "What GPU did the successfully-reconfigured storage-v13 training run use, after the GPU-preference ordering fix?",
+      "answer": "NVIDIA RTX A5000",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-13T08:06:14.725Z", "quote": "Confirmed: **NVIDIA RTX A5000** — the GPU-preference fix is working, and v13 is training on the cheaper/faster card."}]
+    },
+    {
+      "id": "q4",
+      "category": "single-hop",
+      "question": "What image registry was used to host the custom RunPod pod base image, and why (instead of Docker Hub)?",
+      "answer": "ghcr.io (GitHub Container Registry) — chosen because there was no Docker Hub credential in the secrets vault, only a GitHub token with write:packages scope already available.",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-21T06:16:25.060Z", "quote": "Yes — ghcr.io is the right call here: there's no Docker Hub credential anywhere in the secrets vault, only a GitHub token (already confirmed with write:packages scope)."}]
+    },
+    {
+      "id": "q5",
+      "category": "single-hop",
+      "question": "In the DPO training comparison between the v2 baseline and dpo1, what was the templated-phrasing rate for each?",
+      "answer": "v2 baseline 35.7% vs dpo1 17.9% (roughly halved).",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-22T00:27:21.770Z", "quote": "Real, apples-to-apples result: **v2 baseline 35.7%** vs **dpo1 17.9%** on the identical 126 held-out cases — the templated \"values\" phrasing rate roughly halved, while action-match held steady (82.3% vs 81.9%)."}]
+    },
+    {
+      "id": "q6",
+      "category": "single-hop",
+      "question": "What real production bug did the consolidation false-merge defect cause?",
+      "answer": "It silently destroyed new information when a new memory was merged with an unrelated but lexically-similar existing memory.",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-23T08:07:39.492Z", "quote": "the one real defect it found (a consolidation false-merge that silently destroyed new infor[mation]..."}]
+    },
+    {
+      "id": "q7",
+      "category": "multi-hop",
+      "question": "Which pod ran the original Phase 3 v5q-dpo training, and what eventually happened to it after training completed?",
+      "answer": "Pod udk4kfi83tx5st ran the training; it was stopped (EXITED) shortly after, though the adapter had already synced to HF before it was stopped, so no training work was lost even though the eval hadn't been run yet at that point.",
+      "evidence": [
+        {"agent": "claude-code", "timestamp": "2026-07-04T15:45:28.362Z", "quote": "Found it — pod `udk4kfi83tx5st` (\"psm-hf-lora\"), RUNNING, $0.39/hr."},
+        {"agent": "claude-code", "timestamp": "2026-07-04T16:02:10.395Z", "quote": "Pod `udk4kfi83tx5st` is now stopped (`EXITED` as of 16:01:53 UTC) — billing on it has stopped."}
+      ]
+    },
+    {
+      "id": "q8",
+      "category": "multi-hop",
+      "question": "How does the GHCR image registry issue (rejected manifest) relate to the earlier decision to use ghcr.io over Docker Hub?",
+      "answer": "ghcr.io was chosen for the custom pod base image because only a GitHub token was available (no Docker Hub credential); that same ghcr.io build later hit a real quirk where the build produced an attestation/provenance manifest list that GHCR sometimes rejects on the final manifest write, even though all individual layers pushed fine.",
+      "evidence": [
+        {"agent": "claude-code", "timestamp": "2026-07-21T06:16:25.060Z", "quote": "Yes — ghcr.io is the right call here: there's no Docker Hub credential anywhere in the secrets vault, only a GitHub token."},
+        {"agent": "claude-code", "timestamp": "2026-07-21T06:47:32.294Z", "quote": "That's a known GHCR quirk — the build produced an attestation/provenance manifest list that GHCR sometimes rejects on the final manifest write."}
+      ]
+    },
+    {
+      "id": "q9",
+      "category": "multi-hop",
+      "question": "The pod ID udk4kfi83tx5st shows up again later in the project's history, in a completely different context. What was it used for the second time?",
+      "answer": "It was used as the known ground-truth answer for a real-pipeline retrieval-miss probe: the fact 'Pod udk4kfi83tx5st is now stopped...' was confirmed stored verbatim in the coding-domain memory database, but did not surface in the top-5 results for a question asking about it — demonstrating a retrieval/ranking miss, not a storage miss.",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-23T09:32:03.655Z", "quote": "Confirmed: that pod ID **was** stored verbatim (`T17: \"Pod udk4kfi83tx5st is now stopped...\"`) — it just didn't surface in the top-5 for that specific question phrasing. Same \"stored but not retrieved\" pattern LoCoMo found."}]
+    },
+    {
+      "id": "q10",
+      "category": "temporal",
+      "question": "Was the GHCR custom Docker image work completed before or after the DPO curriculum (dpo1) training work?",
+      "answer": "Before — dpo1's curriculum was built 2026-07-21 (evening, per the '53 rows' curriculum note) and the GHCR image work was wrapped up 2026-07-21 in the morning (07:05 timestamp), so the Docker image was finished first, earlier the same day.",
+      "evidence": [
+        {"agent": "claude-code", "timestamp": "2026-07-21T07:05:26.423Z", "quote": "Docker image work is fully wrapped up and memory is current."},
+        {"agent": "claude-code", "timestamp": "2026-07-21T22:01:01.321Z", "quote": "DPO curriculum built: 53 rows at `psm-model/prod-memory/data/hf-prod-conversational-storage-dpo1.jsonl`."}
+      ]
+    },
+    {
+      "id": "q11",
+      "category": "temporal",
+      "question": "Was the sourceTimestamp-surfacing bug found before or after the Phase 3 v5q-dpo training (pod udk4kfi83tx5st)?",
+      "answer": "After — the v5q-dpo training happened 2026-07-04, while the sourceTimestamp root-cause investigation and fix happened 2026-07-23, about 19 days later.",
+      "evidence": [
+        {"agent": "claude-code", "timestamp": "2026-07-04T15:45:28.362Z", "quote": "Found it — pod `udk4kfi83tx5st` (\"psm-hf-lora\"), RUNNING, $0.39/hr."},
+        {"agent": "claude-code", "timestamp": "2026-07-23T05:14:44.895Z", "quote": "Fix #2 (sourceTimestamp surfacing): landed and working."}
+      ]
+    },
+    {
+      "id": "q12",
+      "category": "temporal",
+      "question": "Which happened first: fixing the epoch-count miscalculation in the storage-v10 profile, or building the DPO training curriculum (dpo1)?",
+      "answer": "The epoch-count fix (storage-v10, discussing the effective-batch/epoch math correction) happened 2026-07-11, well before the dpo1 curriculum was built on 2026-07-21 — about 10 days earlier.",
+      "evidence": [
+        {"agent": "claude-code", "timestamp": "2026-07-11T17:35:20.475Z", "quote": "1500 steps at this batch config would take ~2.6 hours — I miscalculated the epoch math after the OOM fix (effective batch is now 16, so 1500 steps ≈ 11.6 epochs, way more than the paper's 6-epoch recipe)."},
+        {"agent": "claude-code", "timestamp": "2026-07-21T22:01:01.321Z", "quote": "DPO curriculum built: 53 rows at `psm-model/prod-memory/data/hf-prod-conversational-storage-dpo1.jsonl`."}
+      ]
+    },
+    {
+      "id": "q13",
+      "category": "adversarial",
+      "question": "What was the exact total dollar cost spent on RunPod GPU credits across the entire 2026-07-04 to 2026-07-29 window?",
+      "answer": "No answer available — per-pod hourly rates and rough durations are mentioned in places (e.g. $0.39/hr, $0.27/hr), but no running total or aggregate cost figure was ever computed or stated anywhere in this history.",
+      "evidence": []
+    },
+    {
+      "id": "q14",
+      "category": "adversarial",
+      "question": "Who approved the final production promotion of the conversational-context-aware-v9 adapter to gguf-runtime/v1?",
+      "answer": "No answer available — as of the end of this window, v9 had passed only the isolated gate; the real LoCoMo re-probe and any promotion decision had explicitly not happened yet, so no promotion or approval occurred.",
+      "evidence": []
+    },
+    {
+      "id": "q15",
+      "category": "adversarial",
+      "question": "What was the final resolution of the coding-domain retrieval-miss / ranking architecture bug?",
+      "answer": "No resolution recorded in this window — the retrieval-miss pattern was found and confirmed (the pod-ID question in the sourceTimestamp investigation), documented as a real, unresolved issue, but no root cause or fix for the underlying ranking/embedding architecture was reached in this period.",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-23T09:32:03.655Z", "quote": "Same \"stored but not retrieved\" pattern LoCoMo found."}]
+    },
+    {
+      "id": "q16",
+      "category": "single-hop",
+      "question": "What VRAM does the RTX A5000 GPU used for PSM training have?",
+      "answer": "24564 MiB (about 24GB).",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-20T05:01:18.394Z", "quote": "**It works.** RTX A5000, 24564 MiB VRAM, driver 580.159.04, Python 3.11.10."}]
+    },
+    {
+      "id": "q17",
+      "category": "single-hop",
+      "question": "What caused two git.exe processes to hang and hold a lock, blocking git status?",
+      "answer": "Two hung git.exe processes from a cancelled push were holding the lock.",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-16T15:44:31.156Z", "quote": "Lock is cleared — the two hung `git.exe` processes from the cancelled push were holding it."}]
+    },
+    {
+      "id": "q18",
+      "category": "single-hop",
+      "question": "What is fixed and included in the PSM pod base Docker image (docker/psm-pod-base.Dockerfile)?",
+      "answer": "Node.js, a dotnet shim, and pinned training dependencies, built on the stock CUDA/PyTorch base.",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-21T07:05:26.423Z", "quote": "Built `docker/psm-pod-base.Dockerfile` (Node.js, `dotnet` shim, pinned training deps on the stock CUDA/PyTorch base)."}]
+    },
+    {
+      "id": "q19",
+      "category": "multi-hop",
+      "question": "What were the two structural root causes found for the LoCoMo quality issues investigated around 2026-07-23, and which of the two is the sourceTimestamp fix?",
+      "answer": "Root cause #1: storage decisions are made on a single turn with zero surrounding context (no amount of adapter retraining can fix this, since the adapter is never shown the context that would make an ambiguous fact recognizable). Root cause #2 IS the sourceTimestamp issue itself: a stored memory's real sourceTimestamp was never surfaced to answer synthesis, only the narrower, derived resolvedTime — even though most 'when did X happen' questions are answered by when the message was sent, not a relative-date phrase in the text.",
+      "evidence": [
+        {"agent": "claude-code", "timestamp": "2026-07-23T04:24:13.150Z", "quote": "Root cause #1 (the big one): storage decisions are made on a single turn with zero surrounding context. ... Root cause #2 (cheap, high-leverage): the turn's real timestamp (`sourceTimestamp`) is never surfaced to answer synthesis — only the narrower, derived `resolvedTime`."}
+      ]
+    },
+    {
+      "id": "q20",
+      "category": "single-hop",
+      "question": "In the same-day root-cause investigation, what specific examples of turns were cited as being correctly judged 'nothing to store' in isolation but answerable when combined with the preceding turn?",
+      "answer": "\"It's Shia Labeouf!\", \"Yay! My online clothes store is open!\", and \"Yeah! Let's make some awesome memories tomorrow at the grand opening!\"",
+      "evidence": [{"agent": "claude-code", "timestamp": "2026-07-23T04:24:13.150Z", "quote": "Look at the \"never stored\" examples — turns like *\"It's Shia Labeouf!\"*, *\"Yay! My online clothes store is open!\"*, *\"Yeah! Let's make some awesome memories tomorrow at the grand opening!\"* get correctly judged as \"nothing to store\" **in isolation**."}]
+    }
+  ]
+}

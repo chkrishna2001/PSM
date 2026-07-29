@@ -25,6 +25,9 @@ pnpm-debug.log*
 *.jsonl
 !psm-model/data/probes/*.jsonl
 !psm-model/prod-memory/fixtures/context-aware-storage-seed.jsonl
+!psm-model/prod-memory/fixtures/context-aware-storage-curriculum-sources.jsonl
+!psm-model/prod-memory/fixtures/context-aware-storage-coding-seed.jsonl
+!psm-model/prod-memory/fixtures/context-aware-storage-coding-curriculum-sources.jsonl
 results/
 benchmark/**/results/
 nano-psm/data-pipeline/reports/
@@ -33,6 +36,8 @@ nano-psm/data-pipeline/reports/
 data/
 !psm-model/src/psm_model/data/
 !psm-model/src/psm_model/data/**
+!benchmark/coding-locomo/data/
+!benchmark/coding-locomo/data/*.json
 nano-psm/data/*
 !nano-psm/data/README.md
 nano-psm/checkpoints/*
