@@ -1,12 +1,30 @@
 # PSM coding-domain benchmark ("coding LoCoMo") — design + build plan
 
-**Status as of 2026-07-29: design finalized, data survey done, first QA batch written (20 pairs,
-`benchmark/coding-locomo/data/psm-project-v1.json`). Ingest+eval harness NOT built yet — this is real,
-grounded data but has not been run against any adapter yet.** This is a new
+**Status as of 2026-07-29: harness built and run end-to-end for real on RunPod (v16b vs v5 storage
+candidates, both domain=coding, real `PsmMemory.Cli` product path).** Results:
+`benchmark/coding-locomo/data/coding-locomo-answer-v16b.json` and `-v5.json`. This is a new
 benchmark, not part of the existing `docs/plans/psm-context-aware-storage-training.md` /
 `psm-conversational-v9-handoff.md` tracks. Read `project_psm_failure_taxonomy` memory first — this
 benchmark exists specifically to give the coding domain the same kind of real-pipeline evidence
 LoCoMo already gives conversational, since coding currently has none.
+
+## First real result (2026-07-29, v16b vs v5 storage candidates)
+
+Both models scored **identically**: 20 questions, 25% overall answer accuracy, by category:
+single-hop 2/10 (20%), multi-hop 0/4, temporal 0/3, adversarial (no-hallucination) 3/3 (100%).
+
+The exact match across two different storage adapter candidates is itself the finding: swapping the
+storage adapter made zero measurable difference on this benchmark. That's strong evidence the
+bottleneck for real coding-domain QA is **retrieval, not storage quality** — consistent with
+`project_psm_failure_taxonomy` item #8 (retrieval/ranking-miss architecture gap, shared across
+domains, still open — task #10). Multi-hop and temporal both scoring 0% (which require combining or
+ordering facts across sessions) while adversarial scores perfectly (which only requires not
+hallucinating, no retrieval needed) fits the same story: whatever's being stored isn't being surfaced
+at answer time.
+
+**Implication for shippability:** further storage-side curriculum fixes (task #8) are unlikely to move
+this benchmark's score until the retrieval-miss gap (task #10) is investigated and fixed first. Task
+#10 should be reprioritized ahead of task #8 based on this evidence.
 
 ## Why this is needed
 

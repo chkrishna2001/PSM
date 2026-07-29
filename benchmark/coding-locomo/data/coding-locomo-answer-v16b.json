@@ -1,0 +1,1211 @@
+{
+  "summary": {
+    "metric": "coding-LoCoMo LLM-as-judge answer accuracy (via real PsmMemory.Cli .NET product, domain=coding)",
+    "questions": 20,
+    "answer_accuracy": 0.25,
+    "answer_model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "judge_model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "llm_provider": "cloudflare",
+    "model_dir": "/workspace/model-dir-v16b",
+    "by_category": {
+      "single-hop": {
+        "questions": 10,
+        "answer_accuracy": 0.2
+      },
+      "multi-hop": {
+        "questions": 4,
+        "answer_accuracy": 0
+      },
+      "temporal": {
+        "questions": 3,
+        "answer_accuracy": 0
+      },
+      "adversarial": {
+        "questions": 3,
+        "answer_accuracy": 1
+      }
+    }
+  },
+  "records": [
+    {
+      "id": "q1",
+      "category": "single-hop",
+      "question": "What was the pod ID for the Phase 3 v5q-dpo training run?",
+      "gold_answer": "udk4kfi83tx5st",
+      "retrieved_ids": [
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T08:53:22.578Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "9c4b0535-dcad-4e54-86a2-16518bf13d2b",
+          "table": "episodic",
+          "content": "Phase 3 DPO curriculum is built and wired up. Curriculum chosen = valid v5q rows, rejected = the exact hallucinations from the eval. Training added a v5q-dpo profile to _run_hf_lora.py. Cleaned up: deleted root-level directories and files. Not done: actually launching training.",
+          "score": 2.251597,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+          "source_timestamp": "2026-07-04T15:39:50.024Z"
+        },
+        {
+          "memory_id": "bab25698-3922-4d44-805f-f1592650483a",
+          "table": "episodic",
+          "content": "Now cleaning up: the root-level `DPO_Curriculum.md`, `rewards_config.json`, and `train_dpo.sh` reference a `train_dpo.py`/reward-model approach that doesn't exist anywhere in this repo \u2014 they're disconnected from the actual training pipeline. I'll remove them and record the real Phase 3 state in `docs/psm-model/PSM-MEMORY.md`, which is this project's actual memory doc.",
+          "score": 1.672754,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+          "source_timestamp": "2026-07-04T15:39:18.222Z"
+        },
+        {
+          "memory_id": "e5b8059c-0a14-4acf-9ca0-06246da81ffe",
+          "table": "episodic",
+          "content": "The bug was identified in the v5q/ v5q-dpo's original fixture score of 6/10, which was run via _run_v5q_pod_eval.sh. Every eval today used the bare eval_hf_grounding.py command without --output-format, resulting in a training profile for v5n, v5n-dpo, v5p, v5o-sft, v5o-dpo, and v5q's own curriculum builder. This suggests a system instruction describing a format they were never trained to follow, which would plausibly produce the 'starts with store/ignore: then rambles into repetition, never valid JSON' pattern.",
+          "score": 1.665607,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+          "source_timestamp": "2026-07-10T09:14:10.827Z"
+        },
+        {
+          "memory_id": "562bbaab-d541-42e9-bebf-e45859a4cc9d",
+          "table": "episodic",
+          "content": "The GHCR fix is confirmed working end-to-end: pod `73cov9jpfpqvng` deployed on the fixed image (30GB disk, no pull error this time), and the `conversational-storage-dpo1` DPO training run is live (CUDA confirmed, 76% GPU util, `dpo trainer.train()` started). I've got a monitor polling every 45s for completion/failure, so I'll continue once it reports back rather than polling manually.",
+          "score": 1.426366,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+          "source_timestamp": "2026-07-21T22:57:11.384Z"
+        },
+        {
+          "memory_id": "b647d0bb-7c1d-4e38-912b-fcfa5ba913d1",
+          "table": "episodic",
+          "content": "v17 deploy: curriculum uploaded (8.3 MB), training started on pod `qr8ejhuo3cwhai`. Exit-1 is the benign verify-pod race again. Note it's **$0.46/hr** (wide net gave a pricier GPU \u2014 4090/A40 class \u2014 since A5000 is scarce); ~$0.30 for the run, and it's training rather than idle, so I'll let it ride. Confirming GPU is live.",
+          "score": 1.422587,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T08:53:22.578Z",
+          "source_timestamp": "2026-07-15T08:53:22.578Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "generated answer does not match gold answer"
+    },
+    {
+      "id": "q2",
+      "category": "single-hop",
+      "question": "How many DPO pairs did the Phase 3 curriculum builder produce?",
+      "gold_answer": "900",
+      "retrieved_ids": [
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+        "pi:2026-07-04T14-44-07-163Z_019f2d96-377b-73e0-8fa8-d7b3e99e3ab6:2026-07-04T14:46:12.993Z",
+        "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T14:26:24.660Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "9c4b0535-dcad-4e54-86a2-16518bf13d2b",
+          "table": "episodic",
+          "content": "Phase 3 DPO curriculum is built and wired up. Curriculum chosen = valid v5q rows, rejected = the exact hallucinations from the eval. Training added a v5q-dpo profile to _run_hf_lora.py. Cleaned up: deleted root-level directories and files. Not done: actually launching training.",
+          "score": 1.996687,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+          "source_timestamp": "2026-07-04T15:39:50.024Z"
+        },
+        {
+          "memory_id": "bab25698-3922-4d44-805f-f1592650483a",
+          "table": "episodic",
+          "content": "Now cleaning up: the root-level `DPO_Curriculum.md`, `rewards_config.json`, and `train_dpo.sh` reference a `train_dpo.py`/reward-model approach that doesn't exist anywhere in this repo \u2014 they're disconnected from the actual training pipeline. I'll remove them and record the real Phase 3 state in `docs/psm-model/PSM-MEMORY.md`, which is this project's actual memory doc.",
+          "score": 1.655584,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+          "source_timestamp": "2026-07-04T15:39:18.222Z"
+        },
+        {
+          "memory_id": "f57c34a2-d027-433e-8e4f-d0ecfd96d7bd",
+          "table": "episodic",
+          "content": "Training more would reinforce the memorization problem. The curriculum is built from the same 10 fixtures used to score it, so another DPO pass on that base risks repeating the 6/10\u21923/10/4/10 regression pattern. The cheap, high-value next step is not training; run the new held-out set against `hf-prod-v5n-dpo-qwen0.5b` to get an apples-to-apples baseline. The priority should be sourcing/building a genuinely diverse curriculum rather than another round of fixture-scoped DPO variants.",
+          "score": 1.412324,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+          "source_timestamp": "2026-07-09T13:05:47.971Z"
+        },
+        {
+          "memory_id": "98bffe1b-031c-4f4a-969b-1a407c5da412",
+          "table": "episodic",
+          "content": "Created a DPO curriculum document addressing enum hallucination issues while preserving indexables functionality. The curriculum includes data curation focusing on hallucinated enum variants, reward model parameters for schema compliance, and an 80-step training pipeline similar to v5n-dpo. It also includes validation strategy with explicit schema checks and documentation requirements for transparency.",
+          "score": 1.340747,
+          "source_id": "pi:2026-07-04T14-44-07-163Z_019f2d96-377b-73e0-8fa8-d7b3e99e3ab6:2026-07-04T14:46:12.993Z",
+          "source_timestamp": "2026-07-04T14:46:12.993Z"
+        },
+        {
+          "memory_id": "e5a4ac1a-2116-4dbc-a7d0-aa7815063e76",
+          "table": "episodic",
+          "content": "Rendered correctly via the real prompt builder. Task 3 (coding-domain curriculum) is complete and independently verified: 39 rows across positive/discipline/control, real Claude Code session turns, byte-consistency enforced by tests.",
+          "score": 1.29493,
+          "source_id": "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T14:26:24.660Z",
+          "source_timestamp": "2026-07-26T14:26:24.660Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not match gold answer"
+    },
+    {
+      "id": "q3",
+      "category": "single-hop",
+      "question": "What GPU did the successfully-reconfigured storage-v13 training run use, after the GPU-preference ordering fix?",
+      "gold_answer": "NVIDIA RTX A5000",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T11:14:25.702Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T08:06:14.725Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T13:13:38.899Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T08:48:01.066Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "22597e08-8208-43d1-b2a5-616e733cb453",
+          "table": "episodic",
+          "content": "The raw per-case answers and the SQLite memory DB from today's GPU run existed only on the pod's disk. Nothing from that run was pulled locally before deletion. It's gone. I should have flagged that we'd specifically want it as training signal for the storage-detail fix and pulled a copy first. Practically, this isn't as costly as it sounds, because the storage-detail-loss failure doesn't need a full GPU benchmark run to reproduce.",
+          "score": 1.905683,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T11:14:25.702Z",
+          "source_timestamp": "2026-07-20T11:14:25.702Z"
+        },
+        {
+          "memory_id": "cddf9790-16a7-4fbc-ad29-180f3c2cbe72",
+          "table": "episodic",
+          "content": "Confirmed: **NVIDIA RTX A5000** \u2014 the GPU-preference fix is working, and v13 is training on the cheaper/faster card. Let me reschedule the check for when training should actually complete (the earlier 360s check would fire mid-tokenization, too early).",
+          "score": 1.876808,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T08:06:14.725Z",
+          "source_timestamp": "2026-07-13T08:06:14.725Z"
+        },
+        {
+          "memory_id": "b1ed86cb-a3c8-4da1-acee-9668a75ed532",
+          "table": "episodic",
+          "content": "Redeploy is running, with no bundle-push hang. The fix includes deleting the idle L4 and redeploying with A5000\u21923090\u2192L4 ordering, which should provision and start training directly on HF. Monitoring for GPU type and training-start marker is in place with a tight idle guard.",
+          "score": 1.819894,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T13:13:38.899Z",
+          "source_timestamp": "2026-07-14T13:13:38.899Z"
+        },
+        {
+          "memory_id": "f97f398e-820d-44d2-b3b5-1ac5398f5d9d",
+          "table": "episodic",
+          "content": "storage-v17 wired into both scripts. Deploying training (wide GPU net + `--sync-code`, the config that worked):",
+          "score": 1.805658,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T08:48:01.066Z",
+          "source_timestamp": "2026-07-15T08:48:01.066Z"
+        },
+        {
+          "memory_id": "562bbaab-d541-42e9-bebf-e45859a4cc9d",
+          "table": "episodic",
+          "content": "The GHCR fix is confirmed working end-to-end: pod `73cov9jpfpqvng` deployed on the fixed image (30GB disk, no pull error this time), and the `conversational-storage-dpo1` DPO training run is live (CUDA confirmed, 76% GPU util, `dpo trainer.train()` started). I've got a monitor polling every 45s for completion/failure, so I'll continue once it reports back rather than polling manually.",
+          "score": 1.772442,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+          "source_timestamp": "2026-07-21T22:57:11.384Z"
+        }
+      ],
+      "generated_answer": "NVIDIA RTX A5000",
+      "judgment": "correct",
+      "score": 1,
+      "judge_reasoning": "exact match"
+    },
+    {
+      "id": "q4",
+      "category": "single-hop",
+      "question": "What image registry was used to host the custom RunPod pod base image, and why (instead of Docker Hub)?",
+      "gold_answer": "ghcr.io (GitHub Container Registry) \u2014 chosen because there was no Docker Hub credential in the secrets vault, only a GitHub token with write:packages scope already available.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:31:17.578Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T06:16:25.060Z",
+        "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T12:29:15.272Z",
+        "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:30:37.748Z",
+        "codex:rollout-2026-07-22T01-33-25-019f8850-8409-7bd1-8e7b-176634566bd3:2026-07-22T06:02:12.927Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "2e53cc4c-c3a7-44d1-99e1-27506c87268b",
+          "table": "episodic",
+          "content": "The pod deployed (`1zqofoew65iryi`, RTX-tier at $0.39/hr) but training never actually started \u2014 it crashed because `tmux` isn't installed in this pod's base image, and the `apt-get` package list fetch failed too. Let me check the pod directly and fix this so it isn't billing idle.",
+          "score": 1.302899,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:31:17.578Z",
+          "source_timestamp": "2026-07-16T15:31:17.578Z"
+        },
+        {
+          "memory_id": "2d85e01d-ca33-4509-80ea-5e9b0881f181",
+          "table": "semantic",
+          "content": "The correct call is to use ghcr.io as the Docker Hub credentials provider, as there is no official Docker Hub credential in the secrets vault. The assistant is confirming that ghcr.io is the right endpoint for authentication and advocating for a CLI approach.",
+          "score": 1.257582,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T06:16:25.060Z",
+          "source_timestamp": "2026-07-21T06:16:25.060Z"
+        },
+        {
+          "memory_id": "04c8f99a-8f7f-4bb1-8b17-deeabfdf394a",
+          "table": "episodic",
+          "content": "The official instance image is now cached; it was only one layer and pulled successfully. I\u2019m rerunning grading. This time it should move directly into patch application and test execution.",
+          "score": 1.039342,
+          "source_id": "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T12:29:15.272Z",
+          "source_timestamp": "2026-07-21T12:29:15.272Z"
+        },
+        {
+          "memory_id": "0a68baf8-5d0d-4eff-841d-36933149ef3d",
+          "table": "semantic",
+          "content": "Docker Desktop integration is disabled for the Ubuntu distro, and a workaround involves running the official evaluator inside a small Linux control container and mounting Docker\u2019s socket for setup.",
+          "score": 1.018653,
+          "source_id": "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:30:37.748Z",
+          "source_timestamp": "2026-07-21T11:30:37.748Z"
+        },
+        {
+          "memory_id": "ca596a32-c7c7-468e-9dd3-946e226df368",
+          "table": "semantic",
+          "content": "Docker grading often has a quiet setup phase while it prepares the cached benchmark environment.",
+          "score": 1.001133,
+          "source_id": "codex:rollout-2026-07-22T01-33-25-019f8850-8409-7bd1-8e7b-176634566bd3:2026-07-22T06:02:12.927Z",
+          "source_timestamp": "2026-07-22T06:02:12.927Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "answer does not match the gold answer"
+    },
+    {
+      "id": "q5",
+      "category": "single-hop",
+      "question": "In the DPO training comparison between the v2 baseline and dpo1, what was the templated-phrasing rate for each?",
+      "gold_answer": "v2 baseline 35.7% vs dpo1 17.9% (roughly halved).",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T11:06:14.999Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T11:11:51.250Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-22T00:27:21.770Z",
+        "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T15:55:24.440Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "f3c3cb4b-383a-4b4d-9141-6620fc6e2390",
+          "table": "episodic",
+          "content": "Real signal confirmed: 7 genuine DPO candidates out of just 150 samples (~6.4% of promote_semantic cases) where the model defaulted to \"values X\" phrasing even though the original training label used better, more specific phrasing. Scaling 7/150 to the full 962-row training pool projects to roughly 45-60 candidate pairs \u2014 a workable size.",
+          "score": 1.917062,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T11:06:14.999Z",
+          "source_timestamp": "2026-07-21T11:06:14.999Z"
+        },
+        {
+          "memory_id": "f57c34a2-d027-433e-8e4f-d0ecfd96d7bd",
+          "table": "episodic",
+          "content": "Training more would reinforce the memorization problem. The curriculum is built from the same 10 fixtures used to score it, so another DPO pass on that base risks repeating the 6/10\u21923/10/4/10 regression pattern. The cheap, high-value next step is not training; run the new held-out set against `hf-prod-v5n-dpo-qwen0.5b` to get an apples-to-apples baseline. The priority should be sourcing/building a genuinely diverse curriculum rather than another round of fixture-scoped DPO variants.",
+          "score": 1.855692,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+          "source_timestamp": "2026-07-09T13:05:47.971Z"
+        },
+        {
+          "memory_id": "8abbd6b6-dc8f-4c4c-b679-7d12cff402f6",
+          "table": "episodic",
+          "content": "V5n-dpo3 is training now (expanded 28-example ignore-seed set, halved duplication copies, dpo_beta was lowered from 0.15 to 0.08 to reduce overshoot). I'll check progress shortly and report the comparison once verified.",
+          "score": 1.849714,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T11:11:51.250Z",
+          "source_timestamp": "2026-07-10T11:11:51.250Z"
+        },
+        {
+          "memory_id": "be95736c-73ff-41ab-b4ac-e8e0c029709d",
+          "table": "episodic",
+          "content": "Real, apples-to-apples result: **v2 baseline 35.7%** vs **dpo1 17.9%** on the identical 126 held-out cases \u2014 the templated \"values\" phrasing rate roughly halved, while action-match held steady (82.3% vs 81.9%). This is a genuine, verified win.",
+          "score": 1.849378,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-22T00:27:21.770Z",
+          "source_timestamp": "2026-07-22T00:27:21.770Z"
+        },
+        {
+          "memory_id": "c7d3cc36-6412-439c-a599-8e7f5bc4103d",
+          "table": "episodic",
+          "content": "The model's ability to produce valid, complete JSON collapses almost entirely outside the narrow technical/developer-prose style it was actually trained on. The two DPO fixes we tried couldn't have generalized to this, because they were narrow contrastive edits layered on a model that hasn't seen naturalistic conversational input at all during training. The real generalization baseline established is 1/15 effective_stored, 0/10 correct stores on genuinely held-out realistic conversation. One background agent (early-stop generation fix, task #10) is still running independently.",
+          "score": 1.715753,
+          "source_id": "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T15:55:24.440Z",
+          "source_timestamp": "2026-07-05T15:55:24.440Z"
+        }
+      ],
+      "generated_answer": "v2 baseline 35.7% vs dpo1 17.9%",
+      "judgment": "correct",
+      "score": 1,
+      "judge_reasoning": "matches gold answer values"
+    },
+    {
+      "id": "q6",
+      "category": "single-hop",
+      "question": "What real production bug did the consolidation false-merge defect cause?",
+      "gold_answer": "It silently destroyed new information when a new memory was merged with an unrelated but lexically-similar existing memory.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T13:34:05.559Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T07:18:51.349Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T07:05:17.630Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-11T15:29:40.320Z",
+        "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T09:08:56.392Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "72acbca3-ead1-4afe-8821-b47822b332f7",
+          "table": "semantic",
+          "content": "Consolidation's `update_existing`/`flag_conflict` actions mutate or merge stored memory. Production wiring should wait until quality is much closer to the 99% bar, not just 'has a real number now.'",
+          "score": 2.013816,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T13:34:05.559Z",
+          "source_timestamp": "2026-07-10T13:34:05.559Z"
+        },
+        {
+          "memory_id": "4e845496-490f-4f71-b01e-d3a5e23eeba3",
+          "table": "episodic",
+          "content": "Fixed and verified: `PsmService.ConsolidateAsync` was accepting a consolidation adapter's `update_existing` merge unconditionally. Added `ConsolidationMergeRetentionMinRatio` (50%) \u2014 a merge is now rejected unless it retains at least half of the new content's own significant vocabulary. Two new regression tests in ConsolidationMergeGuardTests.cs \u2014 one reproduces the exact real probe case and confirms the bad merge is now rejected, one confirms a genuinely valid merge is still accepted.",
+          "score": 1.637254,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T07:18:51.349Z",
+          "source_timestamp": "2026-07-21T07:18:51.349Z"
+        },
+        {
+          "memory_id": "23448855-dbd0-4da4-bf1d-03843be9fce9",
+          "table": "episodic",
+          "content": "This is a false-positive in the validation, not a real bug \u2014 confirmed by hashing that the two adapter files are genuinely different content, and I already have real evidence (the 419-case gate, the earlier low-level hot-swap test) that adapters behave correctly on actual production prompts. This generic smoke prompt just isn't distinctive enough to guarantee uniqueness across all 6 tasks. Let me fix the validation to be meaningful rather than fragile.",
+          "score": 1.422281,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T07:05:17.630Z",
+          "source_timestamp": "2026-07-20T07:05:17.630Z"
+        },
+        {
+          "memory_id": "020ed46b-2539-47dd-be72-00051d49c70c",
+          "table": "episodic",
+          "content": "I've queued a check-in for when storage-v7 finishes training (~15 min). This round's results: - Consolidation: real progress \u2014 v4 hit 0.826 (19/23, up from 0.79), with `update_existing` and `flag_conflict` now both at 100%. Promoted as new best. - Storage: found the actual root cause of the 3-round DPO plateau \u2014 the base training data has only 0.6% ignore examples in its dominant source, baking in a heavy over-store bias that small patches can't overcome. First fix attempt (28.9% ignore ratio, full retrain) overcorrected badly (0.47). Second attempt (11.9%, more conservative) is training now.",
+          "score": 1.335272,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-11T15:29:40.320Z",
+          "source_timestamp": "2026-07-11T15:29:40.320Z"
+        },
+        {
+          "memory_id": "91135fa3-5f2c-44ea-89bf-111a66a8f1d1",
+          "table": "episodic",
+          "content": "Consolidation is scoped conceptually in 'Dream Consolidation' as 'Dream Consolidation' but confirmed nothing is built \u2014 no `maintenance_state` table, no decay/merge logic anywhere in service.ts or store.ts. The plan even says 'fine-tune after phases 1-3 produce training data' \u2014 i.e., it was originally scoped as mostly deterministic (decay scores, near-duplicate detection) with the model only optionally assisting. Wiring it as a dedicated fine-tuned adapter is a reasonable step beyond the original doc, but a concrete breakdown of the 3-adapter system is presented.",
+          "score": 1.330245,
+          "source_id": "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T09:08:56.392Z",
+          "source_timestamp": "2026-07-05T09:08:56.392Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not match the gold answer, indicating a lack of knowledge about the specific bug caused by the consolidation false-merge defect."
+    },
+    {
+      "id": "q7",
+      "category": "multi-hop",
+      "question": "Which pod ran the original Phase 3 v5q-dpo training, and what eventually happened to it after training completed?",
+      "gold_answer": "Pod udk4kfi83tx5st ran the training; it was stopped (EXITED) shortly after, though the adapter had already synced to HF before it was stopped, so no training work was lost even though the eval hadn't been run yet at that point.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T13:25:54.552Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T03:43:50.992Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "e5b8059c-0a14-4acf-9ca0-06246da81ffe",
+          "table": "episodic",
+          "content": "The bug was identified in the v5q/ v5q-dpo's original fixture score of 6/10, which was run via _run_v5q_pod_eval.sh. Every eval today used the bare eval_hf_grounding.py command without --output-format, resulting in a training profile for v5n, v5n-dpo, v5p, v5o-sft, v5o-dpo, and v5q's own curriculum builder. This suggests a system instruction describing a format they were never trained to follow, which would plausibly produce the 'starts with store/ignore: then rambles into repetition, never valid JSON' pattern.",
+          "score": 2.187248,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+          "source_timestamp": "2026-07-10T09:14:10.827Z"
+        },
+        {
+          "memory_id": "bab25698-3922-4d44-805f-f1592650483a",
+          "table": "episodic",
+          "content": "Now cleaning up: the root-level `DPO_Curriculum.md`, `rewards_config.json`, and `train_dpo.sh` reference a `train_dpo.py`/reward-model approach that doesn't exist anywhere in this repo \u2014 they're disconnected from the actual training pipeline. I'll remove them and record the real Phase 3 state in `docs/psm-model/PSM-MEMORY.md`, which is this project's actual memory doc.",
+          "score": 2.157056,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+          "source_timestamp": "2026-07-04T15:39:18.222Z"
+        },
+        {
+          "memory_id": "9c4b0535-dcad-4e54-86a2-16518bf13d2b",
+          "table": "episodic",
+          "content": "Phase 3 DPO curriculum is built and wired up. Curriculum chosen = valid v5q rows, rejected = the exact hallucinations from the eval. Training added a v5q-dpo profile to _run_hf_lora.py. Cleaned up: deleted root-level directories and files. Not done: actually launching training.",
+          "score": 2.027956,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+          "source_timestamp": "2026-07-04T15:39:50.024Z"
+        },
+        {
+          "memory_id": "65b8d658-1eb4-4633-b1dc-07340a7a3b57",
+          "table": "episodic",
+          "content": "A real process bug found and fixed (own it plainly): the on-pod gate deleted a working pod after a failed eval, because `_ssh_run_script` returns an exit code. The driver now checks the real return code and explicitly pushes the fixture before running. Training itself succeeded cleanly with a `train_loss` of 0.30, which is right in line with the healthy 0.5B runs.",
+          "score": 2.022214,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T13:25:54.552Z",
+          "source_timestamp": "2026-07-15T13:25:54.552Z"
+        },
+        {
+          "memory_id": "d76df639-87e9-4ddd-bbcd-2d3228071b5d",
+          "table": "episodic",
+          "content": "A5000 is cheaper and better for training, and L4 was a hardcoded `gpu_prefs = \"NVIDIA L4, ...\"` override. Every pod came up L4 due to this. A5000-first will be used in the next deploy, which will grab ~30% cheaper and faster. The current v12 pod is already an L4, which will finish mid-training, taking ~45 min.",
+          "score": 1.798909,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T03:43:50.992Z",
+          "source_timestamp": "2026-07-13T03:43:50.992Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not provide the required information"
+    },
+    {
+      "id": "q8",
+      "category": "multi-hop",
+      "question": "How does the GHCR image registry issue (rejected manifest) relate to the earlier decision to use ghcr.io over Docker Hub?",
+      "gold_answer": "ghcr.io was chosen for the custom pod base image because only a GitHub token was available (no Docker Hub credential); that same ghcr.io build later hit a real quirk where the build produced an attestation/provenance manifest list that GHCR sometimes rejects on the final manifest write, even though all individual layers pushed fine.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T06:16:25.060Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:51:44.229Z",
+        "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T12:27:58.898Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+        "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:30:37.748Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "2d85e01d-ca33-4509-80ea-5e9b0881f181",
+          "table": "semantic",
+          "content": "The correct call is to use ghcr.io as the Docker Hub credentials provider, as there is no official Docker Hub credential in the secrets vault. The assistant is confirming that ghcr.io is the right endpoint for authentication and advocating for a CLI approach.",
+          "score": 1.722493,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T06:16:25.060Z",
+          "source_timestamp": "2026-07-21T06:16:25.060Z"
+        },
+        {
+          "memory_id": "437755bc-e3c1-4ec8-8afe-cad90d204c2e",
+          "table": "episodic",
+          "content": "The anonymous pull path now resolves to a clean single-platform manifest (HTTP 200, config digest `6bc83fec...`) \u2014 no more index pointing at stale digests. The GHCR issue is fixed.",
+          "score": 1.452802,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:51:44.229Z",
+          "source_timestamp": "2026-07-21T22:51:44.229Z"
+        },
+        {
+          "memory_id": "a1c273cc-395a-474e-8b2c-62f29b07a0d7",
+          "table": "episodic",
+          "content": "The dataset actually finished loading quickly; the long silent phase was the official harness pulling/building its task image without progress output. I stopped it too early based on the lack of Docker listings. I\u2019m extracting the exact official image key and pulling it explicitly so progress and failure are visible, then grading will reuse it.",
+          "score": 1.086753,
+          "source_id": "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T12:27:58.898Z",
+          "source_timestamp": "2026-07-21T12:27:58.898Z"
+        },
+        {
+          "memory_id": "562bbaab-d541-42e9-bebf-e45859a4cc9d",
+          "table": "episodic",
+          "content": "The GHCR fix is confirmed working end-to-end: pod `73cov9jpfpqvng` deployed on the fixed image (30GB disk, no pull error this time), and the `conversational-storage-dpo1` DPO training run is live (CUDA confirmed, 76% GPU util, `dpo trainer.train()` started). I've got a monitor polling every 45s for completion/failure, so I'll continue once it reports back rather than polling manually.",
+          "score": 1.048915,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+          "source_timestamp": "2026-07-21T22:57:11.384Z"
+        },
+        {
+          "memory_id": "0a68baf8-5d0d-4eff-841d-36933149ef3d",
+          "table": "semantic",
+          "content": "Docker Desktop integration is disabled for the Ubuntu distro, and a workaround involves running the official evaluator inside a small Linux control container and mounting Docker\u2019s socket for setup.",
+          "score": 1.024476,
+          "source_id": "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:30:37.748Z",
+          "source_timestamp": "2026-07-21T11:30:37.748Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "The generated answer does not provide any information about the relationship between the GHCR image registry issue and the decision to use ghcr.io over Docker Hub."
+    },
+    {
+      "id": "q9",
+      "category": "multi-hop",
+      "question": "The pod ID udk4kfi83tx5st shows up again later in the project's history, in a completely different context. What was it used for the second time?",
+      "gold_answer": "It was used as the known ground-truth answer for a real-pipeline retrieval-miss probe: the fact 'Pod udk4kfi83tx5st is now stopped...' was confirmed stored verbatim in the coding-domain memory database, but did not surface in the top-5 results for a question asking about it \u2014 demonstrating a retrieval/ranking miss, not a storage miss.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T09:32:03.655Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T16:02:10.395Z",
+        "codex:rollout-2026-07-17T04-23-20-019f6f2c-4791-7323-93d0-422bf7b7b35f:2026-07-17T08:28:41.336Z",
+        "codex:rollout-2026-07-18T06-49-26-019f74d8-644e-74f1-902d-1da6ee9a9fad:2026-07-20T06:57:20.107Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:07:32.980Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "a72798c1-46a1-4704-b65f-42ebbe979785",
+          "table": "episodic",
+          "content": "Confirmed: that pod ID was stored verbatim (`T17: \"Pod udk4kfi83tx5st is now stopped...\")`",
+          "score": 1.475702,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T09:32:03.655Z",
+          "source_timestamp": "2026-07-23T09:32:03.655Z"
+        },
+        {
+          "memory_id": "fd1d2f50-da93-4ab2-bff2-48875a62c748",
+          "table": "episodic",
+          "content": "Pod `udk4kfi83tx5st` is now stopped (`EXITED` as of 16:01:53 UTC) \u2014 billing on it has stopped. Let me check what the earlier SSH session actually captured before responding further.",
+          "score": 1.288246,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T16:02:10.395Z",
+          "source_timestamp": "2026-07-04T16:02:10.395Z"
+        },
+        {
+          "memory_id": "7567c87c-238a-4317-a940-0abaed87ecf3",
+          "table": "semantic",
+          "content": "The card should be a bounded operational state record, not a growing summary of the conversation. A better v1 format would be: ```yaml project: name: pi-task-card module: context-runtime branch: main task: id: task-17 goal: Replace conversation history with bounded task state status: in_progress current_step: Integrate the task card into pi-dcp progress: completed: - text Confirmed Pi's context extension can replace messages",
+          "score": 1.273088,
+          "source_id": "codex:rollout-2026-07-17T04-23-20-019f6f2c-4791-7323-93d0-422bf7b7b35f:2026-07-17T08:28:41.336Z",
+          "source_timestamp": "2026-07-17T08:28:41.336Z"
+        },
+        {
+          "memory_id": "406bbfb9-65c5-4c4a-80d9-9f58291319f8",
+          "table": "semantic",
+          "content": "I\u2019d improve the name to `agent-context-card`. \u201cTask card\u201d describes the visible artifact, but the reusable core also manages evidence leases, project capabilities, task boundaries, and provider-context projection. `agent-context-card` stays understandable while fitting Pi, Antigravity, Claude, Cursor, and custom agent wrappers. I\u2019ll create it as a clean sibling repository\u2014not copy the old Git history\u2014and carry over only the proven passive architecture.",
+          "score": 1.260827,
+          "source_id": "codex:rollout-2026-07-18T06-49-26-019f74d8-644e-74f1-902d-1da6ee9a9fad:2026-07-20T06:57:20.107Z",
+          "source_timestamp": "2026-07-20T06:57:20.107Z"
+        },
+        {
+          "memory_id": "0e5648d3-113b-4b7e-a5c1-25ab1a333e3b",
+          "table": "episodic",
+          "content": "The GPU pod `cq18rxyatwy40w` is gone, with nothing billing right now. The monitoring agent died from a session-limit hit while nobody was watching. The 2447-row teacher-labeled training data and the 419-case held-out gate fixture are safe locally, so nothing needs to be re-mined or re-labeled. The only remaining piece is retraining conversational_storage, which needs a GPU pod again.",
+          "score": 1.195853,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:07:32.980Z",
+          "source_timestamp": "2026-07-16T15:07:32.980Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not match gold answer"
+    },
+    {
+      "id": "q10",
+      "category": "temporal",
+      "question": "Was the GHCR custom Docker image work completed before or after the DPO curriculum (dpo1) training work?",
+      "gold_answer": "Before \u2014 dpo1's curriculum was built 2026-07-21 (evening, per the '53 rows' curriculum note) and the GHCR image work was wrapped up 2026-07-21 in the morning (07:05 timestamp), so the Docker image was finished first, earlier the same day.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T06:23:19.878Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:00:42.820Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "562bbaab-d541-42e9-bebf-e45859a4cc9d",
+          "table": "episodic",
+          "content": "The GHCR fix is confirmed working end-to-end: pod `73cov9jpfpqvng` deployed on the fixed image (30GB disk, no pull error this time), and the `conversational-storage-dpo1` DPO training run is live (CUDA confirmed, 76% GPU util, `dpo trainer.train()` started). I've got a monitor polling every 45s for completion/failure, so I'll continue once it reports back rather than polling manually.",
+          "score": 1.720695,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:57:11.384Z",
+          "source_timestamp": "2026-07-21T22:57:11.384Z"
+        },
+        {
+          "memory_id": "9e1f6040-fdfe-4522-9efa-44097f9daf75",
+          "table": "episodic",
+          "content": "Deploy is running and monitored. Partial v15 curriculum built and training now on an A5000. The finish-the-relabel decision is still open. Both free teachers are daily-capped until their UTC reset. The remaining 814 rows can be completed by rerun after the caps reset or now with a small OpenRouter top-up.",
+          "score": 1.658204,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T06:23:19.878Z",
+          "source_timestamp": "2026-07-14T06:23:19.878Z"
+        },
+        {
+          "memory_id": "04f0fc64-3e1a-45ef-b086-cc8a35d9f060",
+          "table": "episodic",
+          "content": "The mining actually completed \u2014 927 results were successfully written to disk (`dpo_candidates_results.json`, last modified right at the restart time). The write only happens once at the very end of the script, so this confirms the full run finished before the restart interrupted anything downstream. Let's verify and build the DPO curriculum from it now.",
+          "score": 1.586418,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-21T22:00:42.820Z",
+          "source_timestamp": "2026-07-21T22:00:42.820Z"
+        },
+        {
+          "memory_id": "9c4b0535-dcad-4e54-86a2-16518bf13d2b",
+          "table": "episodic",
+          "content": "Phase 3 DPO curriculum is built and wired up. Curriculum chosen = valid v5q rows, rejected = the exact hallucinations from the eval. Training added a v5q-dpo profile to _run_hf_lora.py. Cleaned up: deleted root-level directories and files. Not done: actually launching training.",
+          "score": 1.488128,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+          "source_timestamp": "2026-07-04T15:39:50.024Z"
+        },
+        {
+          "memory_id": "f57c34a2-d027-433e-8e4f-d0ecfd96d7bd",
+          "table": "episodic",
+          "content": "Training more would reinforce the memorization problem. The curriculum is built from the same 10 fixtures used to score it, so another DPO pass on that base risks repeating the 6/10\u21923/10/4/10 regression pattern. The cheap, high-value next step is not training; run the new held-out set against `hf-prod-v5n-dpo-qwen0.5b` to get an apples-to-apples baseline. The priority should be sourcing/building a genuinely diverse curriculum rather than another round of fixture-scoped DPO variants.",
+          "score": 1.411924,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+          "source_timestamp": "2026-07-09T13:05:47.971Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not provide information about the timeline of the GHCR custom Docker image work in relation to the DPO curriculum training work."
+    },
+    {
+      "id": "q11",
+      "category": "temporal",
+      "question": "Was the sourceTimestamp-surfacing bug found before or after the Phase 3 v5q-dpo training (pod udk4kfi83tx5st)?",
+      "gold_answer": "After \u2014 the v5q-dpo training happened 2026-07-04, while the sourceTimestamp root-cause investigation and fix happened 2026-07-23, about 19 days later.",
+      "retrieved_ids": [
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T05:14:44.895Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-22T04:13:36.783Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "9c4b0535-dcad-4e54-86a2-16518bf13d2b",
+          "table": "episodic",
+          "content": "Phase 3 DPO curriculum is built and wired up. Curriculum chosen = valid v5q rows, rejected = the exact hallucinations from the eval. Training added a v5q-dpo profile to _run_hf_lora.py. Cleaned up: deleted root-level directories and files. Not done: actually launching training.",
+          "score": 1.68177,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+          "source_timestamp": "2026-07-04T15:39:50.024Z"
+        },
+        {
+          "memory_id": "8dac5488-b006-4a29-9a03-61540e909e0d",
+          "table": "episodic",
+          "content": "Fix #2 (sourceTimestamp surfacing): landed and working. Fix #1 (context window): implemented, tested live against the real model, and reverted. The model doesn't reliably summarize the current line \u2014 it picks a fact from anywhere in the 2-3 line window and stamps it onto whichever turn happens to be 'current'.",
+          "score": 1.437679,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T05:14:44.895Z",
+          "source_timestamp": "2026-07-23T05:14:44.895Z"
+        },
+        {
+          "memory_id": "bab25698-3922-4d44-805f-f1592650483a",
+          "table": "episodic",
+          "content": "Now cleaning up: the root-level `DPO_Curriculum.md`, `rewards_config.json`, and `train_dpo.sh` reference a `train_dpo.py`/reward-model approach that doesn't exist anywhere in this repo \u2014 they're disconnected from the actual training pipeline. I'll remove them and record the real Phase 3 state in `docs/psm-model/PSM-MEMORY.md`, which is this project's actual memory doc.",
+          "score": 1.341395,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:18.222Z",
+          "source_timestamp": "2026-07-04T15:39:18.222Z"
+        },
+        {
+          "memory_id": "376b19e4-5734-406c-aa59-e567d830d8ca",
+          "table": "episodic",
+          "content": "Confirmed live: `temporalExpression: \"yesterday\"` correctly resolved to `resolvedTime: \"20 July 2026\"` (one day before the 21 July 2026 source timestamp), confidence 0.9 \u2014 exactly right. Also nice to see it composing cleanly with Phase 2's indexables synthesis in the same call.",
+          "score": 1.335541,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-22T04:13:36.783Z",
+          "source_timestamp": "2026-07-22T04:13:36.783Z"
+        },
+        {
+          "memory_id": "e5b8059c-0a14-4acf-9ca0-06246da81ffe",
+          "table": "episodic",
+          "content": "The bug was identified in the v5q/ v5q-dpo's original fixture score of 6/10, which was run via _run_v5q_pod_eval.sh. Every eval today used the bare eval_hf_grounding.py command without --output-format, resulting in a training profile for v5n, v5n-dpo, v5p, v5o-sft, v5o-dpo, and v5q's own curriculum builder. This suggests a system instruction describing a format they were never trained to follow, which would plausibly produce the 'starts with store/ignore: then rambles into repetition, never valid JSON' pattern.",
+          "score": 1.306718,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+          "source_timestamp": "2026-07-10T09:14:10.827Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    },
+    {
+      "id": "q12",
+      "category": "temporal",
+      "question": "Which happened first: fixing the epoch-count miscalculation in the storage-v10 profile, or building the DPO training curriculum (dpo1)?",
+      "gold_answer": "The epoch-count fix (storage-v10, discussing the effective-batch/epoch math correction) happened 2026-07-11, well before the dpo1 curriculum was built on 2026-07-21 \u2014 about 10 days earlier.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+        "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T15:00:37.496Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T02:25:03.464Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "e5b8059c-0a14-4acf-9ca0-06246da81ffe",
+          "table": "episodic",
+          "content": "The bug was identified in the v5q/ v5q-dpo's original fixture score of 6/10, which was run via _run_v5q_pod_eval.sh. Every eval today used the bare eval_hf_grounding.py command without --output-format, resulting in a training profile for v5n, v5n-dpo, v5p, v5o-sft, v5o-dpo, and v5q's own curriculum builder. This suggests a system instruction describing a format they were never trained to follow, which would plausibly produce the 'starts with store/ignore: then rambles into repetition, never valid JSON' pattern.",
+          "score": 2.154743,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T09:14:10.827Z",
+          "source_timestamp": "2026-07-10T09:14:10.827Z"
+        },
+        {
+          "memory_id": "749830b4-2a78-4b82-8095-4172caf8acd5",
+          "table": "episodic",
+          "content": "v5n-dpo's known ingest stored 77% of turns, while this run is at 10.5% stored. This difference in storage performance matters for understanding retrieval accuracy. The curriculum of v5q-dpo was heavily weighted toward penalizing malformed store outputs, which taught the model to ignore uncertain store outputs without a pressure to store more. The best guess is that 77% for v5n-dpo is too high, and 797/1032 for v5q-dpo is plausible.",
+          "score": 1.976354,
+          "source_id": "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T15:00:37.496Z",
+          "source_timestamp": "2026-07-05T15:00:37.496Z"
+        },
+        {
+          "memory_id": "f57c34a2-d027-433e-8e4f-d0ecfd96d7bd",
+          "table": "episodic",
+          "content": "Training more would reinforce the memorization problem. The curriculum is built from the same 10 fixtures used to score it, so another DPO pass on that base risks repeating the 6/10\u21923/10/4/10 regression pattern. The cheap, high-value next step is not training; run the new held-out set against `hf-prod-v5n-dpo-qwen0.5b` to get an apples-to-apples baseline. The priority should be sourcing/building a genuinely diverse curriculum rather than another round of fixture-scoped DPO variants.",
+          "score": 1.885639,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-09T13:05:47.971Z",
+          "source_timestamp": "2026-07-09T13:05:47.971Z"
+        },
+        {
+          "memory_id": "1182003e-4426-4e40-bdc0-6e559f8fd5fe",
+          "table": "episodic",
+          "content": "Everything downstream is now wired and ready: - **storage-v15 profile** added to `_run_hf_lora.py` - Added to the **A5000-first gpu_prefs** default tuple - Wired into `_sync_hf_lora.py` for verify/pull. The training script builds a curriculum only if the file is absent, so the synced v15 jsonl is used directly. The current state is relabel resumed from 592/1589, running in background (~997 Cloudflare calls left). Monitor is watching the cache advance and will alert on completion or any error. Once it writes `hf-prod-storage-v15.jsonl` + manifest, I'll deploy the train to an A5000, pull, delete the pod, and eval on the 100-case gate vs v11's 0.82.",
+          "score": 1.88038,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T02:25:03.464Z",
+          "source_timestamp": "2026-07-14T02:25:03.464Z"
+        },
+        {
+          "memory_id": "9c4b0535-dcad-4e54-86a2-16518bf13d2b",
+          "table": "episodic",
+          "content": "Phase 3 DPO curriculum is built and wired up. Curriculum chosen = valid v5q rows, rejected = the exact hallucinations from the eval. Training added a v5q-dpo profile to _run_hf_lora.py. Cleaned up: deleted root-level directories and files. Not done: actually launching training.",
+          "score": 1.859221,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T15:39:50.024Z",
+          "source_timestamp": "2026-07-04T15:39:50.024Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not provide information about the order of events"
+    },
+    {
+      "id": "q13",
+      "category": "adversarial",
+      "question": "What was the exact total dollar cost spent on RunPod GPU credits across the entire 2026-07-04 to 2026-07-29 window?",
+      "gold_answer": "No answer available \u2014 per-pod hourly rates and rough durations are mentioned in places (e.g. $0.39/hr, $0.27/hr), but no running total or aggregate cost figure was ever computed or stated anywhere in this history.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-11T15:21:39.322Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T07:53:43.438Z",
+        "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T12:03:50.360Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-12T13:17:52.527Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T08:45:32.479Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "26347404-8422-4936-97a6-3925d80cabce",
+          "table": "episodic",
+          "content": "storage-v6/v7 are full 500-600 step retrains (~20-25 min each), while consolidation-v4/v5 are quick 120-150 step continuations (~2-3 min each). Total GPU cost is the same either way. If you'd rather I work strictly one pod at a time, I'll do that from here on.",
+          "score": 1.798863,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-11T15:21:39.322Z",
+          "source_timestamp": "2026-07-11T15:21:39.322Z"
+        },
+        {
+          "memory_id": "323d2ab2-2d6c-4641-92ee-cb4b511007f1",
+          "table": "episodic",
+          "content": "GPU confirmed active (CUDA0, NVIDIA L4), output correct, 11.5s total including cold load. Let's launch the full benchmark run in the background on the pod.",
+          "score": 1.717797,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T07:53:43.438Z",
+          "source_timestamp": "2026-07-20T07:53:43.438Z"
+        },
+        {
+          "memory_id": "74f69989-e2a8-4a24-94b9-4c5cff9cd611",
+          "table": "episodic",
+          "content": "A real infrastructure bug was identified where three different PIDs (15545, 15615, 15908) appeared across 32 seconds, each living only ~1-2 seconds, and GPU memory stayed at 1MiB (essentially unused). This bug affects ingestion performance/cost broadly, not just this holdout run.",
+          "score": 1.712681,
+          "source_id": "claude-code:79c7a744-d4f6-41fd-a9b1-57432061b636:2026-07-05T12:03:50.360Z",
+          "source_timestamp": "2026-07-05T12:03:50.360Z"
+        },
+        {
+          "memory_id": "01f4c3ed-6293-4504-87df-b708ebb165fa",
+          "table": "episodic",
+          "content": "GPU L4 at 100% utilization, but ~6.2s/step means storage-v11 will take about 80 minutes total. Let's launch consolidation-v8 on a second pod in parallel.",
+          "score": 1.660702,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-12T13:17:52.527Z",
+          "source_timestamp": "2026-07-12T13:17:52.527Z"
+        },
+        {
+          "memory_id": "dedafaee-5991-411c-bf66-af67df90225f",
+          "table": "episodic",
+          "content": "Labeling complete \u2014 903 labeled, entirely on free quota (472 Ollama + 436 Cloudflare, zero OpenRouter credits spent). Both error-mode buckets are now deeply stocked, and the new examples are 62% store / 38% ignore \u2014 much closer to balanced than the curriculum's 79/21.",
+          "score": 1.64614,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T08:45:32.479Z",
+          "source_timestamp": "2026-07-15T08:45:32.479Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "correct",
+      "score": 1,
+      "judge_reasoning": "Generated answer indicates lack of knowledge"
+    },
+    {
+      "id": "q14",
+      "category": "adversarial",
+      "question": "Who approved the final production promotion of the conversational-context-aware-v9 adapter to gguf-runtime/v1?",
+      "gold_answer": "No answer available \u2014 as of the end of this window, v9 had passed only the isolated gate; the real LoCoMo re-probe and any promotion decision had explicitly not happened yet, so no promotion or approval occurred.",
+      "retrieved_ids": [
+        "pi:2026-07-27T12-51-10-504Z_019fa3a1-1428-7c76-895a-450af9428288:2026-07-27T12:52:05.832Z",
+        "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T16:10:47.590Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T09:34:55.313Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-17T07:38:43.617Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T17:32:13.905Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "8c27ea5c-4062-42e6-bc83-a885f19b6140",
+          "table": "episodic",
+          "content": "Both output files are written. The verification report includes 339 rows of data from `psm-model/prod-memory/data/hf-prod-coding-context-aware-v3.jsonl` and 331 rows from `psm-model/prod-memory/data/hf-prod-conversational-context-aware-v3.jsonl`. The method used was stratified sampling with the largest-remainder method, using seed 42 for both per-stratum shuffle/sample and final combine shuffle. The total number of rows is 339, with 300 preserved byte-for-byte in structure. The validation results show 339/339 pass for both coding and conversational domains, with 1 failure. The code contributed 63 ignore examples to coding and 151 ignore examples to conversational, indicating a 15x boost in ignore-signal contributions.",
+          "score": 1.701335,
+          "source_id": "pi:2026-07-27T12-51-10-504Z_019fa3a1-1428-7c76-895a-450af9428288:2026-07-27T12:52:05.832Z",
+          "source_timestamp": "2026-07-27T12:52:05.832Z"
+        },
+        {
+          "memory_id": "64fd7d40-8083-4ea6-9e8a-2ad091c898d4",
+          "table": "episodic",
+          "content": "Files pushed. Now running the coding-domain gate eval against the new context-aware adapter.",
+          "score": 1.49478,
+          "source_id": "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T16:10:47.590Z",
+          "source_timestamp": "2026-07-26T16:10:47.590Z"
+        },
+        {
+          "memory_id": "86e29332-0b27-4535-8427-c073c150d69d",
+          "table": "episodic",
+          "content": "The 100-case gate is not sufficient on its own to call the coding adapters \"good\". The retrieval-miss and storage-miss patterns found are illustrative, not conclusive, and before scoping a fix I'd want to check whether it shares a root cause with the conversational context-window problem.",
+          "score": 1.490728,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T09:34:55.313Z",
+          "source_timestamp": "2026-07-23T09:34:55.313Z"
+        },
+        {
+          "memory_id": "45cbd3bf-17aa-4076-bb93-01defb1433a6",
+          "table": "episodic",
+          "content": "Big improvement: **65.9% \u2192 81.9%** action-match, store_recall **45.5% \u2192 76.7%** (145/189), ignore_recall holding steady at 95.2%. This clears the same ballpark as the other two conversational adapters (91.5%, 82.6%). Promoting to production.",
+          "score": 1.445838,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-17T07:38:43.617Z",
+          "source_timestamp": "2026-07-17T07:38:43.617Z"
+        },
+        {
+          "memory_id": "561c3ee4-b8b4-424d-b499-de87d685f920",
+          "table": "episodic",
+          "content": "The status of the conversational adapters is as follows: conversational_retrieval_plan has 91.5% target-tables-exact and 100% top-k-exact, conversational_consolidation has 82.6% action-match, and conversational_storage has a 65.9% action-match with heavy under-stowing (103 false-ignores vs 12 false-stores). The storage adapter is defaulting to 'ignore' far too often on cases that should be stored, mirroring the coding-domain storage adapter's early rounds. The next step is to look at the 103 false-ignore cases to identify the cause of the under-store bias.",
+          "score": 1.274004,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T17:32:13.905Z",
+          "source_timestamp": "2026-07-16T17:32:13.905Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "correct",
+      "score": 1,
+      "judge_reasoning": "Generated answer indicates lack of knowledge"
+    },
+    {
+      "id": "q15",
+      "category": "adversarial",
+      "question": "What was the final resolution of the coding-domain retrieval-miss / ranking architecture bug?",
+      "gold_answer": "No resolution recorded in this window \u2014 the retrieval-miss pattern was found and confirmed (the pod-ID question in the sourceTimestamp investigation), documented as a real, unresolved issue, but no root cause or fix for the underlying ranking/embedding architecture was reached in this period.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T09:40:21.920Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T09:54:53.516Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T11:09:51.133Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T09:07:59.770Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T17:32:13.905Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "7b7df8e6-9d2d-4570-aa85-89bc034be0f1",
+          "table": "episodic",
+          "content": "The ranking algorithm (`Ranking.HybridRankMemories`) found genuine embeddings for the query, confirming they are active and contributing. The retrieval misses are consistent with the multi-hop limitation, ruling out a ranking bug. A context-aware training round for the storage adapter is needed to recognize facts using surrounding-turn context and self-reflective/meta content as storable.",
+          "score": 1.754912,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T09:40:21.920Z",
+          "source_timestamp": "2026-07-23T09:40:21.920Z"
+        },
+        {
+          "memory_id": "a066b578-495b-42c7-8049-9b07836e2230",
+          "table": "episodic",
+          "content": "The retrieval-plan (92-100% target-tables-exact etc.): this metric is real and the adapter is not the problem. The bug we found (missing embeddings) lives **downstream of the model**, in `Ranking.cs`/`PsmService.cs` \u2014 pure C# infrastructure code that never got ported from TypeScript. The retrieval-plan adapter says \"search episodic+semantic for X\" correctly; it's the *execution* of that search (keyword-only, no embeddings) that's broken. Fixing this needs zero retraining \u2014 it's a software port, not a model problem.",
+          "score": 1.653756,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T09:54:53.516Z",
+          "source_timestamp": "2026-07-20T09:54:53.516Z"
+        },
+        {
+          "memory_id": "6a538915-7d6b-41e0-8180-2fee54dfac6d",
+          "table": "episodic",
+          "content": "The embedding-based semantic retrieval fix is complete and verified for both domains. The fix includes porting the missing embedding pipeline from `psm-core`'s TypeScript into C#, gaining `UpsertMemoryEmbedding`/`SelectEmbeddingRows`. The fix is domain-agnostic and verified by both domains, confirming it is a faithful port of service.ts's `embedWrittenMemories`/`contextCandidates`.",
+          "score": 1.590038,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T11:09:51.133Z",
+          "source_timestamp": "2026-07-20T11:09:51.133Z"
+        },
+        {
+          "memory_id": "9e63feb4-2f84-40c0-a0c5-179164233bf7",
+          "table": "episodic",
+          "content": "PSM has no real semantic retrieval, only pure keyword matching. It can only match on literal token/entity/number/tag overlap, not on specific details. Retrieval recall is only ~50%, and the stored memory content is too compressed to answer detail-specific questions. This is due to an architectural gap: PSM was built around a fast, tiny fine-tuned model doing keyword-style retrieval planning, while every competitive baseline relies on dense embedding search plus richer fact extraction.",
+          "score": 1.50234,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T09:07:59.770Z",
+          "source_timestamp": "2026-07-20T09:07:59.770Z"
+        },
+        {
+          "memory_id": "561c3ee4-b8b4-424d-b499-de87d685f920",
+          "table": "episodic",
+          "content": "The status of the conversational adapters is as follows: conversational_retrieval_plan has 91.5% target-tables-exact and 100% top-k-exact, conversational_consolidation has 82.6% action-match, and conversational_storage has a 65.9% action-match with heavy under-stowing (103 false-ignores vs 12 false-stores). The storage adapter is defaulting to 'ignore' far too often on cases that should be stored, mirroring the coding-domain storage adapter's early rounds. The next step is to look at the 103 false-ignore cases to identify the cause of the under-store bias.",
+          "score": 1.491409,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T17:32:13.905Z",
+          "source_timestamp": "2026-07-16T17:32:13.905Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "correct",
+      "score": 1,
+      "judge_reasoning": "Generated answer indicates lack of knowledge, consistent with gold answer"
+    },
+    {
+      "id": "q16",
+      "category": "single-hop",
+      "question": "What VRAM does the RTX A5000 GPU used for PSM training have?",
+      "gold_answer": "24564 MiB (about 24GB).",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T03:43:50.992Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T08:06:14.725Z",
+        "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T14:55:20.433Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T11:28:22.938Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T02:25:03.464Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "d76df639-87e9-4ddd-bbcd-2d3228071b5d",
+          "table": "episodic",
+          "content": "A5000 is cheaper and better for training, and L4 was a hardcoded `gpu_prefs = \"NVIDIA L4, ...\"` override. Every pod came up L4 due to this. A5000-first will be used in the next deploy, which will grab ~30% cheaper and faster. The current v12 pod is already an L4, which will finish mid-training, taking ~45 min.",
+          "score": 1.710516,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T03:43:50.992Z",
+          "source_timestamp": "2026-07-13T03:43:50.992Z"
+        },
+        {
+          "memory_id": "cddf9790-16a7-4fbc-ad29-180f3c2cbe72",
+          "table": "episodic",
+          "content": "Confirmed: **NVIDIA RTX A5000** \u2014 the GPU-preference fix is working, and v13 is training on the cheaper/faster card. Let me reschedule the check for when training should actually complete (the earlier 360s check would fire mid-tokenization, too early).",
+          "score": 1.644602,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-13T08:06:14.725Z",
+          "source_timestamp": "2026-07-13T08:06:14.725Z"
+        },
+        {
+          "memory_id": "c92ba6e0-d52e-49b9-b021-39a4e9a72325",
+          "table": "episodic",
+          "content": "Key details: pod `x2ghgfs87qd54z` (L4 GPU, $0.39/hr \u2014 A5000 unavailable, expected fallback), the HF *dataset* upload failed (403, non-fatal, curriculum was already tar-pushed directly), and the resume adapter downloaded successfully from HF. Training actually started in tmux `psm-hf-lora`. Let me check its live status now.",
+          "score": 1.558843,
+          "source_id": "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T14:55:20.433Z",
+          "source_timestamp": "2026-07-26T14:55:20.433Z"
+        },
+        {
+          "memory_id": "34d58aad-c15b-4869-8f61-60f459cf3f41",
+          "table": "episodic",
+          "content": "Training started on an **A5000** ($0.27 \u2014 the preferred GPU finally). Exit-1 is the benign verify-pod race. Confirming GPU is live:",
+          "score": 1.506355,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T11:28:22.938Z",
+          "source_timestamp": "2026-07-15T11:28:22.938Z"
+        },
+        {
+          "memory_id": "1182003e-4426-4e40-bdc0-6e559f8fd5fe",
+          "table": "episodic",
+          "content": "Everything downstream is now wired and ready: - **storage-v15 profile** added to `_run_hf_lora.py` - Added to the **A5000-first gpu_prefs** default tuple - Wired into `_sync_hf_lora.py` for verify/pull. The training script builds a curriculum only if the file is absent, so the synced v15 jsonl is used directly. The current state is relabel resumed from 592/1589, running in background (~997 Cloudflare calls left). Monitor is watching the cache advance and will alert on completion or any error. Once it writes `hf-prod-storage-v15.jsonl` + manifest, I'll deploy the train to an A5000, pull, delete the pod, and eval on the 100-case gate vs v11's 0.82.",
+          "score": 1.476587,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T02:25:03.464Z",
+          "source_timestamp": "2026-07-14T02:25:03.464Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not match gold answer"
+    },
+    {
+      "id": "q17",
+      "category": "single-hop",
+      "question": "What caused two git.exe processes to hang and hold a lock, blocking git status?",
+      "gold_answer": "Two hung git.exe processes from a cancelled push were holding the lock.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:44:12.929Z",
+        "codex:rollout-2026-07-22T04-56-29-019f890a-6b14-7512-ae64-c80ef9b195ac:2026-07-22T11:16:46.291Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:43:46.396Z",
+        "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T13:19:20.991Z",
+        "pi:2026-07-23T11-00-54-055Z_019f8ea2-aea7-7442-a6db-99a3d581b7a4:2026-07-23T11:01:29.106Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "95e02ce4-40f3-486b-a176-2892a844c534",
+          "table": "episodic",
+          "content": "Two lingering `git.exe` processes (PIDs 8844, 9720) and a `CredentialUIBroker` are likely still holding the lock from the cancelled push. Killing the stuck git processes.",
+          "score": 1.75492,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:44:12.929Z",
+          "source_timestamp": "2026-07-16T15:44:12.929Z"
+        },
+        {
+          "memory_id": "4a1a5fc8-924a-4444-8f52-9baec1a75f75",
+          "table": "episodic",
+          "content": "Fixed both issues. The missing logs were caused by Pi using streaming requests\u2014the streaming path never created `InferenceLog` entries. The Logs page now refreshes every two seconds and shows the physical target model. Logging was not blocking responses; it already used a background channel. Two other database operations were on the response path: Prompt-cache SQLite writes and Provider-health lookup/reset. Those are now optimized: Cache writes use a hosted background queue. Healthy accounts no longer trigger an unnecessary database lookup. SQLite uses WAL mode and a busy timeout. Log batches retry transient database failures instead of being dropped.",
+          "score": 1.133468,
+          "source_id": "codex:rollout-2026-07-22T04-56-29-019f890a-6b14-7512-ae64-c80ef9b195ac:2026-07-22T11:16:46.291Z",
+          "source_timestamp": "2026-07-22T11:16:46.291Z"
+        },
+        {
+          "memory_id": "cfd25c01-4639-4921-b68a-c565dc4aa208",
+          "table": "episodic",
+          "content": "Found it \u2014 a stale `.git/index.lock` (0 bytes, from the cancelled push). Removing it now.",
+          "score": 1.097836,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-16T15:43:46.396Z",
+          "source_timestamp": "2026-07-16T15:43:46.396Z"
+        },
+        {
+          "memory_id": "cd432229-09bb-49cc-b26d-770173fd420f",
+          "table": "episodic",
+          "content": "Found the real culprit: `.gitignore` blanket-ignores `*.jsonl` with only ONE explicit exception for `context-aware-storage-seed.jsonl` \u2014 not for the new `context-aware-storage-curriculum-sources.jsonl`. My own instructions told pi to verify via `git status --short`, which can never show these files changing regardless of what pi did \u2014 likely causing it to loop in confusion until it died silently. Fixing my brief and retrying.",
+          "score": 1.095383,
+          "source_id": "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T13:19:20.991Z",
+          "source_timestamp": "2026-07-26T13:19:20.991Z"
+        },
+        {
+          "memory_id": "50aa6fae-90f9-4789-8471-9bc7b0d459b0",
+          "table": "episodic",
+          "content": "The data-corruption bug has been fixed, and the tests have been verified. The current turn states a specific fact (Luna's age) but only makes sense combined with the context question asking about Luna specifically. The git status shows many modifications and untracked files from previous operations in the environment, but the requested fix was applied specifically to the target file.",
+          "score": 1.056197,
+          "source_id": "pi:2026-07-23T11-00-54-055Z_019f8ea2-aea7-7442-a6db-99a3d581b7a4:2026-07-23T11:01:29.106Z",
+          "source_timestamp": "2026-07-23T11:01:29.106Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not provide a cause for the hung git.exe processes"
+    },
+    {
+      "id": "q18",
+      "category": "single-hop",
+      "question": "What is fixed and included in the PSM pod base Docker image (docker/psm-pod-base.Dockerfile)?",
+      "gold_answer": "Node.js, a dotnet shim, and pinned training dependencies, built on the stock CUDA/PyTorch base.",
+      "retrieved_ids": [
+        "codex:rollout-2026-07-22T01-33-25-019f8850-8409-7bd1-8e7b-176634566bd3:2026-07-22T06:02:12.927Z",
+        "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:30:37.748Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T09:51:08.512Z",
+        "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:16:36.073Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T09:18:27.992Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "ca596a32-c7c7-468e-9dd3-946e226df368",
+          "table": "semantic",
+          "content": "Docker grading often has a quiet setup phase while it prepares the cached benchmark environment.",
+          "score": 1.370525,
+          "source_id": "codex:rollout-2026-07-22T01-33-25-019f8850-8409-7bd1-8e7b-176634566bd3:2026-07-22T06:02:12.927Z",
+          "source_timestamp": "2026-07-22T06:02:12.927Z"
+        },
+        {
+          "memory_id": "0a68baf8-5d0d-4eff-841d-36933149ef3d",
+          "table": "semantic",
+          "content": "Docker Desktop integration is disabled for the Ubuntu distro, and a workaround involves running the official evaluator inside a small Linux control container and mounting Docker\u2019s socket for setup.",
+          "score": 1.302882,
+          "source_id": "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:30:37.748Z",
+          "source_timestamp": "2026-07-21T11:30:37.748Z"
+        },
+        {
+          "memory_id": "fd7b7de4-d35a-4114-a704-030781681fb5",
+          "table": "episodic",
+          "content": "The eval bug was mine, I `cd`'d into `psm-model/prod-memory`, breaking the relative PYTHONPATH. The training script stays at ROOT; I should have copied that pattern rather than invent one. Fixed, plus a pre-flight existence check on the adapter/fixtures so it fails fast and loudly. The only pod that could retry was deleted on failure, leaving the pod up with the exact retry command printed. The on-pod path is fixed and validated for every run after this. v17 trained clean: train_loss **0.37** (vs v16b 0.32, v16's broken 0.86).",
+          "score": 1.24499,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-15T09:51:08.512Z",
+          "source_timestamp": "2026-07-15T09:51:08.512Z"
+        },
+        {
+          "memory_id": "f5ff6b12-ca1e-49d9-bd40-d584b9b18965",
+          "table": "episodic",
+          "content": "The machine is suitable for a small official pilot due to Docker being running, having about 256 GB free, and the Hugging Face CLI available. The first gate is deliberately small because the official harness is containerized and resource-heavy.",
+          "score": 1.241347,
+          "source_id": "codex:rollout-2026-07-21T02-13-51-019f834f-2af1-7230-9b7e-327b59f9c28b:2026-07-21T11:16:36.073Z",
+          "source_timestamp": "2026-07-21T11:16:36.073Z"
+        },
+        {
+          "memory_id": "b1d55f62-5878-4a4d-99f5-256c913ccb49",
+          "table": "episodic",
+          "content": "Pod deleted, local temp artifacts cleaned up (freed ~1.3GB). The pod-hosted results database is gone with the pod. The LoCoMo number from today isn't a real measure of PSM's ceiling \u2014 it's measuring a C# port that's missing the embedding-based retrieval the original TypeScript already had working, plus a genuine storage-detail-retention gap in the adapter itself. Both are real, scoped fixes, not research problems.",
+          "score": 1.209421,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-20T09:18:27.992Z",
+          "source_timestamp": "2026-07-20T09:18:27.992Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not match gold answer"
+    },
+    {
+      "id": "q19",
+      "category": "multi-hop",
+      "question": "What were the two structural root causes found for the LoCoMo quality issues investigated around 2026-07-23, and which of the two is the sourceTimestamp fix?",
+      "gold_answer": "Root cause #1: storage decisions are made on a single turn with zero surrounding context (no amount of adapter retraining can fix this, since the adapter is never shown the context that would make an ambiguous fact recognizable). Root cause #2 IS the sourceTimestamp issue itself: a stored memory's real sourceTimestamp was never surfaced to answer synthesis, only the narrower, derived resolvedTime \u2014 even though most 'when did X happen' questions are answered by when the message was sent, not a relative-date phrase in the text.",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T04:24:13.150Z",
+        "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T16:10:39.392Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T10:15:09.248Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-17T11:04:05.602Z",
+        "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T15:23:17.775Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "4c355984-2a7a-4f5a-bc6e-bf122232335a",
+          "table": "semantic",
+          "content": "Storage decisions are made on a single turn with zero surrounding context, leading to incorrect judgments of stored facts. The ingest pipeline sends one turn at a time to the storage adapter with no conversational window, making the fact unanswerable in isolation. The real timestamp (`sourceTimestamp`) is never surfaced to answer synthesis, only the narrower `resolvedTime`. This is a much bigger lever than the temporal regex fixes.",
+          "score": 1.86062,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-23T04:24:13.150Z",
+          "source_timestamp": "2026-07-23T04:24:13.150Z"
+        },
+        {
+          "memory_id": "a5660668-d81d-4b67-adbe-5ba7b9f27b6c",
+          "table": "episodic",
+          "content": "The enum hallucination bug from Phase 2 is fixed \u2014 all 6 successful store cases have zero enum-related issues, and even the one remaining `kind: fact` hallucination (on `noise-meta`) got safely caught and ignored, which is correct behavior since that's a noise fixture anyway. The two failures now are JSON completeness issues (missing `memory` field, malformed delimiter), a different bug than what Phase 3 targeted. Let me upload this eval report to HF to close out the artifact rule properly, then update the project memory.",
+          "score": 1.858351,
+          "source_id": "claude-code:e8bce25e-2c17-4eb6-8dcd-526013a0667c:2026-07-04T16:10:39.392Z",
+          "source_timestamp": "2026-07-04T16:10:39.392Z"
+        },
+        {
+          "memory_id": "50380166-382a-4979-99e2-24ca5608a193",
+          "table": "episodic",
+          "content": "v5n-dpo2 on LoCoMo dropped to 5/15 effective_stored (from v5n-dpo's 9/15) and action_match 0.67 (from 0.80) \u2014 a step back on this domain, though LoCoMo is now demoted from the primary bar. The real test is the coding-agent gate, which is what this fix specifically targeted. Waiting on that result.",
+          "score": 1.847943,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-10T10:15:09.248Z",
+          "source_timestamp": "2026-07-10T10:15:09.248Z"
+        },
+        {
+          "memory_id": "cf0500a6-0f36-4de5-b092-f00f4db9b6fa",
+          "table": "semantic",
+          "content": "The three concrete paths tried this session (CUDA config fix, DirectML config fix, fixed-shape export) all ran into real, structural walls tied to one root choice: keeping LoRA adapters swappable via a single shared base graph requires the dynamo-export path, and that path's dynamic KV-cache growth is fundamentally at odds with the graph-capture/static-buffer optimizations that give GPU/NPU acceleration its actual speedup.",
+          "score": 1.827497,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-17T11:04:05.602Z",
+          "source_timestamp": "2026-07-17T11:04:05.602Z"
+        },
+        {
+          "memory_id": "25e61f5a-9c7d-4094-8645-d47f3742d07a",
+          "table": "episodic",
+          "content": "Real bug found: the pod pins `peft==0.13.2`, but the local `storage-v16b` adapter was saved with `peft==0.19.1` and includes newer config fields (`alora_invocation_tokens`, `qalora_group_size`, etc.) the old version can't parse. This is a genuine dependency-version mismatch, unrelated to my curriculum or profile. Fixing it live on the pod (not touching the checked-in script, to avoid side effects on other profiles) and relaunching immediately.",
+          "score": 1.821772,
+          "source_id": "claude-code:d0e161a0-ed39-4f54-9aec-a3ac15858b15:2026-07-26T15:23:17.775Z",
+          "source_timestamp": "2026-07-26T15:23:17.775Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "answer does not match gold answer"
+    },
+    {
+      "id": "q20",
+      "category": "single-hop",
+      "question": "In the same-day root-cause investigation, what specific examples of turns were cited as being correctly judged 'nothing to store' in isolation but answerable when combined with the preceding turn?",
+      "gold_answer": "\"It's Shia Labeouf!\", \"Yay! My online clothes store is open!\", and \"Yeah! Let's make some awesome memories tomorrow at the grand opening!\"",
+      "retrieved_ids": [
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-11T16:27:14.981Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-17T12:16:43.542Z",
+        "pi:2026-07-23T11-00-54-055Z_019f8ea2-aea7-7442-a6db-99a3d581b7a4:2026-07-23T11:01:29.106Z",
+        "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T07:55:13.400Z",
+        "codex:rollout-2026-07-07T11-34-42-019f3d37-8726-7fa0-b0b2-4490009382f9:2026-07-07T15:34:55.985Z"
+      ],
+      "context_items": [
+        {
+          "memory_id": "8d161345-531d-4b6a-a35f-89ac1f5d035f",
+          "table": "episodic",
+          "content": "The two things that *are* real, independent problems specific to `prod_extraction_v1` (1389 of 1908 rows, 73% of the whole curriculum): 1. **Domain mismatch** \u2014 the sample included a generic \"how to store cement\" Q&A, unrelated to coding-agent conversation at all. 2. **The 0.6% ignore rate** \u2014 almost no negative examples, meaning the model never learned what \"nothing worth storing\" looks like from this majority slice.",
+          "score": 1.838323,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-11T16:27:14.981Z",
+          "source_timestamp": "2026-07-11T16:27:14.981Z"
+        },
+        {
+          "memory_id": "22785108-6610-4c5a-9528-ee2655371470",
+          "table": "episodic",
+          "content": "The model's decisions are genuine, not degenerate. Out of 67 decisions so far (45 ignore / 13 promote_semantic / 9 store_episodic): - All 15 spot-checked `ignore` decisions were correctly reactive small talk (no facts disclosed). - All 6 spot-checked `promote_semantic` decisions correctly captured durable preferences/identity, distinct from one-time events. - 1 decision (D1:13) had a self-contradictory reasoning string \u2014 the reasoning text argues 'nothing worth remembering' but the action correctly stored a real, concrete plan.",
+          "score": 1.689968,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-17T12:16:43.542Z",
+          "source_timestamp": "2026-07-17T12:16:43.542Z"
+        },
+        {
+          "memory_id": "50aa6fae-90f9-4789-8471-9bc7b0d459b0",
+          "table": "episodic",
+          "content": "The data-corruption bug has been fixed, and the tests have been verified. The current turn states a specific fact (Luna's age) but only makes sense combined with the context question asking about Luna specifically. The git status shows many modifications and untracked files from previous operations in the environment, but the requested fix was applied specifically to the target file.",
+          "score": 1.393145,
+          "source_id": "pi:2026-07-23T11-00-54-055Z_019f8ea2-aea7-7442-a6db-99a3d581b7a4:2026-07-23T11:01:29.106Z",
+          "source_timestamp": "2026-07-23T11:01:29.106Z"
+        },
+        {
+          "memory_id": "e73a3d44-686d-45b0-a9ab-9347cc88c044",
+          "table": "episodic",
+          "content": "The error analysis is the most useful result of the whole effort. The 17 misses include 8 false-stores (model stored, should ignore) and 9 false-ignores (model ignored, should store). The dominant remaining error mode is under-storing real technical facts and findings. The honest takeaway is that cleaning labels rebalance the errors (no longer over-storing; now symmetric 0.82/0.84). The real lever is two-directional data, and keep the relabel for over-stores and add hard store-positive examples of durable technical facts/diagnoses/findings to fix the under-storing half.",
+          "score": 1.323381,
+          "source_id": "claude-code:ad347195-56a7-4c4b-8b0f-7f3526e1ee5b:2026-07-14T07:55:13.400Z",
+          "source_timestamp": "2026-07-14T07:55:13.400Z"
+        },
+        {
+          "memory_id": "388fe703-c12d-47b6-8e62-d31aacaaaa6c",
+          "table": "semantic",
+          "content": "Experiment 21 does not give a mechanism yet; it isolates a phenomenon. The strongest formulation is: A measurement is not relevant or irrelevant in isolation; it becomes explanatory only relative to a conflict. Conflict-specific explanatory relevance can be inferred from prior explanatory success/failure patterns without storing measurement-level importance. The next design should distinguish three candidates: Measurement-level memory, Conflict-pattern memory, and Interaction memory.",
+          "score": 1.302497,
+          "source_id": "codex:rollout-2026-07-07T11-34-42-019f3d37-8726-7fa0-b0b2-4490009382f9:2026-07-07T15:34:55.985Z",
+          "source_timestamp": "2026-07-07T15:34:55.985Z"
+        }
+      ],
+      "generated_answer": "I do not know.",
+      "judgment": "incorrect",
+      "score": 0,
+      "judge_reasoning": "Generated answer does not provide specific examples"
+    }
+  ]
+}
